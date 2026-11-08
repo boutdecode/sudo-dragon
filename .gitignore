@@ -8,3 +8,6 @@
 
 # Profils
 *.prof
+
+# Secrets locaux (clé Mistral, etc.)
+.env
