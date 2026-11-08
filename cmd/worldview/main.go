@@ -25,7 +25,7 @@ func main() {
 	if *sites {
 		for _, s := range wd.StructuresNear(world.Pos{X: *cx, Y: *cy}, max(*w, *h)) {
 			for _, n := range s.NPCs {
-				marks[n.Pos] = map[world.NPCKind]rune{world.NPCMerchant: 'M', world.NPCHealer: 'H'}[n.Kind]
+				marks[n.Pos] = map[world.NPCKind]rune{world.NPCMerchant: 'M', world.NPCHealer: 'H', world.NPCVillager: 'V'}[n.Kind]
 			}
 			for _, sl := range s.Slots {
 				marks[sl.Pos] = map[world.SlotRole]rune{world.RoleGuard: 'S', world.RoleElite: 'K', world.RoleBoss: 'B'}[sl.Role]

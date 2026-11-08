@@ -92,11 +92,27 @@ func placeName(kind Kind, rng *rand.Rand) string {
 	return base
 }
 
+var (
+	villagerMale   = []string{"le Roux", "le Grand", "le Jeune", "le Vieux", "le Rieur", "le Trapu"}
+	villagerFemale = []string{"la Rousse", "la Grande", "la Jeune", "la Vieille", "la Rieuse", "la Brune"}
+)
+
 // npcIdentity invente le nom et la personnalité d'un PNJ d'après son métier.
 func npcIdentity(kind NPCKind, rng *rand.Rand) (string, Persona) {
 	fn := pick(rng, firstNames)
 	var title string
 	switch kind {
+	case NPCVillager:
+		// Pas de métier ni de titre : un prénom et un trait physique ou d'humeur.
+		epithets := villagerMale
+		if fn.female {
+			epithets = villagerFemale
+		}
+		return fn.name + " " + pick(rng, epithets), Persona{
+			Temperament: pick(rng, temperaments),
+			Quirk:       pick(rng, quirks),
+			Speech:      pick(rng, speeches),
+		}
 	case NPCHealer:
 		title = "Frère"
 		if fn.female {

@@ -7,7 +7,7 @@ import (
 )
 
 // layoutFingerprint résume ce qui définit les plans de 81 régions: type,
-// emplacement, tuiles, PNJ (type et position) et postes de garnison. Les
+// emplacement, tuiles, PNJ d'origine (type et position, sans les villageois) et postes de garnison. Les
 // noms et personnalités n'y figurent volontairement pas.
 func layoutFingerprint(seed int64) uint64 {
 	h := fnv.New64a()
@@ -26,6 +26,9 @@ func layoutFingerprint(seed int64) uint64 {
 			}
 			h.Write(b)
 			for _, n := range s.NPCs {
+				if n.Kind == NPCVillager {
+					continue // ajoutés après coup : ne modifient ni les plans ni les PNJ d'origine
+				}
 				fmt.Fprintf(h, "npc:%s@%d,%d;", n.Kind, n.Pos.X, n.Pos.Y)
 			}
 			for _, sl := range s.Slots {

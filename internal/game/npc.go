@@ -72,8 +72,16 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	p.talk = &talk{npc: npc, lastAct: g.tick, gen: g.talkSeq, mode: protocol.NPCModeMenu}
 	p.hasPending = false
 	greeting := "Bienvenue, voyageur ! Que puis-je pour vous ?"
-	if npc.Kind == world.NPCHealer {
+	switch npc.Kind {
+	case world.NPCHealer:
 		greeting = "Que la lumière vous protège. Vous avez besoin de soins ?"
+	case world.NPCVillager:
+		// Sans métier, un villageois n'a que sa conversation. Quand elle est indisponible
+		// (pas de clé, panne), il dit une phrase d'ambiance fixe pour que le monde reste vivant.
+		greeting = "Bonjour, voyageur."
+		if !g.talkerReady() {
+			greeting = ambientLine(npc)
+		}
 	}
 	g.sendTalk(p, npc.Kind, []string{greeting}, false)
 }
@@ -236,4 +244,25 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 		d.Offers = g.offers(p, kind)
 	}
 	p.sendNPC(d)
+}
+
+// ambientLines sont les phrases d'un villageois quand le modèle de langage est indisponible.
+var ambientLines = []string{
+	"Bien le bonjour. Les corbeaux sont nerveux, ces jours-ci… Mauvais présage, disent les anciens.",
+	"Vous venez de loin ? On ne voit pas souvent de visages neufs par ici.",
+	"Méfiez-vous des routes après la tombée de la nuit. Ce qui rôde ne fait pas la différence entre un voyageur et un mouton.",
+	"On dit qu'un seigneur de guerre tient la forteresse, là-bas. Moi, je préfère mon potager.",
+	"Le soigneur fait des miracles, mais il n'aime pas qu'on le fasse attendre.",
+	"La récolte a été bonne cette année. Ça change de la pluie de l'an dernier !",
+	"Si vous croisez un dragon, ne comptez pas sur moi pour vous le dire. Je ne suis pas courageux.",
+	"Prenez le temps de vous reposer, voyageur. La route sera longue.",
+}
+
+// ambientLine choisit, de façon stable pour un PNJ donné, une phrase d'ambiance.
+func ambientLine(npc world.NPC) string {
+	i := (npc.Region.X*31 + npc.Region.Y*17 + npc.Index*7) % len(ambientLines)
+	if i < 0 {
+		i += len(ambientLines)
+	}
+	return ambientLines[i]
 }

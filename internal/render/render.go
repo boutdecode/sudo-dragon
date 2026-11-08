@@ -71,6 +71,7 @@ var monsterLooks = map[string]monsterLook{
 var npcLooks = map[world.NPCKind]monsterLook{
 	world.NPCMerchant: {'M', "Marchand", fg("#fbbf24").Bold(true)},
 	world.NPCHealer:   {'H', "Soigneur", fg("#34d399").Bold(true)},
+	world.NPCVillager: {'V', "Villageois", fg("#7dd3fc").Bold(true)},
 }
 
 var unknownNPC = monsterLook{'N', "Inconnu", fg("#f472b6").Bold(true)}

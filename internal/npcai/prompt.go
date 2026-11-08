@@ -78,11 +78,18 @@ func frenchAge(d time.Duration) string {
 }
 
 func jobLabel(k world.NPCKind) string {
-	if k == world.NPCHealer {
+	switch k {
+	case world.NPCHealer:
 		return "soigneur"
+	case world.NPCVillager:
+		return "habitant"
 	}
 	return "marchand"
 }
+
+// villagerRule précise le rôle d'un habitant sans métier.
+const villagerRule = "Tu n'as aucun métier particulier : tu bavardes, tu racontes la vie du lieu et ses petits ragots. Tu n'as rien à vendre, tu ne soignes pas, " +
+	"et tu n'inventes ni quête ni récompense. Tu es curieux des voyageurs et tu leur demandes volontiers qui ils sont et d'où ils viennent.\n"
 
 // placeLabel renvoie le lieu avec son article: « du village de X », « de la ville de X ».
 func placeLabel(k world.Kind, name string) string {
@@ -120,6 +127,9 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	fmt.Fprintf(&b, "Tu incarnes %s, %s %s.\n", n.Name, jobLabel(n.Kind), placeLabel(req.PlaceKind, req.Place))
 	// Les manies sont rédigées à la troisième personne (« tient un carnet… »), d'où la tournure.
 	fmt.Fprintf(&b, "Ton tempérament: %s. Ton personnage %s. Style de parole: %s.\n\n", n.Persona.Temperament, n.Persona.Quirk, n.Persona.Speech)
+	if n.Kind == world.NPCVillager {
+		b.WriteString(villagerRule)
+	}
 	b.WriteString(systemRules)
 	b.WriteString("\n\n")
 

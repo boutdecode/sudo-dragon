@@ -183,8 +183,9 @@ func TestNPCsStandOnFloorAndNeverBlockEntrance(t *testing.T) {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
 			seen := reachable(s) // les PNJ sont des obstacles dans ce parcours
 			for _, n := range s.NPCs {
-				if s.TileAt(n.Pos.X, n.Pos.Y) != Floor {
-					t.Fatalf("seed %d %v: PNJ %s hors d'un sol intérieur", seed, s.Kind, n.Kind)
+				// Les villageois peuvent se tenir sur la place (route) ; les autres PNJ restent à l'intérieur.
+				if tile := s.TileAt(n.Pos.X, n.Pos.Y); tile != Floor && !(n.Kind == NPCVillager && tile == Road) {
+					t.Fatalf("seed %d %v: PNJ %s hors d'un sol intérieur (tuile %d)", seed, s.Kind, n.Kind, tile)
 				}
 				// Au moins un voisin atteignable, sinon le joueur ne peut pas lui parler.
 				ok := false
@@ -212,12 +213,15 @@ func TestNPCsPerKind(t *testing.T) {
 			}
 			switch s.Kind {
 			case KindVillage:
-				if counts[NPCHealer] != 1 || len(s.NPCs) != 1 {
-					t.Fatalf("village: PNJ %v, attendu un soigneur", counts)
+				if counts[NPCHealer] != 1 || counts[NPCVillager] != 3 || len(s.NPCs) != 4 {
+					t.Fatalf("village: PNJ %v, attendu un soigneur et 3 villageois", counts)
 				}
 			case KindTown:
-				if counts[NPCHealer] != 1 || counts[NPCMerchant] != 1 || len(s.NPCs) != 2 {
-					t.Fatalf("ville: PNJ %v, attendu un marchand et un soigneur", counts)
+				if counts[NPCHealer] != 1 || counts[NPCMerchant] != 1 || counts[NPCVillager] != 5 || len(s.NPCs) != 7 {
+					t.Fatalf("ville: PNJ %v, attendu un marchand, un soigneur et 5 villageois", counts)
+				}
+				if s.NPCs[0].Kind != NPCMerchant || s.NPCs[1].Kind != NPCHealer {
+					t.Fatalf("ville: les indices des PNJ d'origine ont bougé : %v", s.NPCs)
 				}
 			case KindFortress:
 				if len(s.NPCs) != 0 {
@@ -229,6 +233,33 @@ func TestNPCsPerKind(t *testing.T) {
 	for _, k := range []Kind{KindVillage, KindTown, KindFortress} {
 		if kinds[k] == 0 {
 			t.Errorf("aucune structure de type %v sur l'échantillon", k)
+		}
+	}
+}
+
+// Les PNJ d'origine gardent leur indice (les souvenirs en base y sont rattachés) ; les villageois suivent.
+func TestVillagersComeAfterOriginalNPCsAndAreDistinct(t *testing.T) {
+	for _, seed := range testSeeds {
+		for _, s := range allStructures(sharedWorld(seed), 5) {
+			seenPos, seenName := map[Pos]bool{}, map[string]bool{}
+			sawVillager := false
+			for i, n := range s.NPCs {
+				if n.Index != i {
+					t.Fatalf("indice %d au rang %d", n.Index, i)
+				}
+				if n.Kind == NPCVillager {
+					sawVillager = true
+				} else if sawVillager {
+					t.Fatalf("PNJ %s après un villageois", n.Kind)
+				}
+				if seenPos[n.Pos] || seenName[n.Name] {
+					t.Fatalf("doublon de position ou de nom : %v %q", n.Pos, n.Name)
+				}
+				seenPos[n.Pos], seenName[n.Name] = true, true
+				if !s.Contains(n.Pos.X, n.Pos.Y) {
+					t.Fatalf("PNJ hors de l'emprise : %v", n.Pos)
+				}
+			}
 		}
 	}
 }

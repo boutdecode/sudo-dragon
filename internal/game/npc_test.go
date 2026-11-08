@@ -491,3 +491,32 @@ func TestDialogThroughRunningGame(t *testing.T) {
 		t.Fatalf("fermeture: %+v", m)
 	}
 }
+
+func TestVillagerOffersOnlyConversation(t *testing.T) {
+	r := newNPCRig(t, world.NPCVillager)
+	r.g.Talker = newFakeTalker()
+	r.talk()
+	d := r.last()
+	if d.Kind != string(world.NPCVillager) || len(d.Offers) != 1 || d.Offers[0].Action != protocol.NPCTalk {
+		t.Fatalf("un villageois ne propose que « Discuter » : %+v", d)
+	}
+	// Ni commerce ni soin chez lui, et rien n'est débité.
+	r.p.stats.Gold = 100
+	r.act(protocol.NPCBuy)
+	r.act(protocol.NPCHeal)
+	if r.p.stats.Gold != 100 || !strings.Contains(strings.Join(r.last().Log, " "), "pas ce que je propose") {
+		t.Fatalf("gold=%d dernier=%+v", r.p.stats.Gold, r.last())
+	}
+}
+
+func TestVillagerWithoutAIGivesAStableAmbientLine(t *testing.T) {
+	r := newNPCRig(t, world.NPCVillager) // pas de Talker
+	r.talk()
+	d := r.last()
+	if len(d.Offers) != 0 || len(d.Log) != 1 || d.Log[0] != ambientLine(r.npc) || d.Log[0] == "" {
+		t.Fatalf("phrase d'ambiance attendue sans menu vide ni IA : %+v", d)
+	}
+	if ambientLine(r.npc) != ambientLine(r.npc) {
+		t.Fatal("la phrase doit être stable pour un même PNJ")
+	}
+}

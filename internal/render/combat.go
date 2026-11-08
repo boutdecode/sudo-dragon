@@ -85,6 +85,13 @@ var npcArt = map[world.NPCKind][]string{
 		`  /|   |\  `,
 		`   |_+_|   `,
 	},
+	world.NPCVillager: {
+		`   .---.   `,
+		`  ( ^ ^ )  `,
+		`   \ ~ /   `,
+		`  /|   |\  `,
+		`   |   |   `,
+	},
 }
 
 var unknownNPCArt = []string{

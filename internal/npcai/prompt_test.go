@@ -276,3 +276,18 @@ func TestFrenchAge(t *testing.T) {
 		}
 	}
 }
+
+func TestVillagerPromptHasNoJobAndKeepsTheNoPromiseRule(t *testing.T) {
+	req := testReq("x")
+	req.NPC.Name, req.NPC.Kind, req.PlaceKind, req.Place = "Tomas le Roux", world.NPCVillager, world.KindVillage, "Tourelle"
+	sys := BuildMessages(req, nil, "", 12, nil)[0].Content
+	for _, want := range []string{"Tu incarnes Tomas le Roux, habitant du village de Tourelle.", "Tu n'as aucun métier", "RÈGLES ABSOLUES"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("prompt sans %q", want)
+		}
+	}
+	req.NPC.Kind = world.NPCHealer
+	if strings.Contains(BuildMessages(req, nil, "", 12, nil)[0].Content, "Tu n'as aucun métier") {
+		t.Error("la règle du villageois ne doit pas s'appliquer aux autres PNJ")
+	}
+}

@@ -295,9 +295,41 @@ func layoutVillage(w, h int, rng *rand.Rand) *canvas {
 		c.npcs = append(c.npcs, NPC{Kind: NPCHealer, Pos: Pos{w / 2, h / 2}})
 		return c
 	}
-	healer := houses[closestTo(houses, w/2, h/2)[0]]
-	c.npcs = append(c.npcs, NPC{Kind: NPCHealer, Pos: healer.npcSpot()})
+	order := closestTo(houses, w/2, h/2)
+	c.npcs = append(c.npcs, NPC{Kind: NPCHealer, Pos: houses[order[0]].npcSpot()})
+
+	// Villageois, ajoutés après le soigneur (les indices des PNJ existants ne bougent pas) :
+	// un sur la place, deux au fond des maisons voisines. Aucun tirage aléatoire.
+	plaza := []Pos{{w/2 - 2, h/2 - 1}, {w/2 + 1, h / 2}, {w/2 - 2, h / 2}, {w/2 + 1, h/2 - 1}}
+	c.addVillagers(3, 1, plaza, houses, order[1:])
 	return c
+}
+
+// addVillagers pose count villageois : outdoor sur les premières cases de place, puis
+// au fond des bâtiments order (indices dans bs) et, si les bâtiments manquent, sur les
+// cases de place restantes. Choix entièrement déterministe, sans le flux aléatoire du plan.
+func (c *canvas) addVillagers(count, outdoor int, plaza []Pos, bs []building, order []int) {
+	var spots []Pos
+	spots = append(spots, plaza[:min(outdoor, len(plaza))]...)
+	for _, i := range order {
+		spots = append(spots, bs[i].npcSpot())
+	}
+	if outdoor < len(plaza) {
+		spots = append(spots, plaza[outdoor:]...)
+	}
+	for _, sp := range spots {
+		if count == 0 {
+			return
+		}
+		taken := false
+		for _, n := range c.npcs {
+			taken = taken || n.Pos == sp
+		}
+		if !taken {
+			c.npcs = append(c.npcs, NPC{Kind: NPCVillager, Pos: sp})
+			count--
+		}
+	}
 }
 
 // layoutTown: muraille à quatre portes, deux avenues en croix, place du marché,
@@ -345,6 +377,13 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	for i := 0; i < len(order) && i < len(kinds); i++ {
 		c.npcs = append(c.npcs, NPC{Kind: kinds[i], Pos: bs[order[i]].npcSpot()})
 	}
+	// Villageois : deux sur la place du marché (hors des avenues), trois dans les bâtiments suivants.
+	plaza := []Pos{{midX - 4, midY - 2}, {midX + 3, midY + 2}, {midX - 4, midY + 2}, {midX + 3, midY - 2}}
+	var rest []int
+	if len(order) > len(kinds) {
+		rest = order[len(kinds):]
+	}
+	c.addVillagers(5, 2, plaza, bs, rest)
 	return c
 }
 
