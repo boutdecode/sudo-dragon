@@ -96,6 +96,10 @@ type Model struct {
 	state         state
 	width, height int
 
+	// transparent laisse le fond du terminal tel quel au lieu de peindre le
+	// fond sombre du thème.
+	transparent bool
+
 	// Écran de connexion.
 	addr, name, pass textinput.Model
 	focus            int  // 0 = adresse, 1 = pseudo, 2 = mot de passe
@@ -169,6 +173,47 @@ func New(addr, name string) Model {
 
 	m := Model{addr: a, name: n, pass: p, chatInput: c, width: 80, height: 24}
 	return m.setFocus(focus)
+}
+
+// Marges autour de l'interface, supprimées si le terminal est trop petit pour
+// que l'intérieur garde au moins la taille minimale.
+const (
+	marginX = 2
+	marginY = 1
+)
+
+func (m Model) margins() (mx, my int) {
+	if m.width >= minWidth+2*marginX && m.height >= minHeight+2*marginY {
+		return marginX, marginY
+	}
+	return 0, 0
+}
+
+// addMargin entoure s de mx colonnes et my lignes vides, sur une largeur totale w.
+func addMargin(s string, mx, my, w int) string {
+	if mx == 0 && my == 0 {
+		return s
+	}
+	blank := strings.Repeat(" ", w)
+	pad := strings.Repeat(" ", mx)
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines)+2*my)
+	for range my {
+		out = append(out, blank)
+	}
+	for _, l := range lines {
+		out = append(out, ui.Fit(pad+l, w))
+	}
+	for range my {
+		out = append(out, blank)
+	}
+	return strings.Join(out, "\n")
+}
+
+// WithTransparent choisit de ne pas peindre le fond du thème.
+func (m Model) WithTransparent(t bool) Model {
+	m.transparent = t
+	return m
 }
 
 // Init implémente tea.Model.
@@ -626,8 +671,11 @@ func (m Model) formatChat(l chatLine) string {
 func (m Model) unloadWorld() {
 	c := world.ChunkOf(m.snap.Self.X, m.snap.Self.Y)
 	keep := make(map[world.ChunkPos]bool)
-	for dy := -3; dy <= 3; dy++ {
-		for dx := -3; dx <= 3; dx++ {
+	// Garder au moins ce qui est à l'écran (+1 chunk de marge).
+	rx := max(3, m.width/2/world.ChunkSize+2)
+	ry := max(3, m.height/2/world.ChunkSize+2)
+	for dy := -ry; dy <= ry; dy++ {
+		for dx := -rx; dx <= rx; dx++ {
 			keep[world.ChunkPos{X: c.X + dx, Y: c.Y + dy}] = true
 		}
 	}
@@ -638,15 +686,24 @@ func (m Model) unloadWorld() {
 
 // View implémente tea.Model.
 func (m Model) View() tea.View {
+	// L'interface est dessinée dans la zone intérieure, entourée d'une marge.
+	mx, my := m.margins()
+	inner := m
+	inner.width, inner.height = m.width-2*mx, m.height-2*my
 	var s string
 	switch m.state {
 	case statePlaying:
-		s = m.viewPlaying()
+		s = inner.viewPlaying()
 	default:
-		s = m.viewLogin()
+		s = inner.viewLogin()
 	}
+	s = addMargin(s, mx, my, m.width)
 	v := tea.NewView(s)
 	v.AltScreen = true
+	if !m.transparent {
+		v.BackgroundColor = lipgloss.Color(ui.ColInk)
+		v.ForegroundColor = lipgloss.Color(ui.ColText)
+	}
 	v.WindowTitle = "sudo Dragon"
 	return v
 }
@@ -654,13 +711,13 @@ func (m Model) View() tea.View {
 func (m Model) viewLogin() string {
 	panelW := min(m.width, 56)
 	inner := panelW - 2
-	rich := m.height >= 24 && m.width >= ui.LogoWidth()+6 // assez de place pour le logo
+	rich := m.height >= 22 && m.width >= ui.LogoWidth()+6 // assez de place pour le logo
 
 	var lines []string
 	if rich {
 		lines = append(lines,
 			ui.Center(ui.Faint.Render(".   '   *   .   '   .   *   '"), inner),
-			ui.Center(ui.OK.Render("$")+" "+titleStyle.Render("sudo"), inner))
+			ui.Fit(strings.Repeat(" ", max(0, (inner-ui.LogoWidth())/2))+ui.OK.Render("$")+" "+titleStyle.Render("sudo"), inner))
 		for _, l := range ui.Logo() {
 			lines = append(lines, ui.Center(l, inner))
 		}
@@ -701,7 +758,7 @@ func (m Model) viewLogin() string {
 		lines = append(lines, ui.Center(ui.KeyBar([2]string{"tab", "champ"}, [2]string{"↵", "ok"}, [2]string{"^r", "mode"}, [2]string{"^c", "quitter"}), inner))
 	}
 
-	box := ui.Panel("sudo Dragon", strings.Join(lines, "\n"), panelW, len(lines)+2)
+	box := ui.Panel("", strings.Join(lines, "\n"), panelW, len(lines)+2)
 	footer := ui.Fit(dimStyle.Render(" v0.1.0")+strings.Repeat(" ", max(1, panelW-len(" v0.1.0")-len("Bubble Tea · Lip Gloss · Bubbles ")))+dimStyle.Render("Bubble Tea · Lip Gloss · Bubbles"), panelW)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n"+footer)
 }
@@ -715,8 +772,11 @@ func (m Model) viewPlaying() string {
 	}
 
 	// Hauteur: en-tête (1) + panneau central (mapH+2) + discussion (chatLines+2) + raccourcis (1).
-	mapW := min(m.width-sideWidth-4, 2*protocol.ViewHalfW+1)
-	mapH := min(m.height-chatLines-6, 2*protocol.ViewHalfH+1)
+	// L'interface occupe toute la fenêtre. Le terrain vient de la graine et peut
+	// dépasser la zone de vision du serveur; seules les entités (joueurs,
+	// monstres) sont limitées à cette zone.
+	mapW := m.width - sideWidth - 4
+	mapH := m.height - chatLines - 6
 	fullW := mapW + sideWidth + 4
 
 	self := m.snap.Self

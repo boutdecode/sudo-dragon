@@ -1020,3 +1020,64 @@ func TestInventoryScreen(t *testing.T) {
 		t.Fatal("inventaire non fermé")
 	}
 }
+
+func TestBackgroundPaintedUnlessTransparent(t *testing.T) {
+	m := New("ws://x/ws", "bob")
+	if v := m.View(); v.BackgroundColor == nil || v.ForegroundColor == nil {
+		t.Error("le fond du thème devrait être peint par défaut")
+	}
+	if v := m.WithTransparent(true).View(); v.BackgroundColor != nil || v.ForegroundColor != nil {
+		t.Error("--transparent ne doit rien peindre")
+	}
+}
+
+func TestViewFillsWholeTerminal(t *testing.T) {
+	for _, sz := range [][2]int{{80, 24}, {120, 40}, {200, 60}, {300, 90}} {
+		m := playingModel(t, sz[0], sz[1])
+		lines := strings.Split(ansi.Strip(m.View().Content), "\n")
+		if len(lines) != sz[1] {
+			t.Errorf("%v: %d lignes, attendu %d", sz, len(lines), sz[1])
+		}
+		for i, l := range lines {
+			if w := ansi.StringWidth(l); w != sz[0] {
+				t.Errorf("%v ligne %d: largeur %d, attendu %d", sz, i, w, sz[0])
+				break
+			}
+		}
+	}
+}
+
+func TestLoginSudoAlignedWithLogo(t *testing.T) {
+	m := New("ws://x/ws", "bob")
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	lines := strings.Split(ansi.Strip(tm.(Model).View().Content), "\n")
+	col := func(sub string) int {
+		for _, l := range lines {
+			if i := strings.Index(l, sub); i >= 0 {
+				return len([]rune(l[:i]))
+			}
+		}
+		t.Fatalf("%q introuvable", sub)
+		return -1
+	}
+	if a, b := col("$ sudo"), col("████   ████"); a != b {
+		t.Errorf("« $ sudo » en colonne %d, logo en colonne %d", a, b)
+	}
+}
+
+func TestViewHasMargins(t *testing.T) {
+	m := playingModel(t, 120, 40)
+	lines := strings.Split(ansi.Strip(m.View().Content), "\n")
+	if strings.TrimSpace(lines[0]) != "" || strings.TrimSpace(lines[len(lines)-1]) != "" {
+		t.Error("lignes de marge haute et basse attendues")
+	}
+	for i, l := range lines[1 : len(lines)-1] {
+		if !strings.HasPrefix(l, strings.Repeat(" ", marginX)) {
+			t.Fatalf("ligne %d sans marge gauche: %q", i+1, l)
+		}
+	}
+	// Trop petit pour des marges: elles disparaissent plutôt que de réduire l'intérieur.
+	if mx, my := playingModel(t, minWidth, minHeight).margins(); mx != 0 || my != 0 {
+		t.Errorf("marges %d,%d sur un terminal minimal", mx, my)
+	}
+}

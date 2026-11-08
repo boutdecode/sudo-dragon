@@ -35,6 +35,7 @@ make build                 # compile serveur, client, bot et outil de carte dans
 
 ./bin/sudo-dragon-server               # écoute sur :8080, base ./sudo-dragon.db
 ./bin/sudo-dragon               # dans un autre terminal (ou plusieurs, pour jouer à plusieurs)
+./bin/sudo-dragon --transparent   # garde le fond de votre terminal (sinon le fond sombre du thème est peint)
 ```
 
 > Le jeu s'appelait « ASCII Adventure » : la base par défaut est désormais `sudo-dragon.db`. Pour garder une ancienne

@@ -15,9 +15,9 @@ func Panel(title, body string, w, h int) string {
 		return ""
 	}
 	inner := w - 2
-	head := Frame.Render("─ ")
+	head := Frame.Render("─")
 	if title != "" {
-		head += Title.Render(title) + " "
+		head += Frame.Render(" ") + Title.Render(title) + " "
 	}
 	head = ansi.Truncate(head, inner, "")
 	fill := max(0, inner-ansi.StringWidth(head))
