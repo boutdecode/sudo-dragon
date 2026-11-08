@@ -17,8 +17,10 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/game"
+	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/store"
+	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -99,16 +101,22 @@ func fromSaved(sv game.Saved) store.Character {
 	return store.Character{
 		Level: sv.Stats.Level, XP: sv.Stats.XP, Potions: sv.Stats.Potions, Gold: sv.Stats.Gold,
 		HP: sv.HP, X: sv.Pos.X, Y: sv.Pos.Y,
+		LLMConsent: sv.LLMConsent, Kills: sv.Stats.Kills, BossKills: sv.Stats.BossKills, Deaths: sv.Stats.Deaths,
 	}
 }
 
 func toSaved(c store.Character) *game.Saved {
 	return &game.Saved{
-		Stats: combat.StatsAt(c.Level, c.XP, c.Potions).WithGold(c.Gold),
-		HP:    c.HP,
-		Pos:   world.Pos{X: c.X, Y: c.Y},
+		Stats:      combat.StatsAt(c.Level, c.XP, c.Potions).WithGold(c.Gold).WithRecord(c.Kills, c.BossKills, c.Deaths),
+		HP:         c.HP,
+		Pos:        world.Pos{X: c.X, Y: c.Y},
+		LLMConsent: c.LLMConsent,
 	}
 }
+
+// SetTalker branche le service qui fait parler les PNJ (nil: pas de discussion libre).
+// À appeler avant Run.
+func (s *Server) SetTalker(t game.Talker) { s.Game.Talker = t }
 
 // Run exécute la boucle de jeu (bloquant) jusqu'à l'annulation de ctx.
 func (s *Server) Run(ctx context.Context) { s.Game.Run(ctx) }
@@ -136,12 +144,15 @@ type Stats struct {
 	// Régime établi: les 60 dernières secondes.
 	TickP99MS       float64 `json:"tick_p99_ms"`
 	TickRecentMaxMS float64 `json:"tick_recent_max_ms"`
+
+	// LLM décrit le service de dialogue des PNJ (absent s'il n'est pas branché).
+	LLM *npcai.Stats `json:"llm,omitempty"`
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	m := s.Game.Metrics()
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(Stats{
+	out := Stats{
 		Players:     m.Players,
 		Monsters:    m.Monsters,
 		Ticks:       m.Ticks,
@@ -151,7 +162,13 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 
 		TickP99MS:       float64(m.RecentP99) / float64(time.Millisecond),
 		TickRecentMaxMS: float64(m.RecentMax) / float64(time.Millisecond),
-	})
+	}
+	// Le service de dialogue n'est branché qu'avant Run : Talker ne change plus ensuite.
+	if sv, ok := s.Game.Talker.(interface{ Stats() npcai.Stats }); ok {
+		st := sv.Stats()
+		out.LLM = &st
+	}
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 type session struct {
@@ -176,6 +193,10 @@ type session struct {
 	// Limitation du débit de chat (touchés seulement par readLoop).
 	tokens   float64
 	lastChat time.Time
+
+	// Idem pour les répliques adressées aux PNJ.
+	sayTokens float64
+	lastSay   time.Time
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -507,7 +528,19 @@ func (sess *session) readLoop(ctx context.Context) {
 				sess.sendErr("action de dialogue inconnue: " + a.Action)
 				continue
 			}
-			sess.srv.Game.TalkAct(sess.id, a.Action)
+			// Le texte vient d'un client: nettoyé et borné ici, avant qu'il n'atteigne le jeu
+			// ou un modèle de langage (séquences d'échappement, marques bidirectionnelles…).
+			text := textsafe.Clean(a.Text, protocol.MaxSayLen)
+			if a.Action == protocol.NPCSay {
+				if text == "" {
+					continue
+				}
+				if !sess.allowSay() {
+					sess.sendErr("doucement: laissez au PNJ le temps de répondre")
+					continue
+				}
+			}
+			sess.srv.Game.TalkAct(sess.id, a.Action, text)
 		case protocol.TPing:
 			sess.sendMsg(protocol.TPong, nil)
 		case protocol.TChatSend:

@@ -124,6 +124,31 @@ un squelette vers le niveau 4, un chevalier vers le 8, et le seigneur de guerre 
 `go run ./cmd/worldview -seed 1 -sites -x 0 -y 0 -w 400 -h 0` liste les lieux d'une zone ; avec une hauteur non nulle, il les dessine
 (`S` soldat, `K` élite, `B` seigneur) pour préparer une expédition.
 
+## PNJ conversationnels (Mistral)
+
+Le choix **Discuter** (touche `D`) ouvre une conversation libre avec un PNJ. Le LLM ne produit que du texte : il n'agit jamais sur
+l'or, les objets ou les stats ; le commerce et les soins restent dans les menus fixes. Sans clé, la fonction est absente et le jeu
+fonctionne normalement.
+
+**Activation** : `export MISTRAL_API_KEY=...` puis lancer le serveur (`-llm auto` par défaut ; `-llm on` exige la clé ; `-llm off` désactive).
+La clé ne se donne jamais en option. Au démarrage, une sonde teste le chat et la modération ; si l'API est en panne, le service reste
+désactivé et se re-teste toutes les 5 minutes. Options : `-llm-model`, `-llm-moderation-model` (les noms de modèles changent : voir la
+documentation Mistral), `-llm-daily-tokens` (budget par jour UTC, défaut 1 000 000), `-llm-workers`, `-llm-base-url` (faux serveur de développement).
+Le budget ne compte que les jetons de sortie demandés au maximum : il peut être légèrement dépassé.
+
+**Mémoire et lore** : un PNJ peut demander au joueur de se présenter. La fiche (pseudo, rôle, origine, but, trait), déclarée par le joueur donc
+non vérifiée, est mémorisée par lieu (8 lieux au plus par compte). Les autres joueurs l'entendent sous forme de **rumeurs** : visibles à
+3 régions au plus, avec 5 minutes de délai par région, de moins en moins fidèles avec la distance, oubliées après 14 jours. Chaque PNJ garde aussi
+un résumé **privé** de ses conversations avec chaque joueur, jamais montré aux autres. Le serveur y ajoute des faits vérifiés (niveau, boss tués, morts).
+
+**Confidentialité** : un avis s'affiche à la première discussion et exige un accord explicite (une fois par compte). Sans accord, rien n'est envoyé au fournisseur.
+
+**Modération et exploitation** : modération Mistral des entrées et des fiches (en cas d'échec, rien n'est écrit), limites par compte et file bornée.
+`/stats` expose un bloc `llm`. Sur la base (serveur éteint) :
+`server -lore-list [-lore-account NOM]` et `server -lore-purge account:NOM` ou `place:RX,RY`.
+
+`make llm-smoke` fait un essai réel de l'API (ignoré sans clé).
+
 ## Serveur
 
 ```sh

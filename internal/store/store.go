@@ -33,6 +33,14 @@ type Character struct {
 	HP                 int
 	X, Y               int
 	Gold               int
+
+	// Accord du joueur pour l'envoi de ses messages à un service de langage
+	// tiers (voir le dialogue des PNJ), et faits établis par le serveur que les
+	// PNJ peuvent invoquer.
+	LLMConsent bool
+	Kills      int
+	BossKills  int
+	Deaths     int
 }
 
 // Store est la base de données.
@@ -119,6 +127,40 @@ var migrations = []string{
 	)`,
 	// 4: monnaie du jeu. Les personnages existants démarrent sans or.
 	`ALTER TABLE characters ADD COLUMN gold INTEGER NOT NULL DEFAULT 0`,
+	// 5 à 8: accord pour les dialogues avec un modèle de langage, et faits vérifiés.
+	`ALTER TABLE characters ADD COLUMN llm_consent INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN kills INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN boss_kills INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN deaths INTEGER NOT NULL DEFAULT 0`,
+	// 9: présentations des joueurs, une par (compte, lieu). Les faits (level…) sont
+	// établis par le serveur; le reste est dit par le joueur et reste non vérifié.
+	`CREATE TABLE npc_cards (
+		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
+		region_x   INTEGER NOT NULL,
+		region_y   INTEGER NOT NULL,
+		alias      TEXT    NOT NULL,
+		role       TEXT    NOT NULL,
+		origin     TEXT    NOT NULL,
+		goal       TEXT    NOT NULL,
+		trait      TEXT    NOT NULL,
+		level      INTEGER NOT NULL,
+		boss_kills INTEGER NOT NULL,
+		deaths     INTEGER NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (account, region_x, region_y)
+	)`,
+	`CREATE INDEX npc_cards_place ON npc_cards(region_x, region_y, updated_at)`,
+	// 11: souvenir privé d'un PNJ sur un joueur (jamais montré à un autre joueur).
+	`CREATE TABLE npc_memories (
+		region_x   INTEGER NOT NULL,
+		region_y   INTEGER NOT NULL,
+		npc_index  INTEGER NOT NULL,
+		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
+		summary    TEXT    NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (region_x, region_y, npc_index, account)
+	)`,
 }
 
 // migrate applique les migrations manquantes, chacune dans sa transaction.
@@ -240,8 +282,11 @@ func (s *Store) Authenticate(name, password string) (string, error) {
 // LoadCharacter renvoie le personnage d'un compte, ou nil s'il n'en a pas encore.
 func (s *Store) LoadCharacter(account string) (*Character, error) {
 	var c Character
-	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold FROM characters WHERE account = ?`, account).
-		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold)
+	var consent int
+	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold, llm_consent, kills, boss_kills, deaths
+		FROM characters WHERE account = ?`, account).
+		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold, &consent, &c.Kills, &c.BossKills, &c.Deaths)
+	c.LLMConsent = consent != 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -263,11 +308,14 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`INSERT INTO characters(account, level, xp, potions, hp, x, y, gold, updated_at)
-		SELECT name, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
+	stmt, err := tx.Prepare(`INSERT INTO characters(account, level, xp, potions, hp, x, y, gold,
+			llm_consent, kills, boss_kills, deaths, updated_at)
+		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
 		ON CONFLICT(account) DO UPDATE SET
 			level = excluded.level, xp = excluded.xp, potions = excluded.potions,
 			hp = excluded.hp, x = excluded.x, y = excluded.y, gold = excluded.gold,
+			llm_consent = excluded.llm_consent, kills = excluded.kills,
+			boss_kills = excluded.boss_kills, deaths = excluded.deaths,
 			updated_at = excluded.updated_at`)
 	if err != nil {
 		return err
@@ -276,9 +324,17 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 
 	now := time.Now().Unix()
 	for account, c := range chars {
-		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold, now, account); err != nil {
+		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold,
+			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths, now, account); err != nil {
 			return fmt.Errorf("sauvegarde de %s: %w", account, err)
 		}
 	}
 	return tx.Commit()
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

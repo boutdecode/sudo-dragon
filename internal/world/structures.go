@@ -69,6 +69,13 @@ func NPCKinds() []NPCKind { return []NPCKind{NPCMerchant, NPCHealer} }
 type NPC struct {
 	Kind NPCKind
 	Pos  Pos
+
+	// Identité déterministe (voir names.go): même valeur pour tous, à chaque
+	// démarrage. Region et Index forment la clé stable du PNJ.
+	Region  RegionPos
+	Index   int
+	Name    string
+	Persona Persona
 }
 
 // SlotRole précise quel monstre occupe un emplacement de forteresse.
@@ -89,6 +96,7 @@ type Slot struct {
 // Structure est un village, une ville ou une forteresse.
 type Structure struct {
 	Kind   Kind
+	Name   string // nom du lieu, déterministe
 	Region RegionPos
 	Origin Pos // coin haut-gauche de l'emprise
 	W, H   int // dimensions de l'emprise
@@ -358,14 +366,34 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	}
 	origin := Pos{rp.X*RegionSize + x0, rp.Y*RegionSize + y0}
 	s := &Structure{Kind: kind, Region: rp, Origin: origin, W: c.w, H: c.h, tiles: c.t}
-	for _, n := range c.npcs {
-		s.NPCs = append(s.NPCs, NPC{n.Kind, Pos{origin.X + n.Pos.X, origin.Y + n.Pos.Y}})
+	// Identités: flux séparés, pour ne pas décaler le tirage des plans.
+	s.Name = placeName(kind, identityRNG(w.Seed, rp, 0))
+	taken := map[string]bool{}
+	for i, n := range c.npcs {
+		// Deux PNJ d'un même lieu ne portent jamais le même nom: on retire avec un autre sel.
+		var name string
+		var persona Persona
+		for try := uint64(0); try < 16; try++ {
+			name, persona = npcIdentity(n.Kind, identityRNG(w.Seed, rp, uint64(i)+1+100*try))
+			if !taken[name] {
+				break
+			}
+		}
+		taken[name] = true
+		s.NPCs = append(s.NPCs, NPC{
+			Kind: n.Kind, Pos: Pos{origin.X + n.Pos.X, origin.Y + n.Pos.Y},
+			Region: rp, Index: i, Name: name, Persona: persona,
+		})
 	}
 	for _, sl := range c.slots {
 		s.Slots = append(s.Slots, Slot{Pos{origin.X + sl.Pos.X, origin.Y + sl.Pos.Y}, sl.Role})
 	}
 	return s
 }
+
+// StructureOfRegion renvoie la structure de la région (ou nil). Sert à nommer les
+// lieux lointains d'après leur région.
+func (w *World) StructureOfRegion(rp RegionPos) *Structure { return w.structureForRegion(rp) }
 
 // StructureAt renvoie la structure dont l'emprise contient (x, y), ou nil.
 func (w *World) StructureAt(x, y int) *Structure {

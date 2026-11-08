@@ -126,3 +126,27 @@ func (sess *session) whisper(targetName, text string) {
 		sess.sendMsg(protocol.TChat, msg)
 	}
 }
+
+// Limitation des répliques aux PNJ: rafale de 3, puis une toutes les 2 secondes. Le
+// service de conversation applique ses propres limites par joueur; celle-ci protège
+// seulement la boucle de jeu d'un client qui inonderait la connexion.
+const (
+	sayBurst  = 3.0
+	sayRefill = 0.5 // jetons par seconde
+)
+
+// allowSay applique le seau à jetons des répliques aux PNJ (goroutine de lecture seulement).
+func (sess *session) allowSay() bool {
+	now := time.Now()
+	if sess.lastSay.IsZero() {
+		sess.sayTokens = sayBurst
+	} else {
+		sess.sayTokens = min(sayBurst, sess.sayTokens+now.Sub(sess.lastSay).Seconds()*sayRefill)
+	}
+	sess.lastSay = now
+	if sess.sayTokens < 1 {
+		return false
+	}
+	sess.sayTokens--
+	return true
+}

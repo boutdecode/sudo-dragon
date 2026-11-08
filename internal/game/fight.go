@@ -88,6 +88,10 @@ func (g *Game) endFight(f *fight) []string {
 			g.slotDefeated[*m.slot] = g.tick
 		}
 		g.removeMonster(m)
+		p.stats.Kills++
+		if m.sp.Boss {
+			p.stats.BossKills++
+		}
 		log = append(log, fmt.Sprintf("+%d XP.", m.sp.XP))
 		if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
 			log = append(log, fmt.Sprintf("+%d or.", gold))
@@ -104,6 +108,7 @@ func (g *Game) endFight(f *fight) []string {
 			log = append(log, "Le monstre laissait une potion.")
 		}
 	case combat.Lost:
+		p.stats.Deaths++
 		p.stats.Penalize()
 		p.hp = p.stats.MaxHP
 		g.setPos(p, g.freeSpawn())

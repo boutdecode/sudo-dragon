@@ -152,3 +152,22 @@ func TestLevelUpKeepsGold(t *testing.T) {
 		t.Fatalf("l'or a changé à la montée de niveau: %d", s.Gold)
 	}
 }
+
+func TestWithRecordClamps(t *testing.T) {
+	s := NewStats().WithRecord(12, 2, 5)
+	if s.Kills != 12 || s.BossKills != 2 || s.Deaths != 5 {
+		t.Fatalf("%+v", s)
+	}
+	s = NewStats().WithRecord(-1, -2, -3)
+	if s.Kills != 0 || s.BossKills != 0 || s.Deaths != 0 {
+		t.Fatalf("valeurs négatives conservées: %+v", s)
+	}
+}
+
+func TestLevelUpKeepsRecord(t *testing.T) {
+	s := NewStats().WithRecord(10, 1, 2)
+	s.AddXP(500)
+	if s.Kills != 10 || s.BossKills != 1 || s.Deaths != 2 {
+		t.Fatalf("historique altéré à la montée de niveau: %+v", s)
+	}
+}

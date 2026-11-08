@@ -51,8 +51,11 @@ func main() {
 		fmt.Println("structures:")
 		for _, s := range wd.StructuresNear(world.Pos{X: *cx, Y: *cy}, max(*w, *h)) {
 			c := s.Center()
-			fmt.Printf("  %-9s centre (%d,%d)  emprise %dx%d en (%d,%d)  PNJ: %d  garnison: %d\n",
-				s.Kind, c.X, c.Y, s.W, s.H, s.Origin.X, s.Origin.Y, len(s.NPCs), len(s.Slots))
+			fmt.Printf("  %-9s %-18s centre (%d,%d)  emprise %dx%d en (%d,%d)  PNJ: %d  garnison: %d\n",
+				s.Kind, s.Name, c.X, c.Y, s.W, s.H, s.Origin.X, s.Origin.Y, len(s.NPCs), len(s.Slots))
+			for _, n := range s.NPCs {
+				fmt.Printf("      %-9s %-16s %s; %s; %s\n", n.Kind, n.Name, n.Persona.Temperament, n.Persona.Quirk, n.Persona.Speech)
+			}
 		}
 	}
 }

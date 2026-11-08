@@ -249,3 +249,78 @@ func TestSaveThenRestoreRoundTrip(t *testing.T) {
 			q.stats, q.hp, q.pos, p.stats, p.hp, p.pos)
 	}
 }
+
+// --- Faits vérifiés et accord ---
+
+func TestWinCountsKillsAndBossKills(t *testing.T) {
+	r := newRig(t, weak(testRat))
+	r.engage()
+	r.g.act(r.p, combat.Attack)
+	if r.p.stats.Kills != 1 || r.p.stats.BossKills != 0 || r.p.stats.Deaths != 0 {
+		t.Fatalf("après une victoire ordinaire: %+v", r.p.stats)
+	}
+
+	boss := speciesNamed(t, "warlord")
+	boss.HP = 1
+	r = newRig(t, boss)
+	r.engage()
+	r.g.act(r.p, combat.Attack)
+	if r.p.stats.Kills != 1 || r.p.stats.BossKills != 1 {
+		t.Fatalf("après la victoire sur le seigneur: %+v", r.p.stats)
+	}
+}
+
+func TestLossAndFleeRecord(t *testing.T) {
+	r := newRig(t, deadly(testRat))
+	r.p.hp = 1
+	r.engage()
+	r.g.act(r.p, combat.Attack)
+	if r.p.stats.Deaths != 1 || r.p.stats.Kills != 0 {
+		t.Fatalf("après une défaite: %+v", r.p.stats)
+	}
+
+	r = newRig(t, testRat)
+	r.p.stats.MaxHP, r.p.hp = 1000, 1000
+	r.engage()
+	for i := 0; i < 200 && r.p.fight != nil; i++ {
+		r.g.act(r.p, combat.Flee)
+	}
+	if r.p.stats.Deaths != 0 || r.p.stats.Kills != 0 {
+		t.Fatalf("une fuite ne doit rien compter: %+v", r.p.stats)
+	}
+}
+
+func TestRecordAndConsentSurviveSaveAndRestore(t *testing.T) {
+	g1, sv := gameWithSaves()
+	p, _ := joinRec(g1, "alice")
+	p.stats = p.stats.WithRecord(31, 2, 5)
+	p.consent = true
+	g1.leave(p.id)
+
+	saved, ok := sv.last("alice")
+	if !ok || !saved.LLMConsent || saved.Stats.Kills != 31 || saved.Stats.BossKills != 2 || saved.Stats.Deaths != 5 {
+		t.Fatalf("sauvegarde: %+v (ok=%v)", saved, ok)
+	}
+
+	g2 := newGame()
+	q := g2.joinWith("alice", func(protocol.Snapshot) {}, &saved)
+	if !q.consent || q.stats.Kills != 31 || q.stats.BossKills != 2 || q.stats.Deaths != 5 {
+		t.Fatalf("restauration: consent=%v stats=%+v", q.consent, q.stats)
+	}
+
+	// Un nouveau joueur n'a rien accepté et n'a pas d'histoire.
+	n := g2.joinWith("bob", func(protocol.Snapshot) {}, nil)
+	if n.consent || n.stats.Kills != 0 {
+		t.Fatalf("nouveau joueur: consent=%v stats=%+v", n.consent, n.stats)
+	}
+}
+
+func TestRestoredRecordIsClamped(t *testing.T) {
+	g := newGame()
+	saved := &Saved{Stats: combat.NewStats(), HP: 10, Pos: g.World.FindSpawn()}
+	saved.Stats.Kills, saved.Stats.BossKills, saved.Stats.Deaths = -5, -1, -9
+	p := g.joinWith("x", func(protocol.Snapshot) {}, saved)
+	if p.stats.Kills != 0 || p.stats.BossKills != 0 || p.stats.Deaths != 0 {
+		t.Fatalf("compteurs négatifs conservés: %+v", p.stats)
+	}
+}

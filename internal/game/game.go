@@ -44,6 +44,7 @@ type player struct {
 	sendCombat func(protocol.Combat)    // peut être nil
 	sendNPC    func(protocol.NPCDialog) // peut être nil
 	talk       *talk                    // conversation en cours avec un PNJ
+	consent    bool                     // a accepté l'envoi de ses messages à un service de langage
 	stats      combat.Stats
 	hp         int
 	fight      *fight
@@ -62,11 +63,19 @@ type Saved struct {
 	Stats combat.Stats
 	HP    int
 	Pos   world.Pos
+
+	// LLMConsent : le joueur a accepté que ses messages soient envoyés à un
+	// service de langage tiers pour dialoguer avec les PNJ.
+	LLMConsent bool
 }
 
 // Game est l'état du monde vivant.
 type Game struct {
 	World *world.World
+
+	// Talker, si défini et disponible, fait parler les PNJ avec un modèle de langage
+	// (voir talk.go). nil: pas de discussion libre, seulement les menus. À définir avant Run.
+	Talker Talker
 
 	// Persist, si défini, est appelé pour enregistrer un joueur (déconnexion,
 	// fin de combat, sauvegarde périodique, arrêt). Il est appelé depuis la
@@ -84,6 +93,8 @@ type Game struct {
 	tick    uint64
 
 	metrics metrics // lisible depuis n'importe quelle goroutine
+
+	talkSeq uint64 // dernier numéro de conversation attribué
 
 	monsters      map[int]*monster
 	monsterAt     map[world.Pos]int
@@ -249,7 +260,10 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 	p.hp = p.stats.MaxHP
 	start := g.World.FindSpawn()
 	if saved != nil {
-		p.stats = combat.StatsAt(saved.Stats.Level, saved.Stats.XP, saved.Stats.Potions).WithGold(saved.Stats.Gold)
+		p.stats = combat.StatsAt(saved.Stats.Level, saved.Stats.XP, saved.Stats.Potions).
+			WithGold(saved.Stats.Gold).
+			WithRecord(saved.Stats.Kills, saved.Stats.BossKills, saved.Stats.Deaths)
+		p.consent = saved.LLMConsent
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		start = saved.Pos
 	}
@@ -263,7 +277,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 // save transmet l'état du joueur au callback de persistance.
 func (g *Game) save(p *player) {
 	if g.Persist != nil {
-		g.Persist(p.name, Saved{Stats: p.stats, HP: p.hp, Pos: p.pos})
+		g.Persist(p.name, Saved{Stats: p.stats, HP: p.hp, Pos: p.pos, LLMConsent: p.consent})
 	}
 }
 

@@ -540,3 +540,18 @@ search:
 		return ch != nil && ch.Gold == 46 && ch.Potions == 0
 	})
 }
+
+// L'état converti entre le jeu et la base ne perd rien (accord et faits compris).
+func TestSavedCharacterConversionRoundTrips(t *testing.T) {
+	in := store.Character{
+		Level: 7, XP: 12, Potions: 3, HP: 40, X: -5, Y: 9, Gold: 88,
+		LLMConsent: true, Kills: 40, BossKills: 3, Deaths: 6,
+	}
+	sv := toSaved(in)
+	if !sv.LLMConsent || sv.Stats.Kills != 40 || sv.Stats.BossKills != 3 || sv.Stats.Deaths != 6 {
+		t.Fatalf("toSaved: %+v", sv)
+	}
+	if out := fromSaved(*sv); out != in {
+		t.Fatalf("aller-retour: %+v, attendu %+v", out, in)
+	}
+}

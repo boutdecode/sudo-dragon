@@ -133,8 +133,9 @@ type Model struct {
 
 	// Dialogue avec un PNJ en cours (nil sinon). Le serveur le ferme (Over) ou
 	// le joueur le quitte avec Échap.
-	npc    *protocol.NPCDialog
-	npcLog []string
+	npc      *protocol.NPCDialog
+	npcLog   []string
+	npcInput textinput.Model // saisie de la discussion libre (voir npctalk.go)
 }
 
 // New crée le modèle initial.
@@ -533,9 +534,15 @@ func (m *Model) applyCombat(c protocol.Combat) {
 
 // applyNPC enregistre l'état d'un dialogue; un dialogue terminé se ferme aussitôt.
 func (m *Model) applyNPC(d protocol.NPCDialog) {
+	d = cleanNPCDialog(d)
 	if d.Over {
 		m.npc, m.npcLog = nil, nil
+		m.npcInput.Blur()
 		return
+	}
+	prevMode := ""
+	if m.npc != nil {
+		prevMode = m.npc.Mode
 	}
 	if m.npc == nil { // nouveau dialogue
 		m.npcLog = nil
@@ -551,6 +558,7 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 	}
 	m.npcLog = log
 	m.npc = &d
+	m.syncNPCInput(prevMode)
 }
 
 // npcKeys associe les touches aux actions d'un dialogue. Seules les actions que
@@ -559,9 +567,16 @@ var npcKeys = map[string]string{
 	"a": protocol.NPCBuy,
 	"v": protocol.NPCSell,
 	"s": protocol.NPCHeal,
+	"d": protocol.NPCTalk,
 }
 
 func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch m.npc.Mode {
+	case protocol.NPCModeChat:
+		return m.updateNPCChatKey(msg)
+	case protocol.NPCModeNotice:
+		return m.updateNPCNoticeKey(msg)
+	}
 	key := msg.String()
 	if key == "esc" || key == "enter" {
 		if m.conn != nil {
@@ -894,7 +909,7 @@ func (m Model) helpLine() string {
 	case scroll > 0:
 		return dimStyle.Render(fmt.Sprintf("↑ historique (-%d) · PgBas: revenir en bas", scroll))
 	case m.npc != nil:
-		return ui.KeyBar([2]string{"a v s", "choisir"}, [2]string{"esc", "quitter"})
+		return m.npcHelp()
 	case m.combat != nil && !m.combat.Over:
 		return ui.KeyBar([2]string{"↑↓", "choisir"}, [2]string{"↵", "valider"}, [2]string{"a d i f", "raccourcis"})
 	case m.combat != nil:
@@ -1015,9 +1030,12 @@ func (m Model) combatView(w, h int) string {
 
 // npcKeyLabel est la lettre affichée pour chaque action de dialogue.
 var npcKeyLabel = map[string]string{
-	protocol.NPCBuy:  "A",
-	protocol.NPCSell: "V",
-	protocol.NPCHeal: "S",
+	protocol.NPCBuy:     "A",
+	protocol.NPCSell:    "V",
+	protocol.NPCHeal:    "S",
+	protocol.NPCTalk:    "D",
+	protocol.NPCConsent: "O",
+	protocol.NPCDecline: "N",
 }
 
 // npcView dessine le dialogue avec un PNJ dans exactement w x h cellules:
@@ -1025,6 +1043,12 @@ var npcKeyLabel = map[string]string{
 func (m Model) npcView(w, h int) string {
 	d := m.npc
 	kind := world.NPCKind(d.Kind)
+	switch d.Mode {
+	case protocol.NPCModeChat:
+		return m.npcChatView(w, h)
+	case protocol.NPCModeNotice:
+		return m.npcNoticeView(w, h)
+	}
 
 	rightW := min(40, w/2)
 	leftW := w - rightW
@@ -1067,7 +1091,7 @@ func (m Model) npcView(w, h int) string {
 	offers = append(offers, "", " "+dimStyle.Render("[Échap] Quitter"))
 
 	mid := lipgloss.JoinHorizontal(lipgloss.Top,
-		ui.Panel(strings.ToUpper(render.NPCName(kind)), strings.Join(left, "\n"), leftW, midH),
+		ui.Panel(m.npcTitle(), strings.Join(left, "\n"), leftW, midH),
 		ui.Panel("Offres", strings.Join(offers, "\n"), rightW, midH),
 	)
 	return mid + "\n" + journalPanel("Dialogue", m.npcLog, w, logH)

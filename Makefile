@@ -8,7 +8,7 @@ BIN     := bin
 ADDR    ?= ws://localhost:8080/ws
 
 .DEFAULT_GOAL := help
-.PHONY: help build test race vet fmt fmt-check check run-server run-client load clean
+.PHONY: help build test race vet fmt fmt-check check run-server run-client load llm-smoke clean
 
 help: ## Liste les cibles
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -45,6 +45,9 @@ run-client: ## Lance le client (ADDR=ws://hote:8080/ws pour un autre serveur)
 
 load: ## Test de charge: make load N=250 (bots regroupés, cadence en régime établi)
 	GO=$(GO) scripts/loadtest.sh $(or $(N),100)
+
+llm-smoke: ## Essai réel de l'API Mistral (exige MISTRAL_API_KEY ; consomme quelques jetons)
+	$(GO) test -tags live -count=1 -v -run Live ./internal/llm
 
 clean: ## Supprime ./bin
 	rm -rf $(BIN)

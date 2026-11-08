@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -29,26 +30,35 @@ func healPrice(level int) int {
 type talk struct {
 	npc     world.NPC
 	lastAct uint64 // tick de la dernière action du joueur
+
+	// Discussion libre (voir talk.go).
+	gen     uint64             // identifiant de cette conversation: une réponse tardive d'une autre est ignorée
+	mode    string             // protocol.NPCMode*
+	lines   []protocol.NPCLine // transcription affichée
+	history []npcai.Turn       // échanges confiés au modèle
+	pending bool               // une réponse du PNJ est attendue
+	opened  bool               // le PNJ a déjà ouvert la discussion (une seule fois par conversation)
 }
 
 // ValidNPCAction indique si action est une action de dialogue connue.
 func ValidNPCAction(action string) bool {
 	switch action {
-	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave:
+	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
+		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack:
 		return true
 	}
 	return false
 }
 
-// TalkAct applique l'action d'un joueur en conversation. Sans effet hors
-// conversation ou si l'action est inconnue.
-func (g *Game) TalkAct(id int, action string) {
+// TalkAct applique l'action d'un joueur en conversation (text n'est lu que pour
+// NPCSay). Sans effet hors conversation ou si l'action est inconnue.
+func (g *Game) TalkAct(id int, action, text string) {
 	if !ValidNPCAction(action) {
 		return
 	}
 	g.do(func() {
 		if p, ok := g.players[id]; ok {
-			g.talkAct(p, action)
+			g.talkAct(p, action, text)
 		}
 	})
 }
@@ -58,7 +68,8 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	if p.fight != nil || p.talk != nil {
 		return
 	}
-	p.talk = &talk{npc: npc, lastAct: g.tick}
+	g.talkSeq++
+	p.talk = &talk{npc: npc, lastAct: g.tick, gen: g.talkSeq, mode: protocol.NPCModeMenu}
 	p.hasPending = false
 	greeting := "Bienvenue, voyageur ! Que puis-je pour vous ?"
 	if npc.Kind == world.NPCHealer {
@@ -77,19 +88,28 @@ func (g *Game) closeTalk(p *player, farewell string) {
 	g.sendTalk(p, kind, []string{farewell}, true)
 }
 
-func (g *Game) talkAct(p *player, action string) {
+func (g *Game) talkAct(p *player, action, text string) {
 	t := p.talk
 	if t == nil {
 		return
 	}
 	t.lastAct = g.tick
 
-	var log []string
-	changed := false
 	switch action {
 	case protocol.NPCLeave:
 		g.closeTalk(p, "À bientôt !")
 		return
+	case protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack:
+		g.chatAct(p, action, text)
+		return
+	}
+	if t.mode != protocol.NPCModeMenu {
+		return // le commerce et les soins ne se font que depuis le menu
+	}
+
+	var log []string
+	changed := false
+	switch action {
 
 	case protocol.NPCBuy:
 		switch {
@@ -152,7 +172,7 @@ func notOffered() []string { return []string{"Ce n'est pas ce que je propose."} 
 func (g *Game) expireIdleTalks(ids []int) {
 	for _, id := range ids {
 		p := g.players[id]
-		if p.talk != nil && g.tick-p.talk.lastAct > fightIdleTicks {
+		if p.talk != nil && g.tick-p.talk.lastAct > p.talk.idleLimit() {
 			g.closeTalk(p, "Vous semblez ailleurs… à une prochaine fois.")
 		}
 	}
@@ -160,9 +180,10 @@ func (g *Game) expireIdleTalks(ids []int) {
 
 // offers calcule le menu du PNJ pour l'état actuel du joueur.
 func (g *Game) offers(p *player, kind world.NPCKind) []protocol.NPCOffer {
+	var offers []protocol.NPCOffer
 	switch kind {
 	case world.NPCMerchant:
-		return []protocol.NPCOffer{
+		offers = []protocol.NPCOffer{
 			{Action: protocol.NPCBuy, Label: "Acheter une potion", Price: potionBuyPrice,
 				Available: p.stats.Gold >= potionBuyPrice && p.stats.Potions < combat.MaxPotions},
 			{Action: protocol.NPCSell, Label: "Vendre une potion", Price: potionSellPrice, Gain: true,
@@ -170,12 +191,16 @@ func (g *Game) offers(p *player, kind world.NPCKind) []protocol.NPCOffer {
 		}
 	case world.NPCHealer:
 		price := healPrice(p.stats.Level)
-		return []protocol.NPCOffer{
+		offers = []protocol.NPCOffer{
 			{Action: protocol.NPCHeal, Label: "Être soigné", Price: price,
 				Available: p.hp < p.stats.MaxHP && p.stats.Gold >= price},
 		}
 	}
-	return nil
+	// La discussion libre n'est proposée que si un modèle de langage est disponible.
+	if g.talkerReady() {
+		offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTalk, Label: "Discuter", Available: true})
+	}
+	return offers
 }
 
 // sendTalk envoie l'état de la conversation au joueur.
@@ -185,9 +210,29 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 	}
 	d := protocol.NPCDialog{
 		Kind: string(kind), Gold: p.stats.Gold, Potions: p.stats.Potions,
-		HP: p.hp, MaxHP: p.stats.MaxHP, Log: log, Over: over,
+		HP: p.hp, MaxHP: p.stats.MaxHP, Log: log, Over: over, Mode: protocol.NPCModeMenu,
 	}
-	if !over {
+	if over {
+		p.sendNPC(d)
+		return
+	}
+	t := p.talk
+	if t == nil { // ne devrait pas arriver: on garde le comportement du menu
+		d.Offers = g.offers(p, kind)
+		p.sendNPC(d)
+		return
+	}
+	d.Name, d.Place, d.Mode, d.Thinking = t.npc.Name, g.placeName(t.npc.Region), t.mode, t.pending
+	switch t.mode {
+	case protocol.NPCModeNotice:
+		d.Notice = g.noticeText()
+		d.Offers = []protocol.NPCOffer{
+			{Action: protocol.NPCConsent, Label: "Accepter et discuter", Available: true},
+			{Action: protocol.NPCDecline, Label: "Refuser", Available: true},
+		}
+	case protocol.NPCModeChat:
+		d.Lines = append([]protocol.NPCLine(nil), t.lines...)
+	default:
 		d.Offers = g.offers(p, kind)
 	}
 	p.sendNPC(d)

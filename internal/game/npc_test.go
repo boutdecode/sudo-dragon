@@ -64,7 +64,7 @@ func (r *npcRig) talk() {
 	r.g.step()
 }
 
-func (r *npcRig) act(action string) { r.g.talkAct(r.p, action) }
+func (r *npcRig) act(action string) { r.g.talkAct(r.p, action, "") }
 
 func (r *npcRig) offer(action string) (protocol.NPCOffer, bool) {
 	for _, o := range r.last().Offers {
@@ -481,12 +481,12 @@ func TestDialogThroughRunningGame(t *testing.T) {
 	if m := recv(); m.Over || m.Kind != "healer" {
 		t.Fatalf("ouverture: %+v", m)
 	}
-	g.TalkAct(id, protocol.NPCHeal)
+	g.TalkAct(id, protocol.NPCHeal, "")
 	if m := recv(); m.HP != m.MaxHP {
 		t.Fatalf("soin non appliqué: %+v", m)
 	}
-	g.TalkAct(id, "action-inconnue") // ignorée
-	g.TalkAct(id, protocol.NPCLeave)
+	g.TalkAct(id, "action-inconnue", "") // ignorée
+	g.TalkAct(id, protocol.NPCLeave, "")
 	if m := recv(); !m.Over {
 		t.Fatalf("fermeture: %+v", m)
 	}

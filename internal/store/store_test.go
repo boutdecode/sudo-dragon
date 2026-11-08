@@ -109,7 +109,8 @@ func TestCharacterRoundTripAndUpsert(t *testing.T) {
 		t.Fatalf("personnage inexistant: %v, %v", c, err)
 	}
 
-	want := Character{Level: 4, XP: 12, Potions: 3, HP: 25, X: -120, Y: 77, Gold: 345}
+	want := Character{Level: 4, XP: 12, Potions: 3, HP: 25, X: -120, Y: 77, Gold: 345,
+		LLMConsent: true, Kills: 31, BossKills: 2, Deaths: 5}
 	if err := s.SaveCharacters(map[string]Character{"alice": want}); err != nil {
 		t.Fatal(err)
 	}
@@ -437,5 +438,84 @@ func TestMigrationAddsGoldToExistingCharacters(t *testing.T) {
 	}
 	if c, _ := s.LoadCharacter("alice"); c.Gold != 77 {
 		t.Fatalf("or non enregistré: %+v", c)
+	}
+}
+
+// Une base créée avant les dialogues de PNJ (version 4) doit migrer sans perdre de
+// personnage : accord refusé par défaut, compteurs à zéro, nouvelles tables vides.
+func TestMigrationFromV4AddsConsentFactsAndLoreTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v4.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, m := range migrations[:4] {
+		if _, err := old.Exec(m); err != nil {
+			t.Fatalf("migration %d: %v", i+1, err)
+		}
+	}
+	if _, err := old.Exec(`PRAGMA user_version = 4`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`INSERT INTO accounts(name, pass_hash, created_at) VALUES('alice', 'x', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`INSERT INTO characters(account, level, xp, potions, hp, x, y, updated_at, gold)
+		VALUES('alice', 9, 4, 3, 50, 7, 8, 1, 120)`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+
+	s, err := Open(path, WithBcryptCost(bcrypt.MinCost))
+	if err != nil {
+		t.Fatalf("migration depuis la version 4: %v", err)
+	}
+	defer s.Close()
+
+	c, err := s.LoadCharacter("alice")
+	if err != nil || c == nil {
+		t.Fatalf("personnage perdu: %v, %v", c, err)
+	}
+	if c.Level != 9 || c.Gold != 120 || c.X != 7 || c.Y != 8 {
+		t.Fatalf("données altérées: %+v", c)
+	}
+	if c.LLMConsent || c.Kills != 0 || c.BossKills != 0 || c.Deaths != 0 {
+		t.Fatalf("valeurs par défaut incorrectes: %+v", c)
+	}
+
+	// Les nouvelles tables existent, vides, et sont utilisables.
+	for _, table := range []string{"npc_cards", "npc_memories"} {
+		var n int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("table %s: %d lignes, %v", table, n, err)
+		}
+	}
+	var version int
+	_ = s.db.QueryRow(`PRAGMA user_version`).Scan(&version)
+	if version != len(migrations) {
+		t.Fatalf("version %d, attendue %d", version, len(migrations))
+	}
+}
+
+func TestDeletingAnAccountCascadesToItsLore(t *testing.T) {
+	s, _ := openTemp(t)
+	if _, err := s.CreateAccount("alice", "motdepasse1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO npc_cards(account, region_x, region_y, alias, role, origin, goal, trait, level, boss_kills, deaths, created_at, updated_at)
+		VALUES('alice', 0, 0, 'a', 'r', 'o', 'g', 't', 1, 0, 0, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO npc_memories(region_x, region_y, npc_index, account, summary, updated_at) VALUES(0, 0, 0, 'alice', 's', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM accounts WHERE name = 'alice'`); err != nil {
+		t.Fatal(err)
+	}
+	var cards, mems int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM npc_cards`).Scan(&cards)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM npc_memories`).Scan(&mems)
+	if cards != 0 || mems != 0 {
+		t.Fatalf("données orphelines après suppression du compte: %d fiches, %d souvenirs", cards, mems)
 	}
 }

@@ -292,11 +292,11 @@ func layoutVillage(w, h int, rng *rand.Rand) *canvas {
 
 	houses := c.placeBuildings(5+rng.IntN(5), 5, 7, 4, 5, rect{3, 3, w - 6, h - 6})
 	if len(houses) == 0 {
-		c.npcs = append(c.npcs, NPC{NPCHealer, Pos{w / 2, h / 2}})
+		c.npcs = append(c.npcs, NPC{Kind: NPCHealer, Pos: Pos{w / 2, h / 2}})
 		return c
 	}
 	healer := houses[closestTo(houses, w/2, h/2)[0]]
-	c.npcs = append(c.npcs, NPC{NPCHealer, healer.npcSpot()})
+	c.npcs = append(c.npcs, NPC{Kind: NPCHealer, Pos: healer.npcSpot()})
 	return c
 }
 
@@ -343,7 +343,7 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	}
 	kinds := []NPCKind{NPCMerchant, NPCHealer}
 	for i := 0; i < len(order) && i < len(kinds); i++ {
-		c.npcs = append(c.npcs, NPC{kinds[i], bs[order[i]].npcSpot()})
+		c.npcs = append(c.npcs, NPC{Kind: kinds[i], Pos: bs[order[i]].npcSpot()})
 	}
 	return c
 }

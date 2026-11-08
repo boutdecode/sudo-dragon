@@ -133,11 +133,36 @@ const (
 	NPCSell  = "sell"  // vendre une potion (marchand)
 	NPCHeal  = "heal"  // se faire soigner (soigneur)
 	NPCLeave = "leave" // mettre fin à la conversation
+
+	// Conversation libre avec un PNJ (modèle de langage).
+	NPCTalk    = "talk"    // ouvrir la discussion
+	NPCSay     = "say"     // dire quelque chose (NPCAction.Text)
+	NPCConsent = "consent" // accepter l'envoi de ses messages à un service de langage tiers
+	NPCDecline = "decline" // refuser
+	NPCBack    = "back"    // quitter la discussion et revenir au menu du PNJ
 )
 
-// NPCAction est le choix du joueur pendant un dialogue avec un PNJ.
+// MaxSayLen est la longueur maximale (en caractères) d'une réplique de joueur.
+const MaxSayLen = 200
+
+// NPCAction est le choix du joueur pendant un dialogue avec un PNJ. Text n'est
+// utilisé que par NPCSay.
 type NPCAction struct {
 	Action string `json:"action"`
+	Text   string `json:"text,omitempty"`
+}
+
+// Modes d'un dialogue (NPCDialog.Mode).
+const (
+	NPCModeMenu   = "menu"   // menu du métier du PNJ (acheter, vendre, soigner…)
+	NPCModeNotice = "notice" // avis de confidentialité à accepter avant de discuter
+	NPCModeChat   = "chat"   // conversation libre
+)
+
+// NPCLine est une ligne de la transcription d'une discussion.
+type NPCLine struct {
+	Who  string `json:"who"` // "npc", "you" ou "sys"
+	Text string `json:"text"`
 }
 
 // NPCOffer est une action proposée par un PNJ. Le serveur décide du prix et de
@@ -161,6 +186,14 @@ type NPCDialog struct {
 	Offers  []NPCOffer `json:"offers,omitempty"`
 	Log     []string   `json:"log,omitempty"`
 	Over    bool       `json:"over,omitempty"`
+
+	// Identité du PNJ (déterministe: le client la connaît aussi) et état de la discussion.
+	Name     string    `json:"name,omitempty"`
+	Place    string    `json:"place,omitempty"`
+	Mode     string    `json:"mode,omitempty"`     // NPCModeMenu par défaut
+	Thinking bool      `json:"thinking,omitempty"` // le PNJ prépare sa réponse
+	Notice   string    `json:"notice,omitempty"`   // texte de l'avis (mode notice)
+	Lines    []NPCLine `json:"lines,omitempty"`    // transcription (mode chat)
 }
 
 // Envelope est l'enveloppe commune à tous les messages.

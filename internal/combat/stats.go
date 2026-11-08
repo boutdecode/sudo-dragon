@@ -7,6 +7,13 @@ type Stats struct {
 	Atk, Def  int
 	Potions   int
 	Gold      int
+
+	// Faits établis par le serveur sur l'histoire du personnage. Ils ne servent
+	// pas au combat : les PNJ peuvent les citer comme certains, contrairement à
+	// ce que le joueur dit de lui-même.
+	Kills     int // monstres vaincus
+	BossKills int // seigneurs de guerre vaincus
+	Deaths    int // défaites
 }
 
 // MaxGold plafonne l'or d'un personnage (évite tout débordement d'entier).
@@ -71,6 +78,12 @@ func (s *Stats) SpendGold(n int) bool {
 // restaurer une sauvegarde sans faire confiance à la valeur lue.
 func (s Stats) WithGold(gold int) Stats {
 	s.Gold = max(0, min(gold, MaxGold))
+	return s
+}
+
+// WithRecord renvoie la fiche avec l'historique donné, chaque compteur ramené à 0 ou plus.
+func (s Stats) WithRecord(kills, bossKills, deaths int) Stats {
+	s.Kills, s.BossKills, s.Deaths = max(0, kills), max(0, bossKills), max(0, deaths)
 	return s
 }
 

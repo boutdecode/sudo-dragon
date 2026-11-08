@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/server"
 	"github.com/kevin/ascii-adventure/internal/store"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -36,6 +37,21 @@ func run() error {
 	loginWorkers := flag.Int("login-workers", 0, "hachages de mot de passe simultanés (0 = moitié des cœurs); borne le débit de connexion")
 	pprofAddr := flag.String("pprof", "", "adresse d'écoute du profilage (ex. 127.0.0.1:6060); vide = désactivé")
 	maxReg := flag.Int("max-registrations", 10, "créations de compte par heure et par adresse IP (0 = illimité)")
+
+	// Dialogues de PNJ par modèle de langage. La clé d'API se donne par la variable
+	// d'environnement MISTRAL_API_KEY, jamais en option.
+	var lo llmOptions
+	flag.StringVar(&lo.Mode, "llm", "auto", "dialogues de PNJ par modèle de langage : auto (si MISTRAL_API_KEY est définie), on (exige la clé) ou off")
+	flag.StringVar(&lo.Model, "llm-model", "", "modèle de chat (défaut : "+llm.DefaultModel+") ; les noms changent, voir la documentation du fournisseur")
+	flag.StringVar(&lo.ModerationModel, "llm-moderation-model", "", "modèle de modération (défaut : "+llm.DefaultModerationModel+")")
+	flag.StringVar(&lo.BaseURL, "llm-base-url", "", "adresse de l'API (développement : faux serveur local) ; vide = API officielle")
+	flag.IntVar(&lo.DailyTokens, "llm-daily-tokens", 0, "budget de jetons par jour UTC (0 = défaut : 1 000 000)")
+	flag.IntVar(&lo.Workers, "llm-workers", 0, "appels simultanés au fournisseur (0 = défaut : 4)")
+
+	// Commandes de l'opérateur sur la mémoire des PNJ ; le serveur n'est pas lancé.
+	loreList := flag.Bool("lore-list", false, "affiche les présentations de joueurs enregistrées, puis quitte")
+	loreAccount := flag.String("lore-account", "", "avec -lore-list : se limite à ce compte")
+	lorePurge := flag.String("lore-purge", "", "supprime présentations et souvenirs : account:NOM ou place:RX,RY, puis quitte")
 	flag.Parse()
 
 	if (*tlsCert == "") != (*tlsKey == "") {
@@ -56,6 +72,13 @@ func run() error {
 	}
 	defer st.Close()
 
+	if *loreList {
+		return runLoreList(context.Background(), st, *loreAccount, os.Stdout)
+	}
+	if *lorePurge != "" {
+		return runLorePurge(context.Background(), st, *lorePurge, os.Stdout)
+	}
+
 	seed, err := resolveSeed(st, *seedFlag, seedSet)
 	if err != nil {
 		return err
@@ -63,7 +86,8 @@ func run() error {
 
 	persister := store.NewPersister(st, 2*time.Second, log)
 	be := store.Backend{Store: st, Persister: persister}
-	srv := server.New(world.New(seed), log, be)
+	wld := world.New(seed)
+	srv := server.New(wld, log, be)
 	srv.SetRegistrationLimit(*maxReg)
 	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}
 
@@ -87,6 +111,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Dialogues de PNJ : branchés avant le démarrage de la boucle de jeu.
+	talker, err := setupTalker(ctx, lo, st, wld, log, os.Getenv)
+	if err != nil {
+		return err
+	}
+	if talker != nil {
+		srv.SetTalker(talker)
+	}
+
 	// Arrêt en trois temps: plus de nouvelles connexions, la boucle de jeu
 	// sauvegarde tous les joueurs en s'arrêtant, puis l'écrivain vide sa file.
 	gameDone := make(chan struct{})
@@ -107,11 +140,17 @@ func run() error {
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		stop()
 		<-gameDone
+		if talker != nil {
+			talker.Wait()
+		}
 		_ = persister.Close()
 		return err
 	}
 
 	<-gameDone
+	if talker != nil {
+		talker.Wait() // les demandes en cours se terminent avant la fermeture de la base
+	}
 	if err := persister.Close(); err != nil {
 		return fmt.Errorf("des sauvegardes n'ont pas pu être écrites: %w", err)
 	}
