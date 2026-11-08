@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/lore"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/store"
 	"github.com/kevin/ascii-adventure/internal/store/storetest"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -32,6 +33,9 @@ func seededStore(t *testing.T) *store.Store {
 			t.Fatal(err)
 		}
 	}
+	_ = be.Store.SaveCharacters(map[string]store.Character{"aldric": {Level: 2, HP: 5, QuestsDirty: true, Quests: []quest.Quest{
+		{ID: 1, Title: "Les loups", Story: "x", State: quest.Done, CreatedAt: now, DoneAt: now, Giver: world.NPCKey{Region: world.RegionPos{X: 0, Y: 0}}},
+	}}})
 	_ = be.Store.PutMemory(ctx, lore.Memory{NPC: world.NPCKey{Region: world.RegionPos{X: 0, Y: 0}}, Account: "aldric", Summary: "souvenir", UpdatedAt: now})
 	return be.Store
 }
@@ -42,7 +46,7 @@ func TestLoreListShowsCardsAndFilters(t *testing.T) {
 	if err := runLoreList(context.Background(), st, "", &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"aldric", "brenna", "Aldric le Rouge", "forgeron", "région (0,0)", "région (2,-1)"} {
+	for _, want := range []string{"aldric", "brenna", "Aldric le Rouge", "forgeron", "région (0,0)", "région (2,-1)", "quête rendue : « Les loups »"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("liste sans %q :\n%s", want, out.String())
 		}
@@ -71,7 +75,7 @@ func TestLorePurgeByAccountAndPlace(t *testing.T) {
 	if err := runLorePurge(ctx, st, "account:aldric", &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "2 présentation(s) et 1 souvenir(s)") {
+	if !strings.Contains(out.String(), "2 présentation(s), 1 souvenir(s) et 1 quête(s)") {
 		t.Fatalf("compte rendu : %q", out.String())
 	}
 	if left, _ := st.ListCards(ctx, "", 10); len(left) != 1 || left[0].Account != "brenna" {

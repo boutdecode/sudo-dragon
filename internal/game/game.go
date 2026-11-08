@@ -9,13 +9,16 @@ package game
 import (
 	"context"
 	"errors"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"sync/atomic"
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -37,6 +40,7 @@ var ErrStopped = errors.New("la boucle de jeu est arrêtée")
 type player struct {
 	id   int
 	name string
+	lang i18n.Lang // langue du joueur: celle des messages que le jeu lui adresse
 	pos  world.Pos
 	send func(protocol.Snapshot)
 
@@ -55,6 +59,15 @@ type player struct {
 	cooldown   int
 
 	lastSent *protocol.Snapshot // dernier instantané envoyé (sans tick)
+
+	// Quêtes (voir quests.go).
+	quests        []quest.Quest
+	rep           map[world.RegionPos]int // réputation par lieu
+	nextQuestID   int64
+	questsDirty   bool // à réécrire à la prochaine sauvegarde
+	hasOpenReach  bool // une quête « atteindre un lieu » est active
+	questNotices  []string
+	sendQuestBook func(protocol.Quests)
 }
 
 // Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
@@ -67,6 +80,12 @@ type Saved struct {
 	// LLMConsent : le joueur a accepté que ses messages soient envoyés à un
 	// service de langage tiers pour dialoguer avec les PNJ.
 	LLMConsent bool
+
+	// Quêtes et réputation par lieu (voir internal/quest). QuestsDirty indique que la
+	// sauvegarde doit les réécrire en base.
+	Quests      []quest.Quest
+	Rep         map[world.RegionPos]int
+	QuestsDirty bool
 }
 
 // Game est l'état du monde vivant.
@@ -76,6 +95,10 @@ type Game struct {
 	// Talker, si défini et disponible, fait parler les PNJ avec un modèle de langage
 	// (voir talk.go). nil: pas de discussion libre, seulement les menus. À définir avant Run.
 	Talker Talker
+
+	// Clock donne l'heure des quêtes (création, remise, expiration). nil: time.Now.
+	// À définir avant Run (tests).
+	Clock func() time.Time
 
 	// Persist, si défini, est appelé pour enregistrer un joueur (déconnexion,
 	// fin de combat, sauvegarde périodique, arrêt). Il est appelé depuis la
@@ -158,11 +181,14 @@ func (g *Game) do(fn func()) bool {
 // Handlers regroupe les callbacks d'un joueur. Snapshot et Combat sont appelés
 // depuis la goroutine de jeu: ils ne doivent jamais bloquer.
 type Handlers struct {
+	// Lang est la langue des messages adressés au joueur (le zéro vaut le français).
+	Lang i18n.Lang
 	// State, si non nil, restaure un joueur déjà connu (niveau, PV, position).
 	State    *Saved
 	Snapshot func(protocol.Snapshot)
 	Combat   func(protocol.Combat)    // optionnel
 	NPC      func(protocol.NPCDialog) // optionnel
+	Quests   func(protocol.Quests)    // optionnel: livre de quêtes
 	// Joined est appelé dans la goroutine de jeu avant tout instantané, ce qui
 	// permet d'envoyer le message de bienvenue avant le premier snapshot.
 	Joined func(id, x, y int)
@@ -173,11 +199,14 @@ func (g *Game) Join(name string, h Handlers) (int, error) {
 	reply := make(chan int, 1)
 	if !g.do(func() {
 		p := g.joinWith(name, h.Snapshot, h.State)
+		p.lang = h.Lang.Normalize()
 		p.sendCombat = h.Combat
 		p.sendNPC = h.NPC
+		p.sendQuestBook = h.Quests
 		if h.Joined != nil {
 			h.Joined(p.id, p.pos.X, p.pos.Y)
 		}
+		g.sendQuests(p) // après le message de bienvenue
 		reply <- p.id
 	}) {
 		return 0, ErrStopped
@@ -256,7 +285,7 @@ func (g *Game) join(name string, send func(protocol.Snapshot)) *player {
 // sauvegardée devenue occupée est remplacée par la case libre la plus proche;
 // les valeurs hors bornes sont ramenées dans les bornes valides.
 func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved) *player {
-	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats()}
+	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1}
 	p.hp = p.stats.MaxHP
 	start := g.World.FindSpawn()
 	if saved != nil {
@@ -264,6 +293,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 			WithGold(saved.Stats.Gold).
 			WithRecord(saved.Stats.Kills, saved.Stats.BossKills, saved.Stats.Deaths)
 		p.consent = saved.LLMConsent
+		g.loadQuests(p, saved)
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		start = saved.Pos
 	}
@@ -277,7 +307,13 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 // save transmet l'état du joueur au callback de persistance.
 func (g *Game) save(p *player) {
 	if g.Persist != nil {
-		g.Persist(p.name, Saved{Stats: p.stats, HP: p.hp, Pos: p.pos, LLMConsent: p.consent})
+		// Les quêtes sont toujours jointes (une reconnexion avant l'écriture doit les retrouver) ;
+		// QuestsDirty dit seulement s'il faut les réécrire en base.
+		g.Persist(p.name, Saved{
+			Stats: p.stats, HP: p.hp, Pos: p.pos, LLMConsent: p.consent,
+			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
+		})
+		p.questsDirty = false
 	}
 }
 
@@ -315,6 +351,9 @@ func (g *Game) setPos(p *player, pos world.Pos) {
 	p.pos = pos
 	p.safe = g.World.Safe(pos.X, pos.Y)
 	g.byPos[pos] = p.id
+	if p.hasOpenReach {
+		g.questMoved(p)
+	}
 }
 
 // blocked indique si une tuile est infranchissable (terrain, joueur, monstre ou PNJ).

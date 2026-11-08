@@ -234,6 +234,9 @@ func looksLikeLinkOrAddress(s string) bool {
 	return false
 }
 
+// LooksLikeLink repère les liens et adresses de messagerie (voir looksLikeLinkOrAddress).
+func LooksLikeLink(s string) bool { return looksLikeLinkOrAddress(s) }
+
 // CleanSummary nettoie le souvenir d'un PNJ sur un joueur.
 func CleanSummary(s string) string {
 	s = textsafe.Clean(s, MaxSummary)

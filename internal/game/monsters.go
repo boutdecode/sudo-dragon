@@ -3,6 +3,7 @@ package game
 import (
 	"slices"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -10,7 +11,6 @@ import (
 // species décrit une espèce de monstre.
 type species struct {
 	Kind      string     // identifiant réseau ("rat")
-	Name      string     // nom affiché (masculin, utilisé dans les messages de combat)
 	Habitat   world.Tile // terrain où elle apparaît
 	MoveEvery int        // ticks entre deux pas (un joueur: MoveCooldown)
 	Aggro     int        // rayon de détection en tuiles (Chebyshev)
@@ -28,16 +28,16 @@ type species struct {
 // Tous les monstres sont plus lents qu'un joueur (MoveEvery > MoveCooldown):
 // on peut toujours leur échapper en courant.
 var speciesList = []species{
-	{Kind: "rat", Name: "Rat", Habitat: world.Plain, MoveEvery: 6, Aggro: 5, HP: 8, Atk: 3, Def: 0, XP: 4},
-	{Kind: "crab", Name: "Crabe", Habitat: world.Sand, MoveEvery: 5, Aggro: 3, HP: 12, Atk: 4, Def: 3, XP: 6},
-	{Kind: "wolf", Name: "Loup", Habitat: world.Forest, MoveEvery: 3, Aggro: 9, HP: 16, Atk: 6, Def: 1, XP: 10},
-	{Kind: "goblin", Name: "Gobelin", Habitat: world.Hills, MoveEvery: 4, Aggro: 8, HP: 22, Atk: 7, Def: 2, XP: 15},
-	{Kind: "yeti", Name: "Yéti", Habitat: world.Snow, MoveEvery: 4, Aggro: 7, HP: 34, Atk: 10, Def: 4, XP: 30},
+	{Kind: "rat", Habitat: world.Plain, MoveEvery: 6, Aggro: 5, HP: 8, Atk: 3, Def: 0, XP: 4},
+	{Kind: "crab", Habitat: world.Sand, MoveEvery: 5, Aggro: 3, HP: 12, Atk: 4, Def: 3, XP: 6},
+	{Kind: "wolf", Habitat: world.Forest, MoveEvery: 3, Aggro: 9, HP: 16, Atk: 6, Def: 1, XP: 10},
+	{Kind: "goblin", Habitat: world.Hills, MoveEvery: 4, Aggro: 8, HP: 22, Atk: 7, Def: 2, XP: 15},
+	{Kind: "yeti", Habitat: world.Snow, MoveEvery: 4, Aggro: 7, HP: 34, Atk: 10, Def: 4, XP: 30},
 
 	// Garnisons de forteresse: sans habitat, voir garrison.go.
-	{Kind: "skeleton", Name: "Squelette", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 36, Atk: 10, Def: 4, XP: 25},
-	{Kind: "knight", Name: "Chevalier", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 60, Atk: 14, Def: 8, XP: 50},
-	{Kind: "warlord", Name: "Seigneur de guerre", Garrison: true, Boss: true, MoveEvery: 5, Aggro: 6, HP: 180, Atk: 22, Def: 12, XP: 250},
+	{Kind: "skeleton", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 36, Atk: 10, Def: 4, XP: 25},
+	{Kind: "knight", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 60, Atk: 14, Def: 8, XP: 50},
+	{Kind: "warlord", Garrison: true, Boss: true, MoveEvery: 5, Aggro: 6, HP: 180, Atk: 22, Def: 12, XP: 250},
 }
 
 var speciesByTile = func() map[world.Tile][]species {
@@ -61,15 +61,18 @@ func SpeciesKinds() []string {
 	return kinds
 }
 
-// SpeciesName renvoie le nom affiché d'une espèce ("" si inconnue).
-func SpeciesName(kind string) string {
+// SpeciesName renvoie le nom affiché d'une espèce dans la langue l ("" si inconnue).
+func SpeciesName(l i18n.Lang, kind string) string {
 	for _, s := range speciesList {
 		if s.Kind == kind {
-			return s.Name
+			return s.name(l)
 		}
 	}
 	return ""
 }
+
+// name renvoie le nom de l'espèce dans la langue l (clé "monster.<kind>").
+func (s species) name(l i18n.Lang) string { return i18n.T(l, "monster."+s.Kind) }
 
 // Réglages d'apparition. La zone d'apparition est incluse dans la zone de
 // conservation, sinon un monstre serait supprimé dès sa création.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
 	"github.com/kevin/ascii-adventure/internal/ui"
@@ -76,7 +78,10 @@ func pingTick(c *Conn) tea.Cmd {
 	return tea.Tick(pingEvery, func(time.Time) tea.Msg { return pingTickMsg{c} })
 }
 
-var errClosed = errors.New("connexion fermée")
+var errClosed = errors.New("connection closed")
+
+// t traduit une clé dans la langue de l'interface.
+func (m Model) t(key string, args ...any) string { return i18n.T(m.lang, key, args...) }
 
 // Styles de l'interface (voir package ui).
 var (
@@ -95,6 +100,7 @@ var (
 type Model struct {
 	state         state
 	width, height int
+	lang          i18n.Lang // langue de l'interface (et des messages demandés au serveur)
 
 	// transparent laisse le fond du terminal tel quel au lieu de peindre le
 	// fond sombre du thème.
@@ -136,10 +142,27 @@ type Model struct {
 	npc      *protocol.NPCDialog
 	npcLog   []string
 	npcInput textinput.Model // saisie de la discussion libre (voir npctalk.go)
+
+	// Livre de quêtes (voir quests.go).
+	quests       protocol.Quests
+	questBook    bool // livre ouvert (touche q)
+	questTab     int  // 0 = quêtes en cours, 1 = réputation et historique
+	questSel     int
+	questConfirm bool // un premier "x" attend sa confirmation
+
+	// Dernier endroit annoncé dans le journal (contrée, lieu) : voir location.go.
+	locSeen      bool
+	locTerritory world.TerritoryID
+	locPlace     world.RegionPos
+	locInPlace   bool
 }
 
-// New crée le modèle initial.
-func New(addr, name string) Model {
+// New crée le modèle initial, en français. Voir NewLang pour une autre langue.
+func New(addr, name string) Model { return NewLang(addr, name, i18n.FR) }
+
+// NewLang crée le modèle initial dans la langue lang.
+func NewLang(addr, name string, lang i18n.Lang) Model {
+	lang = lang.Normalize()
 	a := textinput.New()
 	a.Prompt = ""
 	a.SetValue(addr)
@@ -170,9 +193,10 @@ func New(addr, name string) Model {
 	c := textinput.New()
 	c.Prompt = "> "
 	c.CharLimit = protocol.MaxChatLen
-	c.Placeholder = "Votre message…"
+	c.Placeholder = i18n.T(lang, "chat.placeholder")
 
-	m := Model{addr: a, name: n, pass: p, chatInput: c, width: 80, height: 24}
+	m := Model{addr: a, name: n, pass: p, chatInput: c, width: 80, height: 24, lang: lang}
+	m.npcInput = newNPCInput(lang)
 	return m.setFocus(focus)
 }
 
@@ -222,9 +246,9 @@ func (m Model) Init() tea.Cmd { return nil }
 
 // --- Commandes ---
 
-func connectCmd(addr, name, password string, register bool) tea.Cmd {
+func connectCmd(addr, name, password string, register bool, lang i18n.Lang) tea.Cmd {
 	return func() tea.Msg {
-		c, w, err := Dial(context.Background(), addr, name, password, register)
+		c, w, err := DialLang(context.Background(), addr, name, password, register, lang)
 		if err != nil {
 			return connectFailedMsg{err}
 		}
@@ -278,6 +302,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatScroll = 0
 		m.combat, m.combatLog = nil, nil
 		m.npc, m.npcLog = nil, nil
+		m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
+		m.locSeen, m.locInPlace = false, false
 		m.hasPing = false
 		m = m.sendPing()
 		return m, tea.Batch(waitEvent(m.conn), pingTick(m.conn))
@@ -344,18 +370,18 @@ func (m Model) updateLoginKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		pass := m.pass.Value()
 		switch {
 		case addr == "" || name == "":
-			m.errMsg = "adresse et pseudo requis"
+			m.errMsg = m.t("client.err.addr_name")
 			return m, nil
 		case pass == "":
-			m.errMsg = "mot de passe requis"
+			m.errMsg = m.t("client.err.pass")
 			return m, nil
 		case m.register && len(pass) < protocol.MinPassLen:
-			m.errMsg = fmt.Sprintf("mot de passe: %d caractères minimum", protocol.MinPassLen)
+			m.errMsg = m.t("client.err.pass_min", protocol.MinPassLen)
 			return m, nil
 		}
 		m.state = stateConnecting
 		m.errMsg = ""
-		return m, connectCmd(addr, name, pass, m.register)
+		return m, connectCmd(addr, name, pass, m.register, m.lang)
 	}
 	return m.forwardToInput(msg)
 }
@@ -438,10 +464,17 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.forwardToInput(msg)
 	}
 
+	if m.questBook {
+		return m.updateQuestKey(msg)
+	}
 	if m.inventory {
 		if k := msg.String(); k == "esc" || k == "i" {
 			m.inventory = false
 		}
+		return m, nil
+	}
+	if msg.String() == "q" {
+		m.questBook, m.questTab = true, 0
 		return m, nil
 	}
 	if msg.String() == "i" {
@@ -468,7 +501,11 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		m.chatting = false
 		m.combat, m.combatLog = nil, nil
 		m.npc, m.npcLog = nil, nil
-		m.errMsg = "connexion perdue: " + ev.Err.Error()
+		reason := ev.Err.Error()
+		if errors.Is(ev.Err, errClosed) {
+			reason = m.t("client.closed")
+		}
+		m.errMsg = m.t("client.lost", reason)
 		return m, nil
 	}
 
@@ -477,6 +514,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		var s protocol.Snapshot
 		if err := ev.Env.Payload(&s); err == nil {
 			m.snap, m.hasSnap = s, true
+			m.trackLocation()
 			m.snapCount++
 			if m.snapCount%unloadEach == 0 {
 				m.unloadWorld()
@@ -495,6 +533,11 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 	case protocol.TPong:
 		if !m.pingSent.IsZero() {
 			m.pingMS, m.hasPing = int(time.Since(m.pingSent).Milliseconds()), true
+		}
+	case protocol.TQuests:
+		var b protocol.Quests
+		if err := ev.Env.Payload(&b); err == nil {
+			m.applyQuests(b)
 		}
 	case protocol.TNPC:
 		var d protocol.NPCDialog
@@ -519,7 +562,7 @@ func (m *Model) applyCombat(c protocol.Combat) {
 		m.combatLog = nil
 		m.combatSel = 0
 	}
-	m.chatting, m.inventory = false, false
+	m.chatting, m.inventory, m.questBook = false, false, false
 	m.chatInput.Reset()
 	m.chatInput.Blur()
 
@@ -563,11 +606,13 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 
 // npcKeys associe les touches aux actions d'un dialogue. Seules les actions que
 // le PNJ propose réellement sont envoyées.
-var npcKeys = map[string]string{
-	"a": protocol.NPCBuy,
-	"v": protocol.NPCSell,
-	"s": protocol.NPCHeal,
-	"d": protocol.NPCTalk,
+func (m Model) npcKeys() map[string]string {
+	return map[string]string{
+		strings.ToLower(m.t("npc.key.buy")):  protocol.NPCBuy,
+		strings.ToLower(m.t("npc.key.sell")): protocol.NPCSell,
+		strings.ToLower(m.t("npc.key.heal")): protocol.NPCHeal,
+		strings.ToLower(m.t("npc.key.talk")): protocol.NPCTalk,
+	}
 }
 
 func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -576,6 +621,8 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateNPCChatKey(msg)
 	case protocol.NPCModeNotice:
 		return m.updateNPCNoticeKey(msg)
+	case protocol.NPCModeQuest:
+		return m.updateNPCQuestKey(msg)
 	}
 	key := msg.String()
 	if key == "esc" || key == "enter" {
@@ -584,7 +631,13 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	action, ok := npcKeys[key]
+	if n, err := strconv.Atoi(key); err == nil && n >= 1 && m.conn != nil {
+		if offers := m.turnInOffers(); n <= len(offers) { // remise de la n-ième quête prête
+			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: protocol.NPCTurnIn, Text: offers[n-1].Arg})
+		}
+		return m, nil
+	}
+	action, ok := m.npcKeys()[key]
 	if !ok || m.conn == nil {
 		return m, nil
 	}
@@ -635,10 +688,10 @@ func (m Model) updateCombatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // combatMenu est le menu d'actions, dans l'ordre d'affichage.
 var combatMenu = []struct{ key, action, label string }{
-	{"A", "attack", "Attaquer"},
-	{"D", "defend", "Défendre"},
-	{"I", "item", "Potion"},
-	{"F", "flee", "Fuir"},
+	{"A", "attack", "fight.act.attack"},
+	{"D", "defend", "fight.act.defend"},
+	{"I", "item", "fight.act.item"},
+	{"F", "flee", "fight.act.flee"},
 }
 
 func (m *Model) addChat(l chatLine) {
@@ -671,9 +724,9 @@ func (m Model) formatChat(l chatLine) string {
 		return emoteStyle.Render("* " + l.From + " " + l.Text)
 	case protocol.ChanWhisper:
 		if l.From == m.self.Name {
-			return whisperStyle.Render("à " + l.To + ": " + l.Text)
+			return whisperStyle.Render(m.t("chat.whisper_to", l.To, l.Text))
 		}
-		return whisperStyle.Render(l.From + " vous chuchote: " + l.Text)
+		return whisperStyle.Render(m.t("chat.whisper_from", l.From, l.Text))
 	case chanError:
 		return errStyle.Render("! " + l.Text)
 	}
@@ -736,7 +789,7 @@ func (m Model) viewLogin() string {
 		for _, l := range ui.Logo() {
 			lines = append(lines, ui.Center(l, inner))
 		}
-		lines = append(lines, ui.Center(dimStyle.Render("[")+ui.OK.Render("sudo")+dimStyle.Render("] privilèges accordés. Bonne chance."), inner))
+		lines = append(lines, ui.Center(dimStyle.Render("[")+ui.OK.Render("sudo")+dimStyle.Render("] "+m.t("login.sudo_granted")), inner))
 	} else {
 		lines = append(lines, ui.Center(titleStyle.Render("sudo Dragon"), inner))
 	}
@@ -749,7 +802,7 @@ func (m Model) viewLogin() string {
 		}
 		return dimStyle.Render("   " + label + " ")
 	}
-	lines = append(lines, ui.Center(modeEntry("Connexion", !m.register)+" "+modeEntry("Création de compte", m.register), inner), "")
+	lines = append(lines, ui.Center(modeEntry(m.t("login.mode.login"), !m.register)+" "+modeEntry(m.t("login.mode.register"), m.register), inner), "")
 
 	field := func(i int, label string, view string) string {
 		mark := "  "
@@ -759,18 +812,18 @@ func (m Model) viewLogin() string {
 		return " " + mark + dimStyle.Render(ui.Fit(label, 13)) + view
 	}
 	lines = append(lines,
-		field(0, "Serveur", m.addr.View()),
-		field(1, "Pseudo", m.name.View()),
-		field(2, "Mot de passe", m.pass.View()),
+		field(0, m.t("login.field.server"), m.addr.View()),
+		field(1, m.t("login.field.name"), m.name.View()),
+		field(2, m.t("login.field.pass"), m.pass.View()),
 		"")
 
 	switch {
 	case m.state == stateConnecting:
-		lines = append(lines, ui.Center("Connexion…", inner))
+		lines = append(lines, ui.Center(m.t("login.connecting"), inner))
 	case m.errMsg != "":
 		lines = append(lines, ui.Center(errStyle.Render(m.errMsg), inner))
 	default:
-		lines = append(lines, ui.Center(ui.KeyBar([2]string{"tab", "champ"}, [2]string{"↵", "ok"}, [2]string{"^r", "mode"}, [2]string{"^c", "quitter"}), inner))
+		lines = append(lines, ui.Center(ui.KeyBar([2]string{"tab", m.t("key.field")}, [2]string{"↵", m.t("key.ok")}, [2]string{"^r", m.t("key.mode")}, [2]string{"^c", m.t("key.quit")}), inner))
 	}
 
 	box := ui.Panel("", strings.Join(lines, "\n"), panelW, len(lines)+2)
@@ -780,10 +833,10 @@ func (m Model) viewLogin() string {
 
 func (m Model) viewPlaying() string {
 	if m.width < minWidth || m.height < minHeight {
-		return fmt.Sprintf("Terminal trop petit (%dx%d), minimum %dx%d.", m.width, m.height, minWidth, minHeight)
+		return m.t("client.too_small", m.width, m.height, minWidth, minHeight)
 	}
 	if !m.hasSnap {
-		return "Chargement du monde…"
+		return m.t("client.loading")
 	}
 
 	// Hauteur: en-tête (1) + panneau central (mapH+2) + discussion (chatLines+2) + raccourcis (1).
@@ -796,10 +849,12 @@ func (m Model) viewPlaying() string {
 
 	self := m.snap.Self
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
-	mapStr := render.Viewport(m.world, self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID)
+	mapStr := render.ViewportReady(m.world, self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers())
 
 	var top string
 	switch {
+	case m.questBook && m.combat == nil && m.npc == nil:
+		top = m.questView(fullW, mapH+2)
 	case m.inventory && m.combat == nil && m.npc == nil:
 		top = m.inventoryView(fullW, mapH+2)
 	case m.combat != nil:
@@ -807,10 +862,9 @@ func (m Model) viewPlaying() string {
 	case m.npc != nil:
 		top = m.npcView(fullW, mapH+2)
 	default:
-		terrain := fmt.Sprintf("%s · (%d, %d)", render.TerrainName(m.world.At(self.X, self.Y)), self.X, self.Y)
 		top = lipgloss.JoinHorizontal(lipgloss.Top,
-			ui.Panel(terrain, mapStr, mapW+2, mapH+2),
-			ui.Panel("Joueurs", m.sidePanel(), sideWidth+2, mapH+2),
+			ui.Panel(m.mapTitle(self.X, self.Y, mapW), mapStr, mapW+2, mapH+2),
+			ui.Panel(m.t("hud.players"), m.sidePanel(), sideWidth+2, mapH+2),
 		)
 	}
 	return m.headerLine(fullW) + "\n" + top + "\n" + m.chatPanel(fullW) + "\n" + ui.Fit(m.helpLine(), fullW)
@@ -820,13 +874,13 @@ func (m Model) viewPlaying() string {
 func (m Model) headerLine(w int) string {
 	parts := []string{m.serverHost()}
 	if m.snap.Online > 0 {
-		parts = append(parts, fmt.Sprintf("%d en ligne", m.snap.Online))
+		parts = append(parts, m.t("hud.online", m.snap.Online))
 	}
 	if m.hasPing {
 		parts = append(parts, ui.OK.Render(fmt.Sprintf("%d ms", m.pingMS)))
 	}
 	day, hour := gameClock(m.snap.Tick)
-	parts = append(parts, fmt.Sprintf("Jour %d, %02dh", day, hour))
+	parts = append(parts, m.t("hud.day", day, hour))
 	right := dimStyle.Render(parts[0])
 	for _, p := range parts[1:] {
 		right += dimStyle.Render(" · ") + p
@@ -851,13 +905,13 @@ func (m Model) sidePanel() string {
 
 	lines := []string{
 		" " + nameStyle.Render(self.Name),
-		fmt.Sprintf(" Niv %d   XP %d/%d", st.Level, st.XP, st.XPNext),
+		m.t("hud.level_xp", st.Level, st.XP, st.XPNext),
 		"    " + ui.FlatBar(st.XP, st.XPNext, 10, ui.ColOK),
-		" PV " + ui.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
-		dimStyle.Render(fmt.Sprintf(" Atq %d  Déf %d  Pot %d", st.Atk, st.Def, st.Potions)),
-		" " + goldStyle.Render(fmt.Sprintf("Or  %d", st.Gold)),
+		m.t("hud.hp") + ui.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
+		dimStyle.Render(m.t("hud.stats", st.Atk, st.Def, st.Potions)),
+		" " + goldStyle.Render(m.t("hud.gold", st.Gold)),
 		"",
-		" " + dimStyle.Render(fmt.Sprintf("JOUEURS PROCHES (%d)", len(m.snap.Others))),
+		" " + dimStyle.Render(m.t("hud.nearby", len(m.snap.Others))),
 	}
 	for _, o := range m.snap.Others {
 		lines = append(lines, "  "+nameStyle.Render("@")+" "+o.Name)
@@ -867,12 +921,15 @@ func (m Model) sidePanel() string {
 	mons := slices.Clone(m.snap.Monsters)
 	dist := func(mo protocol.Monster) int { return max(abs(mo.X-self.X), abs(mo.Y-self.Y)) }
 	slices.SortStableFunc(mons, func(a, b protocol.Monster) int { return dist(a) - dist(b) })
-	lines = append(lines, "", " "+dimStyle.Render(fmt.Sprintf("MONSTRES EN VUE (%d)", len(mons))))
+	lines = append(lines, "", " "+dimStyle.Render(m.t("hud.monsters", len(mons))))
 	for _, mo := range mons {
-		lines = append(lines, fmt.Sprintf("  %c %s %+d,%+d", render.MonsterGlyph(mo.Kind), render.MonsterName(mo.Kind), mo.X-self.X, mo.Y-self.Y))
+		lines = append(lines, fmt.Sprintf("  %c %s %+d,%+d", render.MonsterGlyph(mo.Kind), render.MonsterName(m.lang, mo.Kind), mo.X-self.X, mo.Y-self.Y))
+	}
+	if s := m.questSummary(); s != "" {
+		lines = append(lines, "", s)
 	}
 	lines = append(lines, "",
-		" "+dimStyle.Render("Graine ")+fmt.Sprintf("%d", m.self.Seed),
+		" "+dimStyle.Render(m.t("hud.seed"))+fmt.Sprintf("%d", m.self.Seed),
 	)
 	return strings.Join(lines, "\n")
 }
@@ -895,27 +952,29 @@ func (m Model) chatPanel(w int) string {
 	if m.chatting {
 		out[len(out)-1] = " " + m.chatInput.View()
 	}
-	return ui.Panel("Discussion", strings.Join(out, "\n"), w, chatLines+2)
+	return ui.Panel(m.t("chat.title"), strings.Join(out, "\n"), w, chatLines+2)
 }
 
 // helpLine est la barre de raccourcis, adaptée au contexte.
 func (m Model) helpLine() string {
 	scroll := min(m.chatScroll, m.maxScroll())
 	switch {
+	case m.questBook:
+		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"tab", m.t("key.tab")}, [2]string{"x", m.t("key.abandon")}, [2]string{"esc", m.t("key.close")})
 	case m.inventory:
-		return ui.KeyBar([2]string{"esc", "fermer"})
+		return ui.KeyBar([2]string{"esc", m.t("key.close")})
 	case m.chatting:
-		return ui.KeyBar([2]string{"↵", "envoyer"}, [2]string{"esc", "annuler"})
+		return ui.KeyBar([2]string{"↵", m.t("key.send")}, [2]string{"esc", m.t("key.cancel")})
 	case scroll > 0:
-		return dimStyle.Render(fmt.Sprintf("↑ historique (-%d) · PgBas: revenir en bas", scroll))
+		return dimStyle.Render(m.t("key.history_hint", scroll))
 	case m.npc != nil:
 		return m.npcHelp()
 	case m.combat != nil && !m.combat.Over:
-		return ui.KeyBar([2]string{"↑↓", "choisir"}, [2]string{"↵", "valider"}, [2]string{"a d i f", "raccourcis"})
+		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"↵", m.t("key.confirm")}, [2]string{"a d i f", m.t("key.shortcuts")})
 	case m.combat != nil:
-		return ui.KeyBar([2]string{"↵", "continuer"})
+		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}
-	return ui.KeyBar([2]string{"↑↓←→", "marcher"}, [2]string{"i", "sac"}, [2]string{"↵", "discuter"}, [2]string{"PgHaut", "historique"}, [2]string{"ctrl+c", "quitter"})
+	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+c", m.t("key.quit")})
 }
 
 func abs(a int) int {
@@ -932,24 +991,24 @@ func (m Model) inventoryView(w, h int) string {
 	detailW := min(40, w/2)
 	bag := []string{
 		"",
-		ui.Select.Render(ui.Fit(fmt.Sprintf(" › Potion de soin ×%d", st.Potions), w-detailW-2)),
+		ui.Select.Render(ui.Fit(m.t("bag.potion", st.Potions), w-detailW-2)),
 		"",
-		" " + dimStyle.Render("Or     ") + goldStyle.Render(fmt.Sprintf("%d po", st.Gold)),
+		" " + dimStyle.Render(m.t("bag.gold_label")) + goldStyle.Render(m.t("bag.gold", st.Gold)),
 	}
 	detail := []string{
 		"",
-		" " + titleStyle.Render("Potion de soin"),
-		" " + dimStyle.Render("Consommable"),
+		" " + titleStyle.Render(m.t("bag.potion_name")),
+		" " + dimStyle.Render(m.t("bag.consumable")),
 		"",
-		" Rend des PV pendant un combat",
-		" (touche I ou 3 en combat).",
+		m.t("bag.potion_line1"),
+		m.t("bag.potion_line2"),
 		"",
-		" " + dimStyle.Render("S'achète chez les marchands,"),
-		" " + dimStyle.Render("les soigneurs sont gratuits."),
+		" " + dimStyle.Render(m.t("bag.potion_line3")),
+		" " + dimStyle.Render(m.t("bag.potion_line4")),
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		ui.Panel("Sac à dos · "+m.snap.Self.Name, strings.Join(bag, "\n"), w-detailW, h),
-		ui.Panel("Détail", strings.Join(detail, "\n"), detailW, h),
+		ui.Panel(m.t("bag.title", m.snap.Self.Name), strings.Join(bag, "\n"), w-detailW, h),
+		ui.Panel(m.t("bag.detail"), strings.Join(detail, "\n"), detailW, h),
 	)
 }
 
@@ -970,7 +1029,7 @@ func journalPanel(title string, log []string, w, h int) string {
 // champ de bataille et le menu d'actions côte à côte, le journal dessous.
 func (m Model) combatView(w, h int) string {
 	c := m.combat
-	name := render.MonsterName(c.Monster)
+	name := render.MonsterName(m.lang, c.Monster)
 
 	actionW := min(30, w/2)
 	leftW := w - actionW
@@ -981,7 +1040,7 @@ func (m Model) combatView(w, h int) string {
 	barW := max(4, min(30, iw-12))
 	monsterLines := []string{" " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr)).Render(name),
 		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP)}
-	playerLines := []string{" Vous",
+	playerLines := []string{m.t("fight.you"),
 		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)}
 
 	field := slices.Clone(monsterLines)
@@ -999,16 +1058,16 @@ func (m Model) combatView(w, h int) string {
 	if c.Over {
 		switch c.Result {
 		case protocol.ResultWon:
-			actions = append(actions, " "+ui.OK.Bold(true).Render("VICTOIRE !"))
+			actions = append(actions, " "+ui.OK.Bold(true).Render(m.t("fight.victory")))
 		case protocol.ResultLost:
-			actions = append(actions, " "+errStyle.Bold(true).Render("DÉFAITE…"))
+			actions = append(actions, " "+errStyle.Bold(true).Render(m.t("fight.defeat")))
 		default:
-			actions = append(actions, " "+dimStyle.Render("Vous avez fui."))
+			actions = append(actions, " "+dimStyle.Render(m.t("fight.fled")))
 		}
-		actions = append(actions, " "+dimStyle.Render("Entrée: continuer"))
+		actions = append(actions, " "+dimStyle.Render(m.t("fight.enter_continue")))
 	} else {
 		for i, it := range combatMenu {
-			label := it.label
+			label := m.t(it.label)
 			if it.action == "item" {
 				label = fmt.Sprintf("%s (%d)", label, c.Potions)
 			}
@@ -1020,22 +1079,31 @@ func (m Model) combatView(w, h int) string {
 		}
 	}
 
-	title := "COMBAT · " + name
+	title := m.t("fight.title", name)
 	mid := lipgloss.JoinHorizontal(lipgloss.Top,
 		ui.Panel(title, strings.Join(field, "\n"), leftW, midH),
-		ui.Panel("Actions", strings.Join(actions, "\n"), actionW, midH),
+		ui.Panel(m.t("fight.actions"), strings.Join(actions, "\n"), actionW, midH),
 	)
-	return mid + "\n" + journalPanel("Journal", m.combatLog, w, logH)
+	return mid + "\n" + journalPanel(m.t("fight.journal"), m.combatLog, w, logH)
 }
 
 // npcKeyLabel est la lettre affichée pour chaque action de dialogue.
-var npcKeyLabel = map[string]string{
-	protocol.NPCBuy:     "A",
-	protocol.NPCSell:    "V",
-	protocol.NPCHeal:    "S",
-	protocol.NPCTalk:    "D",
-	protocol.NPCConsent: "O",
-	protocol.NPCDecline: "N",
+func (m Model) npcKeyLabel(action string) string {
+	switch action {
+	case protocol.NPCBuy:
+		return m.t("npc.key.buy")
+	case protocol.NPCSell:
+		return m.t("npc.key.sell")
+	case protocol.NPCHeal:
+		return m.t("npc.key.heal")
+	case protocol.NPCTalk:
+		return m.t("npc.key.talk")
+	case protocol.NPCConsent:
+		return m.t("npc.key.consent")
+	case protocol.NPCDecline:
+		return m.t("npc.key.decline")
+	}
+	return "?"
 }
 
 // npcView dessine le dialogue avec un PNJ dans exactement w x h cellules:
@@ -1048,6 +1116,8 @@ func (m Model) npcView(w, h int) string {
 		return m.npcChatView(w, h)
 	case protocol.NPCModeNotice:
 		return m.npcNoticeView(w, h)
+	case protocol.NPCModeQuest:
+		return m.npcQuestView(w, h)
 	}
 
 	rightW := min(40, w/2)
@@ -1057,9 +1127,9 @@ func (m Model) npcView(w, h int) string {
 	iw, ih := leftW-2, midH-2
 
 	status := []string{
-		" " + goldStyle.Render(fmt.Sprintf("Or: %d", d.Gold)),
-		fmt.Sprintf(" Potions: %d", d.Potions),
-		fmt.Sprintf(" PV: %d/%d", d.HP, d.MaxHP),
+		" " + goldStyle.Render(m.t("npc.gold", d.Gold)),
+		m.t("npc.potions", d.Potions),
+		m.t("npc.hp", d.HP, d.MaxHP),
 	}
 	var left []string
 	if art := render.NPCArt(kind); ih >= len(art)+1+len(status) {
@@ -1072,27 +1142,34 @@ func (m Model) npcView(w, h int) string {
 	left = append(left, status...)
 
 	var offers []string
+	turnIn := 0
 	for _, o := range d.Offers {
 		var price string
 		switch {
 		case o.Gain:
-			price = fmt.Sprintf("+%d or", o.Price)
+			price = m.t("npc.price_gain", o.Price)
 		case o.Price == 0:
-			price = "gratuit"
+			price = m.t("npc.price_free")
 		default:
-			price = fmt.Sprintf("%d or", o.Price)
+			price = m.t("npc.price", o.Price)
 		}
-		line := fmt.Sprintf(" [%s] %-22s %s", npcKeyLabel[o.Action], o.Label, price)
+		if o.Action == protocol.NPCTurnIn {
+			price = ""
+		}
+		line := fmt.Sprintf(" [%s] %-22s %s", m.npcOfferKey(o, turnIn), o.Label, price)
+		if o.Action == protocol.NPCTurnIn {
+			turnIn++
+		}
 		if !o.Available {
 			line = dimStyle.Render(line)
 		}
 		offers = append(offers, line)
 	}
-	offers = append(offers, "", " "+dimStyle.Render("[Échap] Quitter"))
+	offers = append(offers, "", " "+dimStyle.Render(m.t("npc.leave")))
 
 	mid := lipgloss.JoinHorizontal(lipgloss.Top,
 		ui.Panel(m.npcTitle(), strings.Join(left, "\n"), leftW, midH),
-		ui.Panel("Offres", strings.Join(offers, "\n"), rightW, midH),
+		ui.Panel(m.t("npc.offers"), strings.Join(offers, "\n"), rightW, midH),
 	)
-	return mid + "\n" + journalPanel("Dialogue", m.npcLog, w, logH)
+	return mid + "\n" + journalPanel(m.t("npc.dialogue"), m.npcLog, w, logH)
 }

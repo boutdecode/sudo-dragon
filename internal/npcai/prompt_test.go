@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -26,7 +27,7 @@ func testReq(msg string) Request {
 	}
 }
 
-func placeNames(rp world.RegionPos) string {
+func placeNames(_ i18n.Lang, rp world.RegionPos) string {
 	if rp == (world.RegionPos{X: 3, Y: 1}) {
 		return "Kermarec"
 	}
@@ -266,13 +267,13 @@ func TestPromptNeverContainsPasswordLikeData(t *testing.T) {
 	}
 }
 
-func TestFrenchAge(t *testing.T) {
+func TestAge(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		0: "à l'instant", 59 * time.Second: "à l'instant", time.Minute: "il y a 1 min", 59 * time.Minute: "il y a 59 min",
 		time.Hour: "il y a 1 h", 47 * time.Hour: "il y a 47 h", 48 * time.Hour: "il y a 2 jours", 10 * 24 * time.Hour: "il y a 10 jours",
 	} {
-		if got := frenchAge(d); got != want {
-			t.Errorf("frenchAge(%v) = %q, attendu %q", d, got, want)
+		if got := age(i18n.FR, d); got != want {
+			t.Errorf("age(%v) = %q, attendu %q", d, got, want)
 		}
 	}
 }
@@ -289,5 +290,59 @@ func TestVillagerPromptHasNoJobAndKeepsTheNoPromiseRule(t *testing.T) {
 	req.NPC.Kind = world.NPCHealer
 	if strings.Contains(BuildMessages(req, nil, "", 12, nil)[0].Content, "Tu n'as aucun métier") {
 		t.Error("la règle du villageois ne doit pas s'appliquer aux autres PNJ")
+	}
+}
+
+// Le prompt, la langue de réponse demandée et le nom du PNJ suivent la langue du joueur.
+func TestPromptFollowsThePlayersLanguage(t *testing.T) {
+	req := testReq("Hello")
+	req.Lang = i18n.EN
+	req.NPC.Kind, req.PlaceKind, req.Place = world.NPCVillager, world.KindFortress, "Citadel Valmor"
+	req.Opening = true
+	sys := BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	for _, want := range []string{"ABSOLUTE RULES", "You answer in English", "of the fortress of Citadel Valmor", "You have no particular trade",
+		"OUTPUT FORMAT", "has not introduced themselves", "ask who they are"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("prompt anglais sans %q", want)
+		}
+	}
+	for _, banned := range []string{"RÈGLES", "Tu réponds", "Tu incarnes", "FORMAT DE SORTIE"} {
+		if strings.Contains(sys, banned) {
+			t.Errorf("prompt anglais avec du français: %q", banned)
+		}
+	}
+	msgs := BuildMessages(req, nil, "", 12, placeNames)
+	if last := msgs[len(msgs)-1].Content; !strings.Contains(last, "The traveler walks up") {
+		t.Errorf("didascalie d'ouverture: %q", last)
+	}
+
+	req.Lang = i18n.FR
+	if sys := BuildMessages(req, nil, "", 12, placeNames)[0].Content; !strings.Contains(sys, "Tu réponds en français") {
+		t.Error("le prompt français doit demander une réponse en français")
+	}
+}
+
+func TestInCharacterFailuresAreTranslated(t *testing.T) {
+	for _, f := range []Failure{Busy, Cooldown, Budget, Blocked, Unavailable} {
+		en := InCharacter(i18n.EN, "Sister Katell", f)
+		if !strings.HasPrefix(en, "Sister Katell ") || en == InCharacter(i18n.FR, "Sister Katell", f) {
+			t.Errorf("%v: %q", f, en)
+		}
+	}
+	if got := InCharacter(i18n.EN, "", Busy); !strings.HasPrefix(got, "The NPC ") {
+		t.Errorf("PNJ anonyme: %q", got)
+	}
+}
+
+func TestPromptNamesTheRegion(t *testing.T) {
+	req := testReq("bonjour")
+	req.Region = "Forêts d'Aube"
+	sys := BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	if !strings.Contains(sys, "contrée : Forêts d'Aube.") {
+		t.Fatalf("contrée absente du prompt")
+	}
+	req.Region = ""
+	if strings.Contains(BuildMessages(req, nil, "", 12, placeNames)[0].Content, "contrée :") {
+		t.Fatal("contrée inventée quand elle n'est pas fournie")
 	}
 }

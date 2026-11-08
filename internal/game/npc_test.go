@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -19,6 +20,7 @@ type npcRig struct {
 	dx, dy int // direction du joueur vers le PNJ
 	msgs   []protocol.NPCDialog
 	rec    *recorder
+	tt     *testing.T
 }
 
 func (r *npcRig) last() protocol.NPCDialog { return r.msgs[len(r.msgs)-1] }
@@ -42,7 +44,7 @@ func newNPCRig(t *testing.T, kind world.NPCKind) *npcRig {
 	g := newGame()
 	npc := findNPC(t, g, kind)
 	p, rec := joinRec(g, "hero")
-	r := &npcRig{g: g, p: p, npc: npc, rec: rec}
+	r := &npcRig{g: g, p: p, npc: npc, rec: rec, tt: t}
 	p.sendNPC = func(d protocol.NPCDialog) { r.msgs = append(r.msgs, d) }
 
 	// Une case voisine libre du PNJ, avec la direction qui y mène.
@@ -513,10 +515,10 @@ func TestVillagerWithoutAIGivesAStableAmbientLine(t *testing.T) {
 	r := newNPCRig(t, world.NPCVillager) // pas de Talker
 	r.talk()
 	d := r.last()
-	if len(d.Offers) != 0 || len(d.Log) != 1 || d.Log[0] != ambientLine(r.npc) || d.Log[0] == "" {
+	if len(d.Offers) != 0 || len(d.Log) != 1 || d.Log[0] != ambientLine(i18n.FR, r.npc) || d.Log[0] == "" {
 		t.Fatalf("phrase d'ambiance attendue sans menu vide ni IA : %+v", d)
 	}
-	if ambientLine(r.npc) != ambientLine(r.npc) {
+	if ambientLine(i18n.FR, r.npc) != ambientLine(i18n.FR, r.npc) {
 		t.Fatal("la phrase doit être stable pour un même PNJ")
 	}
 }

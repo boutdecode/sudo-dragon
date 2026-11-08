@@ -10,6 +10,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -48,33 +49,41 @@ func fg(hex string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgl
 // monsterLook est l'apparence d'une espèce de monstre.
 type monsterLook struct {
 	glyph rune
-	name  string
 	style lipgloss.Style
 }
 
 // monsterLooks est indexé par l'identifiant d'espèce envoyé par le serveur
 // (voir game.SpeciesKinds, vérifié par un test).
 var monsterLooks = map[string]monsterLook{
-	"rat":    {'r', "Rat", fg("#d4a373")},
-	"wolf":   {'w', "Loup", fg("#cbd5e1").Bold(true)},
-	"crab":   {'c', "Crabe", fg("#f87171")},
-	"goblin": {'g', "Gobelin", fg("#a3e635").Bold(true)},
-	"yeti":   {'Y', "Yéti", fg("#bae6fd").Bold(true)},
+	"rat":    {'r', fg("#d4a373")},
+	"wolf":   {'w', fg("#cbd5e1").Bold(true)},
+	"crab":   {'c', fg("#f87171")},
+	"goblin": {'g', fg("#a3e635").Bold(true)},
+	"yeti":   {'Y', fg("#bae6fd").Bold(true)},
 
 	// Garnisons de forteresse.
-	"skeleton": {'S', "Squelette", fg("#e5e7eb")},
-	"knight":   {'K', "Chevalier", fg("#94a3b8").Bold(true)},
-	"warlord":  {'B', "Seigneur de guerre", fg("#dc2626").Bold(true)},
+	"skeleton": {'S', fg("#e5e7eb")},
+	"knight":   {'K', fg("#94a3b8").Bold(true)},
+	"warlord":  {'B', fg("#dc2626").Bold(true)},
 }
 
 // npcLooks donne l'apparence des PNJ, indexée par leur type (voir world.NPCKind).
 var npcLooks = map[world.NPCKind]monsterLook{
-	world.NPCMerchant: {'M', "Marchand", fg("#fbbf24").Bold(true)},
-	world.NPCHealer:   {'H', "Soigneur", fg("#34d399").Bold(true)},
-	world.NPCVillager: {'V', "Villageois", fg("#7dd3fc").Bold(true)},
+	world.NPCMerchant: {'M', fg("#fbbf24").Bold(true)},
+	world.NPCHealer:   {'H', fg("#34d399").Bold(true)},
+	questGiverKind:    {'!', fg("#facc15").Bold(true)},
+	questTurnInKind:   {'?', fg("#facc15").Bold(true)},
+	world.NPCVillager: {'V', fg("#7dd3fc").Bold(true)},
 }
 
-var unknownNPC = monsterLook{'N', "Inconnu", fg("#f472b6").Bold(true)}
+// questGiverKind n'est pas un vrai type de PNJ : c'est l'apparence d'un villageois qui
+// confie des quêtes sur la carte (le type réel reste NPCVillager partout ailleurs).
+const questGiverKind world.NPCKind = "villager+quest"
+
+// questTurnInKind : le donneur à qui le joueur a une quête prête à rendre (« ? » au lieu de « ! »).
+const questTurnInKind world.NPCKind = "villager+turnin"
+
+var unknownNPC = monsterLook{'N', fg("#f472b6").Bold(true)}
 
 func npcLookOf(k world.NPCKind) monsterLook {
 	if l, ok := npcLooks[k]; ok {
@@ -84,12 +93,17 @@ func npcLookOf(k world.NPCKind) monsterLook {
 }
 
 // NPCName renvoie le nom affichable d'un type de PNJ.
-func NPCName(k world.NPCKind) string { return npcLookOf(k).name }
+func NPCName(l i18n.Lang, k world.NPCKind) string {
+	if _, ok := npcLooks[k]; !ok {
+		return i18n.T(l, "npc.kind.unknown")
+	}
+	return i18n.T(l, "npc.kind."+string(k))
+}
 
 // NPCGlyph renvoie le glyphe d'un type de PNJ.
 func NPCGlyph(k world.NPCKind) rune { return npcLookOf(k).glyph }
 
-var unknownMonster = monsterLook{'?', "Inconnu", fg("#f472b6").Bold(true)}
+var unknownMonster = monsterLook{'?', fg("#f472b6").Bold(true)}
 
 func lookOf(kind string) monsterLook {
 	if l, ok := monsterLooks[kind]; ok {
@@ -99,7 +113,12 @@ func lookOf(kind string) monsterLook {
 }
 
 // MonsterName renvoie le nom affichable d'une espèce.
-func MonsterName(kind string) string { return lookOf(kind).name }
+func MonsterName(l i18n.Lang, kind string) string {
+	if _, ok := monsterLooks[kind]; !ok {
+		return i18n.T(l, "monster.unknown")
+	}
+	return i18n.T(l, "monster."+kind)
+}
 
 // MonsterGlyph renvoie le glyphe d'une espèce.
 func MonsterGlyph(kind string) rune { return lookOf(kind).glyph }
@@ -156,33 +175,33 @@ var variants = map[world.Tile][]rune{
 	world.Door:      []rune("++++++"),
 }
 
-// TerrainName renvoie le nom français d'un terrain.
-func TerrainName(t world.Tile) string {
+// TerrainName renvoie le nom d'un terrain dans la langue l.
+func TerrainName(l i18n.Lang, t world.Tile) string {
 	switch t {
 	case world.DeepWater:
-		return "Eau profonde"
+		return i18n.T(l, "terrain.deep_water")
 	case world.Water:
-		return "Eau"
+		return i18n.T(l, "terrain.water")
 	case world.Sand:
-		return "Plage"
+		return i18n.T(l, "terrain.sand")
 	case world.Plain:
-		return "Plaine"
+		return i18n.T(l, "terrain.plain")
 	case world.Forest:
-		return "Forêt"
+		return i18n.T(l, "terrain.forest")
 	case world.Hills:
-		return "Collines"
+		return i18n.T(l, "terrain.hills")
 	case world.Mountain:
-		return "Montagne"
+		return i18n.T(l, "terrain.mountain")
 	case world.Snow:
-		return "Neige"
+		return i18n.T(l, "terrain.snow")
 	case world.Road:
-		return "Chemin"
+		return i18n.T(l, "terrain.road")
 	case world.Floor:
-		return "Intérieur"
+		return i18n.T(l, "terrain.floor")
 	case world.Wall:
-		return "Mur"
+		return i18n.T(l, "terrain.wall")
 	case world.Door:
-		return "Porte"
+		return i18n.T(l, "terrain.door")
 	}
 	return "?"
 }
@@ -202,6 +221,12 @@ func glyph(t world.Tile, x, y int) rune {
 // les joueurs priment sur les monstres, qui priment sur les PNJ.
 // Le résultat contient exactement rows lignes de cols colonnes visibles.
 func Viewport(w *world.World, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int) string {
+	return ViewportReady(w, cx, cy, cols, rows, ents, monsters, selfID, nil)
+}
+
+// ViewportReady est Viewport pour un joueur qui a des quêtes à rendre : les PNJ de readyGivers
+// (donneurs d'une quête prête) s'affichent « ? » au lieu de « ! ».
+func ViewportReady(w *world.World, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool) string {
 	type key struct{ x, y int }
 	mons := make(map[key]protocol.Monster, len(monsters))
 	for _, m := range monsters {
@@ -215,7 +240,14 @@ func Viewport(w *world.World, cx, cy, cols, rows int, ents []protocol.Entity, mo
 	}
 	npcs := make(map[key]world.NPCKind)
 	for _, n := range w.NPCsIn(cx-cols/2, cy-rows/2, cx-cols/2+cols-1, cy-rows/2+rows-1) {
-		npcs[key{n.Pos.X, n.Pos.Y}] = n.Kind
+		kind := n.Kind
+		if n.GivesQuests {
+			kind = questGiverKind
+			if readyGivers[n.Key()] {
+				kind = questTurnInKind
+			}
+		}
+		npcs[key{n.Pos.X, n.Pos.Y}] = kind
 	}
 	occ := make(map[key]int, len(ents))
 	for _, e := range ents {

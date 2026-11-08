@@ -1,11 +1,13 @@
 package game
 
 import (
-	"fmt"
+	"strconv"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -18,6 +20,16 @@ const (
 
 // healPrice est le tarif du soigneur: gratuit au niveau 1 (on ne bloque pas un
 // débutant sans le sou), puis 4 or par niveau.
+// buyPrice et healCost appliquent la réduction de réputation du lieu du PNJ. Le menu et la
+// transaction passent par ces deux fonctions, pour rester d'accord.
+func (g *Game) buyPrice(p *player, npc world.NPC) int {
+	return quest.Discount(potionBuyPrice, p.rep[npc.Region])
+}
+
+func (g *Game) healCost(p *player, npc world.NPC) int {
+	return quest.Discount(healPrice(p.stats.Level), p.rep[npc.Region])
+}
+
 func healPrice(level int) int {
 	if level <= 1 {
 		return 0
@@ -38,13 +50,18 @@ type talk struct {
 	history []npcai.Turn       // échanges confiés au modèle
 	pending bool               // une réponse du PNJ est attendue
 	opened  bool               // le PNJ a déjà ouvert la discussion (une seule fois par conversation)
+
+	// Quête proposée par le modèle et pas encore acceptée (mode quest).
+	proposal *quest.Quest
+	prevMode string
 }
 
 // ValidNPCAction indique si action est une action de dialogue connue.
 func ValidNPCAction(action string) bool {
 	switch action {
 	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
-		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack:
+		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack,
+		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn:
 		return true
 	}
 	return false
@@ -71,16 +88,16 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	g.talkSeq++
 	p.talk = &talk{npc: npc, lastAct: g.tick, gen: g.talkSeq, mode: protocol.NPCModeMenu}
 	p.hasPending = false
-	greeting := "Bienvenue, voyageur ! Que puis-je pour vous ?"
+	greeting := i18n.T(p.lang, "npc.greet.merchant")
 	switch npc.Kind {
 	case world.NPCHealer:
-		greeting = "Que la lumière vous protège. Vous avez besoin de soins ?"
+		greeting = i18n.T(p.lang, "npc.greet.healer")
 	case world.NPCVillager:
 		// Sans métier, un villageois n'a que sa conversation. Quand elle est indisponible
 		// (pas de clé, panne), il dit une phrase d'ambiance fixe pour que le monde reste vivant.
-		greeting = "Bonjour, voyageur."
+		greeting = i18n.T(p.lang, "npc.greet.villager")
 		if !g.talkerReady() {
-			greeting = ambientLine(npc)
+			greeting = ambientLine(p.lang, npc)
 		}
 	}
 	g.sendTalk(p, npc.Kind, []string{greeting}, false)
@@ -105,10 +122,16 @@ func (g *Game) talkAct(p *player, action, text string) {
 
 	switch action {
 	case protocol.NPCLeave:
-		g.closeTalk(p, "À bientôt !")
+		g.closeTalk(p, i18n.T(p.lang, "npc.farewell"))
 		return
 	case protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack:
 		g.chatAct(p, action, text)
+		return
+	case protocol.NPCQuestAccept, protocol.NPCQuestRefuse:
+		for _, l := range g.questAct(p, action, text) {
+			t.lines = appendLine(t.lines, protocol.NPCLine{Who: "sys", Text: l})
+		}
+		g.sendTalk(p, t.npc.Kind, nil, false)
 		return
 	}
 	if t.mode != protocol.NPCModeMenu {
@@ -117,53 +140,57 @@ func (g *Game) talkAct(p *player, action, text string) {
 
 	var log []string
 	changed := false
+	buyPrice, repairPrice := g.buyPrice(p, t.npc), g.healCost(p, t.npc)
 	switch action {
+
+	case protocol.NPCTurnIn:
+		log = g.questAct(p, action, text) // la remise enregistre elle-même
 
 	case protocol.NPCBuy:
 		switch {
 		case t.npc.Kind != world.NPCMerchant:
-			log = notOffered()
+			log = notOffered(p.lang)
 		case p.stats.Potions >= combat.MaxPotions:
-			log = []string{"Votre sac est plein."}
-		case !p.stats.SpendGold(potionBuyPrice):
-			log = []string{fmt.Sprintf("Il vous manque %d or.", potionBuyPrice-p.stats.Gold)}
+			log = []string{i18n.T(p.lang, "npc.bag_full")}
+		case !p.stats.SpendGold(buyPrice):
+			log = []string{i18n.T(p.lang, "npc.missing_gold", buyPrice-p.stats.Gold)}
 		default:
 			p.stats.AddPotions(1)
 			changed = true
-			log = []string{fmt.Sprintf("Vous achetez une potion pour %d or.", potionBuyPrice)}
+			log = []string{i18n.T(p.lang, "npc.bought", buyPrice)}
 		}
 
 	case protocol.NPCSell:
 		switch {
 		case t.npc.Kind != world.NPCMerchant:
-			log = notOffered()
+			log = notOffered(p.lang)
 		case p.stats.Potions <= 0:
-			log = []string{"Vous n'avez aucune potion à vendre."}
+			log = []string{i18n.T(p.lang, "npc.no_potion_to_sell")}
 		case p.stats.Gold > combat.MaxGold-potionSellPrice:
-			log = []string{"Votre bourse est pleine."} // on ne perd pas une potion contre rien
+			log = []string{i18n.T(p.lang, "npc.purse_full")} // on ne perd pas une potion contre rien
 		default:
 			p.stats.Potions--
 			p.stats.AddGold(potionSellPrice)
 			changed = true
-			log = []string{fmt.Sprintf("Vous vendez une potion pour %d or.", potionSellPrice)}
+			log = []string{i18n.T(p.lang, "npc.sold", potionSellPrice)}
 		}
 
 	case protocol.NPCHeal:
-		price := healPrice(p.stats.Level)
+		price := repairPrice
 		switch {
 		case t.npc.Kind != world.NPCHealer:
-			log = notOffered()
+			log = notOffered(p.lang)
 		case p.hp >= p.stats.MaxHP:
-			log = []string{"Vous êtes déjà en pleine forme."} // rien n'est débité
+			log = []string{i18n.T(p.lang, "npc.already_healthy")} // rien n'est débité
 		case !p.stats.SpendGold(price):
-			log = []string{fmt.Sprintf("Il vous manque %d or.", price-p.stats.Gold)}
+			log = []string{i18n.T(p.lang, "npc.missing_gold", price-p.stats.Gold)}
 		default:
 			p.hp = p.stats.MaxHP
 			changed = true
 			if price == 0 {
-				log = []string{"Vous voilà guéri. C'est offert !"}
+				log = []string{i18n.T(p.lang, "npc.healed_free")}
 			} else {
-				log = []string{fmt.Sprintf("Vous voilà guéri, pour %d or.", price)}
+				log = []string{i18n.T(p.lang, "npc.healed", price)}
 			}
 		}
 	}
@@ -174,39 +201,47 @@ func (g *Game) talkAct(p *player, action, text string) {
 	g.sendTalk(p, t.npc.Kind, log, false)
 }
 
-func notOffered() []string { return []string{"Ce n'est pas ce que je propose."} }
+func notOffered(l i18n.Lang) []string { return []string{i18n.T(l, "npc.not_offered")} }
 
 // expireIdleTalks ferme les conversations abandonnées.
 func (g *Game) expireIdleTalks(ids []int) {
 	for _, id := range ids {
 		p := g.players[id]
 		if p.talk != nil && g.tick-p.talk.lastAct > p.talk.idleLimit() {
-			g.closeTalk(p, "Vous semblez ailleurs… à une prochaine fois.")
+			g.closeTalk(p, i18n.T(p.lang, "npc.idle_farewell"))
 		}
 	}
 }
 
 // offers calcule le menu du PNJ pour l'état actuel du joueur.
-func (g *Game) offers(p *player, kind world.NPCKind) []protocol.NPCOffer {
+func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
+	kind := npc.Kind
 	var offers []protocol.NPCOffer
 	switch kind {
 	case world.NPCMerchant:
 		offers = []protocol.NPCOffer{
-			{Action: protocol.NPCBuy, Label: "Acheter une potion", Price: potionBuyPrice,
-				Available: p.stats.Gold >= potionBuyPrice && p.stats.Potions < combat.MaxPotions},
-			{Action: protocol.NPCSell, Label: "Vendre une potion", Price: potionSellPrice, Gain: true,
+			{Action: protocol.NPCBuy, Label: i18n.T(p.lang, "npc.offer.buy"), Price: g.buyPrice(p, npc),
+				Available: p.stats.Gold >= g.buyPrice(p, npc) && p.stats.Potions < combat.MaxPotions},
+			{Action: protocol.NPCSell, Label: i18n.T(p.lang, "npc.offer.sell"), Price: potionSellPrice, Gain: true,
 				Available: p.stats.Potions > 0 && p.stats.Gold <= combat.MaxGold-potionSellPrice},
 		}
 	case world.NPCHealer:
-		price := healPrice(p.stats.Level)
+		price := g.healCost(p, npc)
 		offers = []protocol.NPCOffer{
-			{Action: protocol.NPCHeal, Label: "Être soigné", Price: price,
+			{Action: protocol.NPCHeal, Label: i18n.T(p.lang, "npc.offer.heal"), Price: price,
 				Available: p.hp < p.stats.MaxHP && p.stats.Gold >= price},
+		}
+	}
+	// Quêtes prêtes à rendre à ce PNJ : fonctionne sans modèle de langage.
+	for _, q := range p.quests {
+		if q.State == quest.Ready && q.Giver == npc.Key() {
+			offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTurnIn, Arg: strconv.FormatInt(q.ID, 10),
+				Label: i18n.T(p.lang, "quest.offer.turnin", q.Title), Available: true})
 		}
 	}
 	// La discussion libre n'est proposée que si un modèle de langage est disponible.
 	if g.talkerReady() {
-		offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTalk, Label: "Discuter", Available: true})
+		offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTalk, Label: i18n.T(p.lang, "npc.offer.talk"), Available: true})
 	}
 	return offers
 }
@@ -226,43 +261,38 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 	}
 	t := p.talk
 	if t == nil { // ne devrait pas arriver: on garde le comportement du menu
-		d.Offers = g.offers(p, kind)
+		d.Offers = g.offers(p, world.NPC{Kind: kind})
 		p.sendNPC(d)
 		return
 	}
-	d.Name, d.Place, d.Mode, d.Thinking = t.npc.Name, g.placeName(t.npc.Region), t.mode, t.pending
+	d.Name, d.Place, d.Mode, d.Thinking = t.npc.NameIn(p.lang), g.placeName(p.lang, t.npc.Region), t.mode, t.pending
 	switch t.mode {
 	case protocol.NPCModeNotice:
-		d.Notice = g.noticeText()
+		d.Notice = g.noticeText(p.lang)
 		d.Offers = []protocol.NPCOffer{
-			{Action: protocol.NPCConsent, Label: "Accepter et discuter", Available: true},
-			{Action: protocol.NPCDecline, Label: "Refuser", Available: true},
+			{Action: protocol.NPCConsent, Label: i18n.T(p.lang, "npc.offer.consent"), Available: true},
+			{Action: protocol.NPCDecline, Label: i18n.T(p.lang, "npc.offer.decline"), Available: true},
 		}
 	case protocol.NPCModeChat:
 		d.Lines = append([]protocol.NPCLine(nil), t.lines...)
+	case protocol.NPCModeQuest:
+		if t.proposal != nil {
+			info := g.questInfo(p.lang, *t.proposal)
+			info.Giver = t.npc.NameIn(p.lang)
+			d.Proposal = &info
+		}
+		d.Offers = []protocol.NPCOffer{
+			{Action: protocol.NPCQuestAccept, Label: i18n.T(p.lang, "quest.offer.accept"), Available: true},
+			{Action: protocol.NPCQuestRefuse, Label: i18n.T(p.lang, "quest.offer.refuse"), Available: true},
+		}
 	default:
-		d.Offers = g.offers(p, kind)
+		d.Offers = g.offers(p, t.npc)
 	}
 	p.sendNPC(d)
 }
 
-// ambientLines sont les phrases d'un villageois quand le modèle de langage est indisponible.
-var ambientLines = []string{
-	"Bien le bonjour. Les corbeaux sont nerveux, ces jours-ci… Mauvais présage, disent les anciens.",
-	"Vous venez de loin ? On ne voit pas souvent de visages neufs par ici.",
-	"Méfiez-vous des routes après la tombée de la nuit. Ce qui rôde ne fait pas la différence entre un voyageur et un mouton.",
-	"On dit qu'un seigneur de guerre tient la forteresse, là-bas. Moi, je préfère mon potager.",
-	"Le soigneur fait des miracles, mais il n'aime pas qu'on le fasse attendre.",
-	"La récolte a été bonne cette année. Ça change de la pluie de l'an dernier !",
-	"Si vous croisez un dragon, ne comptez pas sur moi pour vous le dire. Je ne suis pas courageux.",
-	"Prenez le temps de vous reposer, voyageur. La route sera longue.",
-}
-
-// ambientLine choisit, de façon stable pour un PNJ donné, une phrase d'ambiance.
-func ambientLine(npc world.NPC) string {
-	i := (npc.Region.X*31 + npc.Region.Y*17 + npc.Index*7) % len(ambientLines)
-	if i < 0 {
-		i += len(ambientLines)
-	}
-	return ambientLines[i]
+// ambientLine choisit, de façon stable pour un PNJ donné, une phrase d'ambiance
+// (liste "npc.ambient.N" du catalogue).
+func ambientLine(l i18n.Lang, npc world.NPC) string {
+	return i18n.Pick(l, "npc.ambient", npc.Region.X*31+npc.Region.Y*17+npc.Index*7)
 }

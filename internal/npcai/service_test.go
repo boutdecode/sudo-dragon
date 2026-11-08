@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/store"
@@ -66,14 +67,14 @@ func newRig(t *testing.T, cfg Config, accounts ...string) *rig {
 		}
 	}
 	r := &rig{t: t, be: be, clk: &clock{t: base}, fake: &llm.Fake{}}
-	r.book = &lore.Book{Repo: be.Store, Now: r.clk.Now}
+	r.book = &lore.Book{Repo: be.Store, Deeds: be.Store, Now: r.clk.Now}
 	if cfg.MinInterval == 0 {
 		cfg.MinInterval = -1 // désactivé par défaut dans les tests; testé à part
 	}
 	r.svc = New(r.fake, r.book, cfg,
 		WithClock(r.clk.Now),
 		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
-		WithPlaceNames(func(rp world.RegionPos) string { return "Lieu" + string(rune('A'+rp.X)) }),
+		WithPlaceNames(func(_ i18n.Lang, rp world.RegionPos) string { return "Lieu" + string(rune('A'+rp.X)) }),
 	)
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return reply("Bonjour.", nil, ""), nil }
 	ctx, cancel := context.WithCancel(context.Background())
@@ -980,7 +981,7 @@ func TestOpeningAsksTheNPCToSpeakFirstAndWritesNothing(t *testing.T) {
 
 	msgs := r.fake.ChatCalls()[0].Messages
 	last := msgs[len(msgs)-1]
-	if last.Role != llm.User || last.Content != openingStageDirection {
+	if last.Role != llm.User || last.Content != i18n.T(i18n.FR, "prompt.opening.stage") {
 		t.Fatalf("dernier message: %+v", last)
 	}
 	sys := msgs[0].Content
@@ -1007,12 +1008,12 @@ func TestOpeningForAKnownTravellerMentionsHeAlreadyIntroducedHimself(t *testing.
 
 func TestInCharacterWording(t *testing.T) {
 	for _, f := range []Failure{Busy, Cooldown, Budget, Blocked, Unavailable} {
-		got := InCharacter("Frère Arnaud", f)
+		got := InCharacter(i18n.FR, "Frère Arnaud", f)
 		if !strings.HasPrefix(got, "Frère Arnaud ") {
 			t.Errorf("%v: %q", f, got)
 		}
 	}
-	if !strings.HasPrefix(InCharacter("", Busy), "Le PNJ ") {
+	if !strings.HasPrefix(InCharacter(i18n.FR, "", Busy), "Le PNJ ") {
 		t.Error("nom vide")
 	}
 }

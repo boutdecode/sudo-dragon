@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
@@ -25,11 +26,11 @@ const (
 	inputPanelH  = 3 // cadre + une ligne de saisie
 )
 
-func newNPCInput() textinput.Model {
+func newNPCInput(lang i18n.Lang) textinput.Model {
 	in := textinput.New()
 	in.Prompt = "> "
 	in.CharLimit = protocol.MaxSayLen
-	in.Placeholder = "Parlez au PNJ…"
+	in.Placeholder = i18n.T(lang, "npc.input_placeholder")
 	return in
 }
 
@@ -41,6 +42,10 @@ func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 	d.Name = textsafe.Clean(d.Name, 60)
 	d.Place = textsafe.Clean(d.Place, 60)
 	d.Notice = textsafe.Clean(d.Notice, maxNPCNotice)
+	if d.Proposal != nil {
+		q := cleanQuest(*d.Proposal)
+		d.Proposal = &q
+	}
 	if len(d.Log) > 0 {
 		log := make([]string, 0, len(d.Log))
 		for _, l := range d.Log {
@@ -66,7 +71,8 @@ func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 	if len(d.Offers) > 0 {
 		offers := make([]protocol.NPCOffer, len(d.Offers))
 		for i, o := range d.Offers {
-			o.Label = textsafe.Clean(o.Label, 60)
+			o.Label = textsafe.Clean(o.Label, 80)
+			o.Arg = textsafe.Clean(o.Arg, 20)
 			offers[i] = o
 		}
 		d.Offers = offers
@@ -81,7 +87,7 @@ func (m *Model) syncNPCInput(prevMode string) {
 		return
 	}
 	if prevMode != protocol.NPCModeChat {
-		m.npcInput = newNPCInput()
+		m.npcInput = newNPCInput(m.lang)
 		m.npcInput.Focus()
 	}
 }
@@ -116,9 +122,9 @@ func (m Model) updateNPCNoticeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch msg.String() {
-	case "o":
+	case strings.ToLower(m.t("npc.key.consent")):
 		m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: protocol.NPCConsent})
-	case "n", "esc":
+	case strings.ToLower(m.t("npc.key.decline")), "esc":
 		m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: protocol.NPCDecline})
 	}
 	return m, nil
@@ -128,11 +134,14 @@ func (m Model) updateNPCNoticeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m Model) npcHelp() string {
 	switch m.npc.Mode {
 	case protocol.NPCModeChat:
-		return ui.KeyBar([2]string{"↵", "envoyer"}, [2]string{"esc", "retour"})
+		return ui.KeyBar([2]string{"↵", m.t("key.send")}, [2]string{"esc", m.t("key.back")})
+	case protocol.NPCModeQuest:
+		return ui.KeyBar([2]string{strings.ToLower(m.t("quest.key.accept")), m.t("key.accept")}, [2]string{strings.ToLower(m.t("quest.key.refuse")), m.t("key.refuse")}, [2]string{"esc", m.t("key.refuse")})
 	case protocol.NPCModeNotice:
-		return ui.KeyBar([2]string{"o", "accepter"}, [2]string{"n", "refuser"}, [2]string{"esc", "refuser"})
+		return ui.KeyBar([2]string{strings.ToLower(m.t("npc.key.consent")), m.t("key.accept")}, [2]string{strings.ToLower(m.t("npc.key.decline")), m.t("key.refuse")}, [2]string{"esc", m.t("key.refuse")})
 	}
-	return ui.KeyBar([2]string{"a v s d", "choisir"}, [2]string{"esc", "quitter"})
+	keys := strings.ToLower(strings.Join([]string{m.t("npc.key.buy"), m.t("npc.key.sell"), m.t("npc.key.heal"), m.t("npc.key.talk")}, " "))
+	return ui.KeyBar([2]string{keys, m.t("key.choose")}, [2]string{"esc", m.t("key.quit")})
 }
 
 // npcTitle est le titre du cadre du PNJ : son nom et son lieu (connus des deux côtés
@@ -145,7 +154,7 @@ func (m Model) npcTitle() string {
 	case d.Name != "":
 		return d.Name
 	}
-	return strings.ToUpper(render.NPCName(world.NPCKind(d.Kind)))
+	return strings.ToUpper(render.NPCName(m.lang, world.NPCKind(d.Kind)))
 }
 
 // wrap découpe s en lignes de w colonnes au plus, sans jamais dépasser, même pour un
@@ -163,17 +172,17 @@ func (m Model) npcNoticeView(w, h int) string {
 	iw := w - 4
 	var body []string
 	body = append(body, "")
-	body = append(body, " "+titleStyle.Render(d.Name)+" "+dimStyle.Render("vous propose de discuter."))
+	body = append(body, " "+titleStyle.Render(d.Name)+" "+dimStyle.Render(m.t("npc.proposes")))
 	body = append(body, "")
 	for _, l := range wrap(d.Notice, iw) {
 		body = append(body, " "+l)
 	}
 	body = append(body, "")
 	for _, o := range d.Offers {
-		body = append(body, " "+fmt.Sprintf("[%s] %s", npcKeyLabel[o.Action], o.Label))
+		body = append(body, " "+fmt.Sprintf("[%s] %s", m.npcKeyLabel(o.Action), o.Label))
 	}
-	body = append(body, "", " "+dimStyle.Render("[Échap] Refuser"))
-	return ui.Panel("Avant de discuter", strings.Join(body, "\n"), w, h)
+	body = append(body, "", " "+dimStyle.Render(m.t("npc.decline_hint")))
+	return ui.Panel(m.t("npc.before_chat"), strings.Join(body, "\n"), w, h)
 }
 
 // transcript met en forme la transcription : lignes colorées par locuteur, retour à la ligne,
@@ -184,7 +193,7 @@ func (m Model) transcript(width, maxLines int) []string {
 	npcStyle := render.NPCArtStyle(kind)
 	name := d.Name
 	if name == "" {
-		name = render.NPCName(kind)
+		name = render.NPCName(m.lang, kind)
 	}
 
 	var out []string
@@ -195,7 +204,7 @@ func (m Model) transcript(width, maxLines int) []string {
 			prefix = npcStyle.Render(name+":") + " "
 			text = l.Text
 		case "you":
-			prefix = dimStyle.Render("Vous:") + " "
+			prefix = dimStyle.Render(m.t("npc.you")) + " "
 			text = l.Text
 		default:
 			prefix = ""
@@ -217,7 +226,7 @@ func (m Model) transcript(width, maxLines int) []string {
 		}
 	}
 	if d.Thinking {
-		out = append(out, "", dimStyle.Render("… "+name+" réfléchit"))
+		out = append(out, "", dimStyle.Render(m.t("npc.thinking", name)))
 	}
 	if len(out) > maxLines {
 		out = out[len(out)-maxLines:]
@@ -237,9 +246,9 @@ func (m Model) npcChatView(w, h int) string {
 	iw, ih := leftW-2, midH-2
 
 	status := []string{
-		" " + goldStyle.Render(fmt.Sprintf("Or: %d", d.Gold)),
-		fmt.Sprintf(" Potions: %d", d.Potions),
-		fmt.Sprintf(" PV: %d/%d", d.HP, d.MaxHP),
+		" " + goldStyle.Render(m.t("npc.gold", d.Gold)),
+		m.t("npc.potions", d.Potions),
+		m.t("npc.hp", d.HP, d.MaxHP),
 	}
 	var left []string
 	if art := render.NPCArt(kind); ih >= len(art)+1+len(status) {
@@ -264,7 +273,7 @@ func (m Model) npcChatView(w, h int) string {
 
 	mid := lipgloss.JoinHorizontal(lipgloss.Top,
 		ui.Panel(m.npcTitle(), strings.Join(left, "\n"), leftW, midH),
-		ui.Panel("Conversation", strings.Join(body, "\n"), rightW, midH),
+		ui.Panel(m.t("npc.conversation"), strings.Join(body, "\n"), rightW, midH),
 	)
-	return mid + "\n" + ui.Panel("Vous dites", input, w, inputPanelH)
+	return mid + "\n" + ui.Panel(m.t("npc.you_say"), input, w, inputPanelH)
 }

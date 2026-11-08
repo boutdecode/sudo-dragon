@@ -12,6 +12,9 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite" // pilote SQLite en Go pur (pas de CGO)
+
+	"github.com/kevin/ascii-adventure/internal/quest"
+	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 // Erreurs renvoyées par le magasin.
@@ -41,6 +44,13 @@ type Character struct {
 	Kills      int
 	BossKills  int
 	Deaths     int
+
+	// Quêtes en cours et rendues, et réputation par lieu (voir internal/quest).
+	// QuestsDirty indique qu'elles ont changé depuis la dernière sauvegarde: seules
+	// les sauvegardes qui les modifient réécrivent leurs tables.
+	Quests      []quest.Quest
+	Rep         map[world.RegionPos]int
+	QuestsDirty bool
 }
 
 // Store est la base de données.
@@ -160,6 +170,40 @@ var migrations = []string{
 		summary    TEXT    NOT NULL,
 		updated_at INTEGER NOT NULL,
 		PRIMARY KEY (region_x, region_y, npc_index, account)
+	)`,
+	// 12: quêtes des joueurs et réputation par lieu. Les quêtes rendues (state = 'done')
+	// servent aussi de mémoire aux PNJ (rumeurs).
+	`CREATE TABLE quests (
+		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
+		id         INTEGER NOT NULL,
+		giver_rx   INTEGER NOT NULL,
+		giver_ry   INTEGER NOT NULL,
+		giver_idx  INTEGER NOT NULL,
+		title      TEXT    NOT NULL,
+		story      TEXT    NOT NULL,
+		kind       TEXT    NOT NULL,
+		species    TEXT    NOT NULL,
+		count      INTEGER NOT NULL,
+		target_rx  INTEGER NOT NULL,
+		target_ry  INTEGER NOT NULL,
+		progress   INTEGER NOT NULL,
+		gold       INTEGER NOT NULL,
+		xp         INTEGER NOT NULL,
+		potions    INTEGER NOT NULL,
+		note       TEXT    NOT NULL,
+		tier       INTEGER NOT NULL,
+		state      TEXT    NOT NULL,
+		created_at INTEGER NOT NULL,
+		done_at    INTEGER NOT NULL,
+		PRIMARY KEY (account, id)
+	)`,
+	`CREATE INDEX quests_done_place ON quests(giver_rx, giver_ry, state, done_at)`,
+	`CREATE TABLE reputation (
+		account TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
+		region_x INTEGER NOT NULL,
+		region_y INTEGER NOT NULL,
+		points   INTEGER NOT NULL,
+		PRIMARY KEY (account, region_x, region_y)
 	)`,
 }
 
@@ -293,6 +337,9 @@ func (s *Store) LoadCharacter(account string) (*Character, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c.Quests, c.Rep, err = s.loadQuests(account); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 
@@ -327,6 +374,11 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold,
 			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths, now, account); err != nil {
 			return fmt.Errorf("sauvegarde de %s: %w", account, err)
+		}
+		if c.QuestsDirty {
+			if err := saveQuests(tx, account, c); err != nil {
+				return fmt.Errorf("quêtes de %s: %w", account, err)
+			}
 		}
 	}
 	return tx.Commit()

@@ -19,6 +19,8 @@ const (
 	TCombatAction = "combat_action"
 	// TNPCAction: voir NPCAction.
 	TNPCAction = "npc_action"
+	// TQuestAction: voir QuestAction.
+	TQuestAction = "quest_action"
 	// TPing: mesure de latence, le serveur répond TPong (sans charge utile).
 	TPing = "ping"
 
@@ -29,6 +31,7 @@ const (
 	TSnapshot = "snapshot"
 	TCombat   = "combat"
 	TNPC      = "npc"
+	TQuests   = "quests" // livre de quêtes: voir Quests
 	TPong     = "pong"
 )
 
@@ -140,6 +143,11 @@ const (
 	NPCConsent = "consent" // accepter l'envoi de ses messages à un service de langage tiers
 	NPCDecline = "decline" // refuser
 	NPCBack    = "back"    // quitter la discussion et revenir au menu du PNJ
+
+	// Quêtes. NPCTurnIn rend une quête prête à son donneur (NPCAction.Text = identifiant).
+	NPCQuestAccept = "quest_accept" // accepter la quête proposée
+	NPCQuestRefuse = "quest_refuse" // la refuser
+	NPCTurnIn      = "quest_turnin"
 )
 
 // MaxSayLen est la longueur maximale (en caractères) d'une réplique de joueur.
@@ -157,6 +165,7 @@ const (
 	NPCModeMenu   = "menu"   // menu du métier du PNJ (acheter, vendre, soigner…)
 	NPCModeNotice = "notice" // avis de confidentialité à accepter avant de discuter
 	NPCModeChat   = "chat"   // conversation libre
+	NPCModeQuest  = "quest"  // proposition de quête à accepter ou refuser
 )
 
 // NPCLine est une ligne de la transcription d'une discussion.
@@ -173,7 +182,57 @@ type NPCOffer struct {
 	Price     int    `json:"price"`          // 0 = gratuit (ou, pour une vente, sans objet)
 	Gain      bool   `json:"gain,omitempty"` // vrai si le joueur reçoit de l'or (vente) au lieu d'en payer
 	Available bool   `json:"ok"`
+	Arg       string `json:"arg,omitempty"` // à renvoyer dans NPCAction.Text (identifiant de la quête à rendre)
 }
+
+// QuestInfo est une quête telle que le joueur la voit. Tout est calculé par le serveur.
+type QuestInfo struct {
+	ID       int64  `json:"id"`
+	Title    string `json:"title"`
+	Story    string `json:"story"`
+	Giver    string `json:"giver"`    // nom du PNJ
+	Place    string `json:"place"`    // nom du lieu du donneur
+	Goal     string `json:"goal"`     // objectif en toutes lettres (« Vaincre 5 loups »)
+	Progress int    `json:"progress"` // actions accomplies
+	Need     int    `json:"need"`
+	Gold     int    `json:"gold"`
+	XP       int    `json:"xp"`
+	Potions  int    `json:"potions"`
+	Note     string `json:"note,omitempty"`
+	State    string `json:"state"` // "active", "ready" ou "done"
+	Gain     int    `json:"gain"`  // points de réputation à la remise
+
+	// Clé du PNJ donneur (région et rang dans le lieu) : le client y repère, sur la carte,
+	// le PNJ à qui rendre une quête prête.
+	GiverRX  int `json:"grx"`
+	GiverRY  int `json:"gry"`
+	GiverIdx int `json:"gi"`
+}
+
+// Standing est la réputation du joueur dans un lieu.
+type Standing struct {
+	Place  string `json:"place"`
+	Points int    `json:"points"`
+	Tier   string `json:"tier"`
+	Next   int    `json:"next,omitempty"` // points manquants pour le palier suivant
+}
+
+// Quests est le livre de quêtes, envoyé à la connexion et à chaque changement.
+type Quests struct {
+	Open     []QuestInfo `json:"open"`    // actives et prêtes
+	History  []QuestInfo `json:"history"` // dernières quêtes rendues
+	Standing []Standing  `json:"standing"`
+	Notice   []string    `json:"notice,omitempty"` // lignes à ajouter au journal (progression, abandon…)
+}
+
+// QuestAction est une action sur le livre de quêtes. Aujourd'hui: abandonner.
+type QuestAction struct {
+	Action string `json:"action"` // "abandon"
+	ID     int64  `json:"id"`
+}
+
+// Actions du livre de quêtes.
+const QuestAbandon = "abandon"
 
 // NPCDialog est l'état d'un dialogue, envoyé à son ouverture puis après chaque
 // action. Quand Over est vrai, le dialogue est terminé et le joueur est libre.
@@ -194,6 +253,8 @@ type NPCDialog struct {
 	Thinking bool      `json:"thinking,omitempty"` // le PNJ prépare sa réponse
 	Notice   string    `json:"notice,omitempty"`   // texte de l'avis (mode notice)
 	Lines    []NPCLine `json:"lines,omitempty"`    // transcription (mode chat)
+
+	Proposal *QuestInfo `json:"proposal,omitempty"` // quête proposée (mode quest)
 }
 
 // Envelope est l'enveloppe commune à tous les messages.
@@ -209,6 +270,9 @@ type Login struct {
 	Name     string `json:"name"`
 	Password string `json:"pass"`
 	Register bool   `json:"register,omitempty"`
+	// Lang est la langue de l'interface du client ("fr" ou "en"): le serveur y
+	// rédige les messages qu'il lui adresse. Absente (ancien client), c'est le français.
+	Lang string `json:"lang,omitempty"`
 }
 
 // Welcome confirme la connexion et donne l'état initial du joueur.

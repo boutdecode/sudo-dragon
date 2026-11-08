@@ -1,15 +1,20 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/kevin/ascii-adventure/internal/quest"
+	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 func openTemp(t *testing.T) (*Store, string) {
@@ -115,7 +120,7 @@ func TestCharacterRoundTripAndUpsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := s.LoadCharacter("ALICE") // casse indifférente
-	if err != nil || got == nil || *got != want {
+	if err != nil || got == nil || !reflect.DeepEqual(*got, want) {
 		t.Fatalf("relu: %+v, %v (attendu %+v)", got, err, want)
 	}
 
@@ -124,7 +129,7 @@ func TestCharacterRoundTripAndUpsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = s.LoadCharacter("alice")
-	if *got != want {
+	if !reflect.DeepEqual(*got, want) {
 		t.Fatalf("mise à jour: %+v", got)
 	}
 	var n int
@@ -517,5 +522,82 @@ func TestDeletingAnAccountCascadesToItsLore(t *testing.T) {
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM npc_memories`).Scan(&mems)
 	if cards != 0 || mems != 0 {
 		t.Fatalf("données orphelines après suppression du compte: %d fiches, %d souvenirs", cards, mems)
+	}
+}
+
+func sampleQuests() []quest.Quest {
+	t0 := time.Unix(1_700_000_000, 0)
+	return []quest.Quest{
+		{ID: 1, Giver: world.NPCKey{Region: world.RegionPos{X: 1, Y: -2}, Index: 3}, Title: "Les loups", Story: "Chassez-les.",
+			Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 5}, Progress: 2,
+			Reward: quest.Reward{Gold: 50, XP: 10, Potions: 1, Note: "merci"}, Tier: 2, State: quest.Active, CreatedAt: t0},
+		{ID: 2, Giver: world.NPCKey{Region: world.RegionPos{X: 1, Y: -2}, Index: 3}, Title: "Message", Story: "Allez-y.",
+			Objective: quest.Objective{Kind: quest.Reach, Count: 1, Target: world.RegionPos{X: 3, Y: 0}}, Progress: 1,
+			Reward: quest.Reward{Gold: 20}, Tier: 1, State: quest.Done, CreatedAt: t0, DoneAt: t0.Add(time.Hour)},
+		{ID: 3, Title: "Abandonnée", Story: "x", State: quest.Abandoned, CreatedAt: t0},
+	}
+}
+
+func TestQuestsAndReputationRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	rep := map[world.RegionPos]int{{X: 1, Y: -2}: 5}
+	c := Character{Level: 3, HP: 10, Quests: sampleQuests(), Rep: rep, QuestsDirty: true}
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	if len(got.Quests) != 2 { // l'abandonnée n'est pas conservée
+		t.Fatalf("%d quêtes: %+v", len(got.Quests), got.Quests)
+	}
+	want := sampleQuests()
+	for i := range got.Quests {
+		g, w := got.Quests[i], want[i]
+		g.Account = ""
+		g.CreatedAt, w.CreatedAt = g.CreatedAt.UTC(), w.CreatedAt.UTC()
+		g.DoneAt, w.DoneAt = g.DoneAt.UTC(), w.DoneAt.UTC()
+		if g != w {
+			t.Errorf("quête %d:\n got %+v\nwant %+v", i, g, w)
+		}
+	}
+	if got.Rep[world.RegionPos{X: 1, Y: -2}] != 5 || len(got.Rep) != 1 {
+		t.Fatalf("réputation: %v", got.Rep)
+	}
+
+	// Une sauvegarde non « sale » ne touche pas aux tables de quêtes.
+	c.Quests, c.Rep, c.QuestsDirty, c.Gold = nil, nil, false, 99
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := st.LoadCharacter("aldric")
+	if len(again.Quests) != 2 || again.Gold != 99 {
+		t.Fatalf("quêtes perdues par une sauvegarde sans changement : %+v", again)
+	}
+
+	// DeedsNear ne voit que les quêtes rendues, dans le carré et la fenêtre de temps.
+	t0 := time.Unix(1_700_000_000, 0)
+	deeds, err := st.DeedsNear(context.Background(), world.RegionPos{X: 2, Y: -1}, 3, t0, 10)
+	if err != nil || len(deeds) != 1 || deeds[0].Title != "Message" || deeds[0].Account != "aldric" {
+		t.Fatalf("%+v %v", deeds, err)
+	}
+	if d, _ := st.DeedsNear(context.Background(), world.RegionPos{X: 9, Y: 9}, 3, t0, 10); len(d) != 0 {
+		t.Fatalf("hors carré: %+v", d)
+	}
+	if d, _ := st.DeedsNear(context.Background(), world.RegionPos{X: 1, Y: -2}, 3, t0.Add(2*time.Hour), 10); len(d) != 0 {
+		t.Fatalf("trop ancien: %+v", d)
+	}
+
+	// Purge d'un lieu puis d'un compte.
+	_, _, n, err := st.PurgePlace(context.Background(), world.RegionPos{X: 1, Y: -2})
+	if err != nil || n != 2 {
+		t.Fatalf("purge du lieu: %d %v", n, err)
+	}
+	if after, _ := st.LoadCharacter("aldric"); len(after.Quests) != 0 || len(after.Rep) != 0 {
+		t.Fatalf("après purge: %+v", after)
 	}
 }

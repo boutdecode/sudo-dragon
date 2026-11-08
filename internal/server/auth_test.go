@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/store"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -546,12 +548,14 @@ func TestSavedCharacterConversionRoundTrips(t *testing.T) {
 	in := store.Character{
 		Level: 7, XP: 12, Potions: 3, HP: 40, X: -5, Y: 9, Gold: 88,
 		LLMConsent: true, Kills: 40, BossKills: 3, Deaths: 6,
+		Quests: []quest.Quest{{ID: 4, Title: "Les loups", State: quest.Ready, Progress: 3, Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}}},
+		Rep:    map[world.RegionPos]int{{X: 1, Y: 2}: 5},
 	}
 	sv := toSaved(in)
 	if !sv.LLMConsent || sv.Stats.Kills != 40 || sv.Stats.BossKills != 3 || sv.Stats.Deaths != 6 {
 		t.Fatalf("toSaved: %+v", sv)
 	}
-	if out := fromSaved(*sv); out != in {
+	if out := fromSaved(*sv); !reflect.DeepEqual(out, in) {
 		t.Fatalf("aller-retour: %+v, attendu %+v", out, in)
 	}
 }

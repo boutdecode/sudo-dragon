@@ -1,9 +1,8 @@
 package game
 
 import (
-	"fmt"
-
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
 
@@ -47,14 +46,15 @@ func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	f.b = combat.New(
 		p.stats.Fighter(p.hp), p.stats.Potions,
 		combat.Fighter{HP: m.sp.HP, MaxHP: m.sp.HP, Atk: m.sp.Atk, Def: m.sp.Def},
-		m.sp.Name, g.rng,
+		m.sp.name(p.lang), g.rng,
 	)
+	f.b.Lang = p.lang
 	p.fight, m.fight = f, f
 	p.hasPending = false
 
-	intro := fmt.Sprintf("Un %s vous attaque !", m.sp.Name)
+	intro := i18n.T(p.lang, "fight.monster_attacks", m.sp.name(p.lang))
 	if playerStarted {
-		intro = fmt.Sprintf("Vous attaquez le %s !", m.sp.Name)
+		intro = i18n.T(p.lang, "fight.you_attack", m.sp.name(p.lang))
 	}
 	g.sendFight(f, []string{intro})
 }
@@ -92,20 +92,21 @@ func (g *Game) endFight(f *fight) []string {
 		if m.sp.Boss {
 			p.stats.BossKills++
 		}
-		log = append(log, fmt.Sprintf("+%d XP.", m.sp.XP))
+		log = append(log, g.questKill(p, m.sp)...)
+		log = append(log, i18n.T(p.lang, "fight.xp", m.sp.XP))
 		if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
-			log = append(log, fmt.Sprintf("+%d or.", gold))
+			log = append(log, i18n.T(p.lang, "fight.gold", gold))
 		}
 		if p.stats.AddXP(m.sp.XP) > 0 {
 			p.hp = p.stats.MaxHP
-			log = append(log, fmt.Sprintf("Niveau %d ! Vos PV sont restaurés.", p.stats.Level))
+			log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
 		}
 		if m.sp.Boss {
 			// Le seigneur d'une forteresse laisse un trésor garanti.
 			gold, potions := p.stats.AddGold(bossGold), p.stats.AddPotions(bossPotions)
-			log = append(log, fmt.Sprintf("Le %s laissait un trésor: +%d or, +%d potions.", m.sp.Name, gold, potions))
+			log = append(log, i18n.T(p.lang, "fight.treasure", m.sp.name(p.lang), gold, potions))
 		} else if g.rng.Float64() < lootPotionChance && p.stats.AddPotions(1) > 0 {
-			log = append(log, "Le monstre laissait une potion.")
+			log = append(log, i18n.T(p.lang, "fight.loot_potion"))
 		}
 	case combat.Lost:
 		p.stats.Deaths++
@@ -113,7 +114,7 @@ func (g *Game) endFight(f *fight) []string {
 		p.hp = p.stats.MaxHP
 		g.setPos(p, g.freeSpawn())
 		m.cooldown = disengageCooldown
-		log = append(log, "Vous vous réveillez au point de départ, amoindri.")
+		log = append(log, i18n.T(p.lang, "fight.respawn"))
 	case combat.Fled:
 		m.cooldown = disengageCooldown
 	}
@@ -138,7 +139,7 @@ func (g *Game) expireIdleFights(ids []int) {
 			continue
 		}
 		f.b.Abandon()
-		log := append([]string{"Combat abandonné (inactivité)."}, g.endFight(f)...)
+		log := append([]string{i18n.T(f.p.lang, "fight.abandoned")}, g.endFight(f)...)
 		g.sendFight(f, log)
 	}
 }

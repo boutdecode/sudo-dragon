@@ -84,7 +84,7 @@ func TestEveryNPCKindHasLookAndPortrait(t *testing.T) {
 		known[k] = true
 	}
 	for kind := range npcLooks {
-		if !known[kind] {
+		if !known[kind] && kind != questGiverKind && kind != questTurnInKind { // apparence de carte seulement
 			t.Errorf("apparence pour un PNJ inexistant: %q", kind)
 		}
 	}

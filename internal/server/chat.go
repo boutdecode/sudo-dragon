@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
 
@@ -12,9 +13,6 @@ const (
 	chatBurst  = 5.0
 	chatRefill = 1.0 // jetons par seconde
 )
-
-const helpText = "Commandes: /g message (tous) · /me action · /w pseudo message (privé) · /help. " +
-	"Sans commande, le message est local (joueurs proches)."
 
 // allowChat applique le seau à jetons. Appelée uniquement depuis la goroutine
 // de lecture de la session, donc sans verrou.
@@ -33,18 +31,19 @@ func (sess *session) allowChat() bool {
 	return true
 }
 
-func (sess *session) sendErr(msg string) {
-	sess.sendMsg(protocol.TError, protocol.Error{Msg: msg})
+// sendErr envoie une erreur rédigée dans la langue du joueur (key: voir i18n).
+func (sess *session) sendErr(key string, args ...any) {
+	sess.sendMsg(protocol.TError, protocol.Error{Msg: i18n.T(sess.lang, key, args...)})
 }
 
-func (sess *session) sendSystem(text string) {
-	sess.sendMsg(protocol.TChat, protocol.Chat{Channel: protocol.ChanSystem, Text: text})
+func (sess *session) sendSystem(key string, args ...any) {
+	sess.sendMsg(protocol.TChat, protocol.Chat{Channel: protocol.ChanSystem, Text: i18n.T(sess.lang, key, args...)})
 }
 
 // handleChat interprète un texte de chat (déjà nettoyé et tronqué).
 func (sess *session) handleChat(text string) {
 	if !sess.allowChat() {
-		sess.sendErr("trop de messages, ralentissez")
+		sess.sendErr("srv.err.chat_rate")
 		return
 	}
 	if !strings.HasPrefix(text, "/") {
@@ -57,13 +56,13 @@ func (sess *session) handleChat(text string) {
 	switch strings.ToLower(cmd) {
 	case "/g", "/global":
 		if rest == "" {
-			sess.sendErr("usage: /g message")
+			sess.sendErr("srv.err.usage_g")
 			return
 		}
 		sess.srv.broadcast(protocol.TChat, protocol.Chat{Channel: protocol.ChanGlobal, From: sess.name, Text: rest})
 	case "/me":
 		if rest == "" {
-			sess.sendErr("usage: /me action")
+			sess.sendErr("srv.err.usage_me")
 			return
 		}
 		sess.sayNearby(protocol.ChanEmote, rest)
@@ -71,14 +70,14 @@ func (sess *session) handleChat(text string) {
 		target, msg, _ := strings.Cut(rest, " ")
 		msg = strings.TrimSpace(msg)
 		if target == "" || msg == "" {
-			sess.sendErr("usage: /w pseudo message")
+			sess.sendErr("srv.err.usage_w")
 			return
 		}
 		sess.whisper(target, msg)
 	case "/help", "/?":
-		sess.sendSystem(helpText)
+		sess.sendSystem("srv.help")
 	default:
-		sess.sendErr("commande inconnue: " + cmd + " (essayez /help)")
+		sess.sendErr("srv.err.unknown_command", cmd)
 	}
 }
 
@@ -117,9 +116,9 @@ func (sess *session) whisper(targetName, text string) {
 
 	switch {
 	case target == nil:
-		sess.sendErr("joueur introuvable: " + targetName)
+		sess.sendErr("srv.err.player_not_found", targetName)
 	case target == sess:
-		sess.sendErr("vous ne pouvez pas vous chuchoter à vous-même")
+		sess.sendErr("srv.err.whisper_self")
 	default:
 		msg := protocol.Chat{Channel: protocol.ChanWhisper, From: sess.name, To: target.name, Text: text}
 		target.sendMsg(protocol.TChat, msg)

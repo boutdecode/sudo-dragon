@@ -47,6 +47,21 @@ simplement avec les mêmes identifiants : vous reprenez là où vous étiez.
 
 Pour jouer sur un autre serveur : `./bin/sudo-dragon -addr wss://jeu.exemple.org/ws -name monpseudo`.
 
+### Langue
+
+Le jeu existe en **français** et en **anglais**. Le client choisit la langue du système (variables `LC_ALL`, `LC_MESSAGES`,
+`LANGUAGE`, puis `LANG`, comme `gettext`) : `fr_*` donne le français, `en_*` l'anglais, et toute autre langue l'anglais.
+`-lang fr` ou `-lang en` impose une langue (`./bin/sudo-dragon -lang en`).
+
+La langue est annoncée au serveur à la connexion et chaque joueur est servi dans la sienne, sur un même serveur : erreurs, aide du
+chat, annonces d'arrivée, journal de combat, marchands, soigneurs, titres et traits des PNJ, et même la consigne donnée au modèle de
+langage (le PNJ répond dans la langue du joueur). Les noms propres (lieux, prénoms) sont communs ; seuls les mots courants changent
+(« Citadelle » devient « Citadel », « Sœur » devient « Sister »). Les raccourcis suivent les mnémoniques de la langue
+(achat `A`/`B`, vente `V`/`S`, soin `S`/`H`, discussion `D`/`T`, accord `O`/`Y`). Les journaux et options du serveur restent en français.
+
+Les textes sont dans `internal/i18n` (`fr.go`, `en.go`) ; un test vérifie que les deux catalogues ont les mêmes clés et les mêmes
+directives de mise en forme. Pour ajouter une langue : un catalogue complet, enregistré dans `catalogs`, `Langs` et `Parse`.
+
 ## Jouer
 
 **Se déplacer** : flèches, `Z Q S D` (AZERTY), `W A S D`, ou `h j k l`. Diagonales : `y u b n`.
@@ -88,6 +103,19 @@ Un monstre vaincu laisse de l'or : entre la moitié et la totalité de son XP.
 Un personnage débute niveau 1 avec 30 PV, 6 d'attaque, 2 de défense, 2 potions et aucun or ; il faut `10 × niveau` XP pour passer au niveau suivant.
 Un débutant bat un rat ou un loup, mais pas un yéti : il faut progresser (c'est vérifié par un test d'équilibrage).
 
+## Régions et contrées
+
+Le monde repose sur deux découpages indépendants, tous deux calculés depuis la seed (le client les retrouve sans rien recevoir) :
+
+- **La grille de régions** (carrés de 256 × 256 cases) est l'unité technique : au plus un lieu par région, rumeurs et quêtes qui voyagent sur 3 régions, réputation par région.
+- **Les contrées** sont des pays nommés à frontières irrégulières (diagramme de Voronoi à germes décalés, environ 1 000 cases de large). Leur nom reflète le terrain dominant
+  (« Forêts d'Aube », « Plaines de Solbrune », « Côtes de Kerhaven »…) et existe en français et en anglais. Les lieux d'une contrée ont un air de famille : leurs noms puisent dans la même
+  petite famille de syllabes, sans jamais se répéter à moins de 3 régions.
+
+L'interface affiche en haut de la carte `contrée · lieu · terrain (x, y)`, le lieu (« village Tourelle », « forteresse… ») n'apparaissant que dans l'emprise ou la zone sûre d'un village,
+d'une ville ou d'une forteresse. Une ligne s'ajoute au journal en entrant dans une nouvelle contrée ou un nouveau lieu. Les PNJ connaissent la contrée de leur lieu.
+`worldview -territories -step 100` dessine les contrées en lettres avec leur légende.
+
 ## Villages, villes et forteresses
 
 Le monde est découpé en régions de 256 × 256 cases ; chacune accueille **au plus un lieu** (un peu plus d'une région sur deux en a un),
@@ -101,7 +129,7 @@ Un village se trouve toujours à quelques dizaines de cases du point de départ.
 | Ville | ~58 × 46 | muraille à quatre portes, deux avenues, une place, une vingtaine de bâtiments, un **marchand**, un **soigneur** et 5 **villageois** |
 | Forteresse | 48 × 40 | enceinte épaisse à tours d'angle et un portail, cour, deux casernes, donjon cloisonné ; **8 soldats et le seigneur de guerre** |
 
-Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `V` villageois (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance).
+Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `V` villageois, `!` villageois qui confie des quêtes (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance).
 
 **Zones sûres.** Un village ou une ville, avec trois cases de marge, est une zone sûre : aucun monstre n'y apparaît ni n'y entre,
 un joueur qui s'y trouve n'est ni poursuivi ni attaqué, et il y regagne 1 PV par seconde (au lieu d'un toutes les 3 secondes).
@@ -148,6 +176,28 @@ un résumé **privé** de ses conversations avec chaque joueur, jamais montré a
 `server -lore-list [-lore-account NOM]` et `server -lore-purge account:NOM` ou `place:RX,RY`.
 
 `make llm-smoke` fait un essai réel de l'API (ignoré sans clé).
+
+## Quêtes et réputation
+
+Certains villageois (marqués d'un `!` sur la carte ; au moins un par village ou ville) confient des **quêtes**. Il faut les dialogues IA (voir ci-dessus) pour
+en recevoir de nouvelles ; celles en cours progressent et se rendent sans clé.
+
+**Déroulement** : en discutant (« je cherche du travail »), le PNJ peut proposer une quête. Le modèle de langage la formalise en JSON (titre, histoire, objectif, récompense), mais
+**c'est le serveur qui décide** : il n'accepte que des objectifs qu'il sait vérifier lui-même, ramène la récompense dans des plafonds calculés d'après la difficulté, nettoie et modère les
+textes, puis présente une carte **Accepter / Refuser** (`A` / `R`). Rien n'existe tant que le joueur n'a pas accepté. Le modèle ne juge jamais qu'une quête est accomplie.
+
+- **Objectifs** : vaincre 3 à 12 monstres d'une espèce (seules comptent les victoires *après* l'acceptation), entrer dans un lieu voisin (à 3 régions au plus), vaincre le seigneur de guerre
+  (niveau 10 au moins, forteresse à portée).
+- **Récompense** : or ≤ 2 × l'expérience totale des monstres, XP ≤ 25 %, potions ≤ 2 (3 pour le seigneur) ; le texte de remerciement n'a aucun effet.
+- **Limites** : 5 quêtes ouvertes au plus, une par donneur, 30 minutes avant une nouvelle quête du même donneur, expiration au bout de 7 jours, abandon possible.
+- **Livre de quêtes** (`Q`) : quêtes en cours avec progression et récompense réelle, onglet réputation et historique (`Tab`), abandon avec confirmation (`X` deux fois).
+- **Remise** : on rend la quête au donneur (touches `1`, `2`… dans son menu). Or, XP, potions et réputation sont versés d'un coup et sauvegardés aussitôt.
+
+**Réputation** : chaque quête rendue rapporte 2 à 4 points dans le lieu du donneur. Paliers : Inconnu, Connu (3), Estimé (8), Honoré (15). Aux paliers Estimé et Honoré, les soins et les potions
+y coûtent 20 % puis 40 % de moins. Les PNJ du lieu connaissent la réputation du joueur et ses quêtes rendues ; la rumeur de ces exploits voyage comme celle des présentations
+(3 régions, 5 minutes par région, oubli après 14 jours). Les quêtes rendues sont des faits établis par le serveur, pas des paroles de joueur.
+
+Côté opérateur, `-lore-list` affiche aussi les quêtes rendues et `-lore-purge` supprime quêtes et réputation avec le reste. Les quêtes de `quests` et la réputation de `reputation` sont dans la base SQLite.
 
 ## Serveur
 
@@ -207,6 +257,7 @@ internal/
   server        WebSocket, sessions, authentification, chat, quotas
   store         SQLite : comptes, personnages, écrivain asynchrone
   client        modèle Bubble Tea et connexion réseau
+  i18n          langue du système, catalogues français et anglais
   render        rendu ASCII coloré, sprites de combat
 ```
 

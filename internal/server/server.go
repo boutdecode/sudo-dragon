@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/game"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/store"
@@ -102,6 +102,7 @@ func fromSaved(sv game.Saved) store.Character {
 		Level: sv.Stats.Level, XP: sv.Stats.XP, Potions: sv.Stats.Potions, Gold: sv.Stats.Gold,
 		HP: sv.HP, X: sv.Pos.X, Y: sv.Pos.Y,
 		LLMConsent: sv.LLMConsent, Kills: sv.Stats.Kills, BossKills: sv.Stats.BossKills, Deaths: sv.Stats.Deaths,
+		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 	}
 }
 
@@ -111,6 +112,7 @@ func toSaved(c store.Character) *game.Saved {
 		HP:         c.HP,
 		Pos:        world.Pos{X: c.X, Y: c.Y},
 		LLMConsent: c.LLMConsent,
+		Quests:     c.Quests, Rep: c.Rep,
 	}
 }
 
@@ -174,6 +176,7 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 type session struct {
 	id   int
 	name string
+	lang i18n.Lang // langue du client, choisie à la connexion
 	conn *websocket.Conn
 	srv  *Server
 
@@ -226,7 +229,9 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	lctx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
 
-	fail := func(msg string) (*session, error) {
+	lang := i18n.FR // la langue du client n'est connue qu'après lecture du login
+	fail := func(key string, args ...any) (*session, error) {
+		msg := i18n.T(lang, key, args...)
 		data, _ := protocol.Encode(protocol.TError, protocol.Error{Msg: msg})
 		wctx, wcancel := context.WithTimeout(ctx, writeTimeout)
 		defer wcancel()
@@ -241,39 +246,40 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	}
 	env, err := protocol.Decode(data)
 	if err != nil || env.T != protocol.TLogin {
-		return fail("le premier message doit être un login")
+		return fail("srv.err.first_login")
 	}
 	var lg protocol.Login
 	if err := env.Payload(&lg); err != nil {
-		return fail("login invalide")
+		return fail("srv.err.bad_login")
 	}
+	lang = i18n.Lang(lg.Lang).Normalize()
 	name := strings.TrimSpace(lg.Name)
 	if !validName(name) {
-		return fail("pseudo invalide (3-16 lettres, chiffres, _ ou -)")
+		return fail("srv.err.bad_name")
 	}
 	if s.failedLogins.blocked(ip) {
 		s.Log.Warn("trop d'échecs de connexion", "ip", ip)
-		return fail("trop de tentatives, réessayez dans une minute")
+		return fail("srv.err.too_many_attempts")
 	}
 
 	var canonical string
 	if lg.Register {
 		if l := len(lg.Password); l < protocol.MinPassLen || l > protocol.MaxPassLen {
-			return fail(fmt.Sprintf("mot de passe: %d à %d caractères", protocol.MinPassLen, protocol.MaxPassLen))
+			return fail("srv.err.pass_len", protocol.MinPassLen, protocol.MaxPassLen)
 		}
 		if s.registrations.blocked(ip) {
 			s.Log.Warn("trop de créations de compte", "ip", ip)
-			return fail("trop de comptes créés depuis cette adresse, réessayez plus tard")
+			return fail("srv.err.too_many_accounts")
 		}
 		canonical, err = s.be.CreateAccount(name, lg.Password)
 		switch {
 		case errors.Is(err, store.ErrExists):
-			return fail("ce pseudo existe déjà")
+			return fail("srv.err.name_taken")
 		case errors.Is(err, store.ErrWeakPassword):
-			return fail("mot de passe refusé")
+			return fail("srv.err.weak_password")
 		case err != nil:
 			s.Log.Error("création de compte", "err", err)
-			return fail("erreur serveur")
+			return fail("srv.err.server")
 		}
 		s.registrations.add(ip)
 		s.Log.Info("compte créé", "name", canonical)
@@ -282,10 +288,10 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		switch {
 		case errors.Is(err, store.ErrInvalid):
 			s.failedLogins.add(ip)
-			return fail("identifiants invalides")
+			return fail("srv.err.bad_credentials")
 		case err != nil:
 			s.Log.Error("authentification", "err", err)
-			return fail("erreur serveur")
+			return fail("srv.err.server")
 		}
 	}
 	name = canonical
@@ -293,7 +299,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	var saved *game.Saved
 	if ch, err := s.be.LoadCharacter(name); err != nil {
 		s.Log.Error("chargement du personnage", "name", name, "err", err)
-		return fail("erreur serveur")
+		return fail("srv.err.server")
 	} else if ch != nil {
 		saved = toSaved(*ch)
 	}
@@ -304,6 +310,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		send:    make(chan []byte, sendBuffer),
 		snapSig: make(chan struct{}, 1),
 		srv:     s,
+		lang:    lang,
 	}
 
 	// On réserve le pseudo sous verrou, puis on relâche le verrou avant Join:
@@ -319,16 +326,18 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	}
 	if taken {
 		s.mu.Unlock()
-		return fail("ce compte est déjà connecté")
+		return fail("srv.err.already_online")
 	}
 	s.reserved[key] = true
 	s.mu.Unlock()
 
 	id, err := s.Game.Join(name, game.Handlers{
 		State:    saved,
+		Lang:     lang,
 		Snapshot: sess.setSnapshot,
 		Combat:   func(c protocol.Combat) { sess.sendMsg(protocol.TCombat, c) },
 		NPC:      func(d protocol.NPCDialog) { sess.sendMsg(protocol.TNPC, d) },
+		Quests:   func(q protocol.Quests) { sess.sendMsg(protocol.TQuests, q) },
 		Joined: func(id, x, y int) {
 			sess.sendMsg(protocol.TWelcome, protocol.Welcome{
 				ID: id, Name: name, X: x, Y: y, Seed: s.Game.World.Seed,
@@ -344,11 +353,11 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	}
 	s.mu.Unlock()
 	if err != nil {
-		return fail("serveur indisponible")
+		return fail("srv.err.unavailable")
 	}
 
 	s.Log.Info("joueur connecté", "id", sess.id, "name", name)
-	s.announce(name + " a rejoint le monde")
+	s.announce("srv.joined", name)
 	return sess, nil
 }
 
@@ -361,7 +370,7 @@ func (s *Server) remove(sess *session) {
 	delete(s.sessions, sess.id)
 	s.mu.Unlock()
 	s.Log.Info("joueur déconnecté", "id", sess.id, "name", sess.name)
-	s.announce(sess.name + " a quitté le monde")
+	s.announce("srv.left", sess.name)
 }
 
 // broadcast envoie un message à tous les joueurs connectés.
@@ -370,8 +379,24 @@ func (s *Server) broadcast(t string, payload any) { s.broadcastWith(t, payload, 
 // announce diffuse une annonce système (arrivée, départ). Elle est perdue pour
 // un client dont la file est chargée: ces annonces sont proportionnelles au
 // nombre de joueurs au carré lors d'une vague de connexions.
-func (s *Server) announce(text string) {
-	s.broadcastWith(protocol.TChat, protocol.Chat{Channel: protocol.ChanSystem, Text: text}, true)
+//
+// Le texte est rédigé dans la langue de chaque destinataire: key et args sont
+// passés à i18n.T, et l'encodage n'est fait qu'une fois par langue.
+func (s *Server) announce(key string, args ...any) {
+	encoded := make(map[i18n.Lang][]byte, len(i18n.Langs))
+	for _, l := range i18n.Langs {
+		data, err := protocol.Encode(protocol.TChat, protocol.Chat{Channel: protocol.ChanSystem, Text: i18n.T(l, key, args...)})
+		if err != nil {
+			s.Log.Error("encode", "err", err)
+			return
+		}
+		encoded[l] = data
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sess := range s.sessions {
+		sess.enqueueBestEffort(encoded[sess.lang])
+	}
 }
 
 func (s *Server) broadcastWith(t string, payload any, bestEffort bool) {
@@ -499,7 +524,7 @@ func (sess *session) readLoop(ctx context.Context) {
 		}
 		env, err := protocol.Decode(data)
 		if err != nil {
-			sess.sendMsg(protocol.TError, protocol.Error{Msg: err.Error()})
+			sess.sendMsg(protocol.TError, protocol.Error{Msg: i18n.T(sess.lang, "srv.err.invalid_message", err.Error())})
 			continue
 		}
 		switch env.T {
@@ -515,7 +540,7 @@ func (sess *session) readLoop(ctx context.Context) {
 				continue
 			}
 			if _, ok := combat.ParseAction(a.Action); !ok {
-				sess.sendErr("action de combat inconnue: " + a.Action)
+				sess.sendErr("srv.err.unknown_combat_action", a.Action)
 				continue
 			}
 			sess.srv.Game.Act(sess.id, a.Action)
@@ -525,7 +550,7 @@ func (sess *session) readLoop(ctx context.Context) {
 				continue
 			}
 			if !game.ValidNPCAction(a.Action) {
-				sess.sendErr("action de dialogue inconnue: " + a.Action)
+				sess.sendErr("srv.err.unknown_dialog_action", a.Action)
 				continue
 			}
 			// Le texte vient d'un client: nettoyé et borné ici, avant qu'il n'atteigne le jeu
@@ -536,11 +561,24 @@ func (sess *session) readLoop(ctx context.Context) {
 					continue
 				}
 				if !sess.allowSay() {
-					sess.sendErr("doucement: laissez au PNJ le temps de répondre")
+					sess.sendErr("srv.err.slow_down_npc")
 					continue
 				}
 			}
 			sess.srv.Game.TalkAct(sess.id, a.Action, text)
+		case protocol.TQuestAction:
+			var a protocol.QuestAction
+			if err := env.Payload(&a); err != nil {
+				continue
+			}
+			if a.Action != protocol.QuestAbandon {
+				continue
+			}
+			if !sess.allowSay() {
+				sess.sendErr("srv.err.slow_down_npc")
+				continue
+			}
+			sess.srv.Game.QuestAct(sess.id, a.Action, a.ID)
 		case protocol.TPing:
 			sess.sendMsg(protocol.TPong, nil)
 		case protocol.TChatSend:
@@ -557,7 +595,7 @@ func (sess *session) readLoop(ctx context.Context) {
 			}
 			sess.handleChat(text)
 		default:
-			sess.sendMsg(protocol.TError, protocol.Error{Msg: "type de message inconnu: " + env.T})
+			sess.sendMsg(protocol.TError, protocol.Error{Msg: i18n.T(sess.lang, "srv.err.unknown_type", env.T)})
 		}
 	}
 }

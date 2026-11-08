@@ -169,31 +169,41 @@ func (s *Store) ListCards(ctx context.Context, account string, limit int) ([]lor
 	return out, rows.Err()
 }
 
-// PurgeAccount supprime les fiches et les souvenirs d'un joueur. Renvoie le nombre supprimé.
-func (s *Store) PurgeAccount(ctx context.Context, account string) (cards, memories int64, err error) {
-	return s.purge(ctx, `account = ?`, `account = ?`, account)
+// PurgeAccount supprime les fiches, les souvenirs, les quêtes et la réputation d'un joueur.
+func (s *Store) PurgeAccount(ctx context.Context, account string) (cards, memories, quests int64, err error) {
+	return s.purge(ctx, `account = ?`, `account = ?`, `account = ?`, account)
 }
 
-// PurgePlace supprime les fiches et les souvenirs d'un lieu.
-func (s *Store) PurgePlace(ctx context.Context, place world.RegionPos) (cards, memories int64, err error) {
-	return s.purge(ctx, `region_x = ? AND region_y = ?`, `region_x = ? AND region_y = ?`, place.X, place.Y)
+// PurgePlace supprime les fiches, les souvenirs, les quêtes rendues et la réputation d'un lieu.
+func (s *Store) PurgePlace(ctx context.Context, place world.RegionPos) (cards, memories, quests int64, err error) {
+	return s.purge(ctx, `region_x = ? AND region_y = ?`, `region_x = ? AND region_y = ?`,
+		`giver_rx = ? AND giver_ry = ?`, place.X, place.Y)
 }
 
-func (s *Store) purge(ctx context.Context, cardWhere, memWhere string, args ...any) (cards, memories int64, err error) {
+func (s *Store) purge(ctx context.Context, cardWhere, memWhere, questWhere string, args ...any) (cards, memories, quests int64, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `DELETE FROM npc_cards WHERE `+cardWhere, args...)
 	if err != nil {
-		return 0, 0, fmt.Errorf("fiches: %w", err)
+		return 0, 0, 0, fmt.Errorf("fiches: %w", err)
 	}
 	cards, _ = res.RowsAffected()
 	res, err = tx.ExecContext(ctx, `DELETE FROM npc_memories WHERE `+memWhere, args...)
 	if err != nil {
-		return 0, 0, fmt.Errorf("souvenirs: %w", err)
+		return 0, 0, 0, fmt.Errorf("souvenirs: %w", err)
 	}
 	memories, _ = res.RowsAffected()
-	return cards, memories, tx.Commit()
+	res, err = tx.ExecContext(ctx, `DELETE FROM quests WHERE `+questWhere, args...)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("quêtes: %w", err)
+	}
+	quests, _ = res.RowsAffected()
+	// La réputation suit le lieu ou le compte (mêmes colonnes que les fiches).
+	if _, err = tx.ExecContext(ctx, `DELETE FROM reputation WHERE `+cardWhere, args...); err != nil {
+		return 0, 0, 0, fmt.Errorf("réputation: %w", err)
+	}
+	return cards, memories, quests, tx.Commit()
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
 
@@ -40,6 +41,13 @@ type Conn struct {
 // attend le welcome. Le mot de passe voyage en clair dans la trame: préférer
 // une adresse wss://.
 func Dial(ctx context.Context, url, name, password string, register bool) (*Conn, protocol.Welcome, error) {
+	return DialLang(ctx, url, name, password, register, i18n.FR)
+}
+
+// DialLang est Dial pour un client qui parle la langue lang: le serveur y rédige
+// ses messages (erreurs, journal de combat, dialogues des PNJ).
+func DialLang(ctx context.Context, url, name, password string, register bool, lang i18n.Lang) (*Conn, protocol.Welcome, error) {
+	lang = lang.Normalize()
 	var w protocol.Welcome
 
 	dctx, dcancel := context.WithTimeout(ctx, dialTimeout)
@@ -47,7 +55,7 @@ func Dial(ctx context.Context, url, name, password string, register bool) (*Conn
 
 	ws, _, err := websocket.Dial(dctx, url, nil)
 	if err != nil {
-		return nil, w, fmt.Errorf("connexion impossible: %w", err)
+		return nil, w, fmt.Errorf("%s", i18n.T(lang, "net.cannot_connect", err))
 	}
 	ws.SetReadLimit(readLimit)
 	fail := func(err error) (*Conn, protocol.Welcome, error) {
@@ -55,7 +63,7 @@ func Dial(ctx context.Context, url, name, password string, register bool) (*Conn
 		return nil, w, err
 	}
 
-	data, err := protocol.Encode(protocol.TLogin, protocol.Login{Name: name, Password: password, Register: register})
+	data, err := protocol.Encode(protocol.TLogin, protocol.Login{Name: name, Password: password, Register: register, Lang: string(lang)})
 	if err != nil {
 		return fail(err)
 	}
@@ -64,7 +72,7 @@ func Dial(ctx context.Context, url, name, password string, register bool) (*Conn
 	}
 	_, data, err = ws.Read(dctx)
 	if err != nil {
-		return fail(fmt.Errorf("pas de réponse du serveur: %w", err))
+		return fail(fmt.Errorf("%s", i18n.T(lang, "net.no_reply", err)))
 	}
 	env, err := protocol.Decode(data)
 	if err != nil {
@@ -80,7 +88,7 @@ func Dial(ctx context.Context, url, name, password string, register bool) (*Conn
 		_ = env.Payload(&e)
 		return fail(errors.New(e.Msg))
 	default:
-		return fail(fmt.Errorf("réponse inattendue: %q", env.T))
+		return fail(fmt.Errorf("%s", i18n.T(lang, "net.unexpected", env.T)))
 	}
 
 	cctx, cancel := context.WithCancel(context.Background())
@@ -159,7 +167,7 @@ func (c *Conn) Close() {
 	c.cancel()
 	done := make(chan struct{})
 	go func() {
-		_ = c.ws.Close(websocket.StatusNormalClosure, "au revoir")
+		_ = c.ws.Close(websocket.StatusNormalClosure, "bye")
 		close(done)
 	}()
 	select {

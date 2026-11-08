@@ -104,6 +104,10 @@ type World struct {
 	structs    map[RegionPos]*Structure
 	anchorOnce sync.Once
 	anchor     Pos
+
+	// Contrées (voir territory.go). tmu est indépendant de mu et smu.
+	tmu         sync.Mutex
+	territories map[TerritoryID]*Territory
 }
 
 // New crée un monde déterministe pour la seed donnée.
@@ -114,6 +118,8 @@ func New(seed int64) *World {
 		moisture:  opensimplex.New(seed ^ 0x5DEECE66D),
 		cache:     make(map[ChunkPos]*Chunk),
 		structs:   make(map[RegionPos]*Structure),
+
+		territories: make(map[TerritoryID]*Territory),
 	}
 }
 

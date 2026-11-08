@@ -10,6 +10,9 @@ package npcai
 import (
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
+	"github.com/kevin/ascii-adventure/internal/lore"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -28,7 +31,9 @@ type Turn struct{ Player, NPC string }
 // Request est ce que le jeu demande: une réplique du joueur à un PNJ.
 type Request struct {
 	NPC       world.NPC
-	Place     string // nom du lieu
+	Lang      i18n.Lang // langue du joueur: celle du prompt et de la réplique attendue
+	Region    string    // nom de la contrée du lieu (vide: non précisé)
+	Place     string    // nom du lieu
 	PlaceKind world.Kind
 	Speaker   Speaker
 	Message   string // déjà nettoyé (textsafe) et borné par l'appelant
@@ -38,6 +43,24 @@ type Request struct {
 	// ne le connaît pas, l'invite à se présenter. Message est alors vide, et rien n'est
 	// mémorisé (le joueur n'a encore rien dit).
 	Opening bool
+
+	// Reputation : points du joueur dans le lieu de ce PNJ (fait établi par le serveur).
+	Reputation int
+	// Offer, renseigné seulement pour un donneur de quêtes qui peut en confier une
+	// au joueur, autorise le modèle à proposer une quête (voir quest.Validate).
+	Offer *OfferContext
+
+	// Deeds : quêtes rendues dont ce PNJ a connaissance (renseigné par le service, pas par le jeu).
+	Deeds Deeds
+}
+
+// Deeds sont les quêtes rendues connues d'un PNJ : celles de son interlocuteur et, en rumeur, celles des autres.
+type Deeds struct{ Mine, Others []lore.HeardDeed }
+
+// OfferContext décrit le travail que ce PNJ peut confier à ce joueur.
+type OfferContext struct {
+	Quest    quest.Context // ce que le serveur accepte (espèces, lieux, boss…)
+	Existing []string      // titres des quêtes déjà en cours auprès de ce PNJ (à ne pas répéter)
 }
 
 // Failure explique pourquoi aucune vraie réponse n'a pu être produite.
@@ -62,7 +85,10 @@ type Reply struct {
 	Text       string
 	Failure    Failure
 	Remembered bool // une fiche de présentation a été enregistrée
-	Tokens     int  // jetons consommés par l'appel
+	// Quest est une quête proposée par le modèle, déjà validée (quest.Validate) et modérée.
+	// Elle n'existe pas encore : le joueur doit l'accepter.
+	Quest  *quest.Quest
+	Tokens int // jetons consommés par l'appel
 }
 
 // Config règle le service. Les zéros prennent les valeurs de DefaultConfig.
@@ -140,16 +166,18 @@ func (c Config) withDefaults() Config {
 
 // Stats est un instantané des compteurs du service (pour /stats).
 type Stats struct {
-	Available    bool   `json:"available"`
-	Guardrails   bool   `json:"guardrails"`
-	Moderation   bool   `json:"moderation"`
-	Requests     uint64 `json:"requests"`
-	Failures     uint64 `json:"failures"`
-	Blocked      uint64 `json:"blocked"`
-	Remembered   uint64 `json:"remembered"`
-	TokensToday  int    `json:"tokens_today"`
-	DailyBudget  int    `json:"daily_budget"`
-	InFlight     int    `json:"in_flight"`
-	Queued       int    `json:"queued"`
-	AvgLatencyMS int64  `json:"avg_latency_ms"`
+	Available      bool   `json:"available"`
+	Guardrails     bool   `json:"guardrails"`
+	Moderation     bool   `json:"moderation"`
+	Requests       uint64 `json:"requests"`
+	Failures       uint64 `json:"failures"`
+	Blocked        uint64 `json:"blocked"`
+	Remembered     uint64 `json:"remembered"`
+	QuestsOffered  uint64 `json:"quests_proposed"`
+	QuestsRejected uint64 `json:"quests_rejected"`
+	TokensToday    int    `json:"tokens_today"`
+	DailyBudget    int    `json:"daily_budget"`
+	InFlight       int    `json:"in_flight"`
+	Queued         int    `json:"queued"`
+	AvgLatencyMS   int64  `json:"avg_latency_ms"`
 }

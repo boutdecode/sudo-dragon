@@ -4,6 +4,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -61,10 +62,10 @@ func TestSpeciesTable(t *testing.T) {
 		if s.Aggro < 0 {
 			t.Errorf("%s: aggro négatif", s.Kind)
 		}
-		if s.Name == "" || s.HP <= 0 || s.Atk <= 0 || s.Def < 0 || s.XP <= 0 {
+		if s.name(i18n.FR) == "" || s.HP <= 0 || s.Atk <= 0 || s.Def < 0 || s.XP <= 0 {
 			t.Errorf("%s: caractéristiques de combat invalides: %+v", s.Kind, s)
 		}
-		if SpeciesName(s.Kind) != s.Name {
+		if SpeciesName(i18n.FR, s.Kind) != s.name(i18n.FR) {
 			t.Errorf("%s: SpeciesName incohérent", s.Kind)
 		}
 	}

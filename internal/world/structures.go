@@ -3,6 +3,8 @@ package world
 import (
 	"math/rand/v2"
 	"sort"
+
+	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
 // RegionSize est le côté d'une région, en tuiles. Chaque région contient au
@@ -75,8 +77,14 @@ type NPC struct {
 	// démarrage. Region et Index forment la clé stable du PNJ.
 	Region  RegionPos
 	Index   int
-	Name    string
-	Persona Persona
+	Name    string  // nom français (voir NameIn pour les autres langues)
+	Persona Persona // personnalité en français (voir PersonaIn)
+
+	// GivesQuests : ce villageois confie des quêtes. Tiré du flux d'identité (sans toucher
+	// aux plans) : le premier villageois de chaque lieu en donne toujours, puis environ un sur deux.
+	GivesQuests bool
+
+	id ident // indices d'identité, pour traduire Name et Persona
 }
 
 // SlotRole précise quel monstre occupe un emplacement de forteresse.
@@ -97,7 +105,7 @@ type Slot struct {
 // Structure est un village, une ville ou une forteresse.
 type Structure struct {
 	Kind   Kind
-	Name   string // nom du lieu, déterministe
+	Name   string // nom du lieu en français, déterministe (voir NameIn)
 	Region RegionPos
 	Origin Pos // coin haut-gauche de l'emprise
 	W, H   int // dimensions de l'emprise
@@ -105,6 +113,18 @@ type Structure struct {
 	Slots  []Slot
 
 	tiles []Tile // W*H, ligne par ligne
+
+	fort int    // préfixe d'une forteresse (« Fort », « Citadelle »…), indice du catalogue
+	base string // nom du lieu sans préfixe de forteresse
+}
+
+// NameIn renvoie le nom du lieu dans la langue l. Seuls les préfixes des forteresses
+// (« Citadelle » / « Citadel ») changent: le reste est un nom propre.
+func (s *Structure) NameIn(l i18n.Lang) string {
+	if s.Kind == KindFortress {
+		return fortName(l, s.fort, s.base)
+	}
+	return s.Name
 }
 
 // Contains indique si la tuile (x, y) est dans l'emprise.
@@ -368,14 +388,15 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	origin := Pos{rp.X*RegionSize + x0, rp.Y*RegionSize + y0}
 	s := &Structure{Kind: kind, Region: rp, Origin: origin, W: c.w, H: c.h, tiles: c.t}
 	// Identités: flux séparés, pour ne pas décaler le tirage des plans.
-	s.Name = placeName(kind, identityRNG(w.Seed, rp, 0))
+	s.Name, s.fort, s.base = placeName(kind, identityRNG(w.Seed, rp, 0), baseFor(w.Seed, rp))
 	taken := map[string]bool{}
 	for i, n := range c.npcs {
 		// Deux PNJ d'un même lieu ne portent jamais le même nom: on retire avec un autre sel.
+		var id ident
 		var name string
-		var persona Persona
 		for try := uint64(0); try < 16; try++ {
-			name, persona = npcIdentity(n.Kind, identityRNG(w.Seed, rp, uint64(i)+1+100*try))
+			id = npcIdentity(n.Kind, identityRNG(w.Seed, rp, uint64(i)+1+100*try))
+			name = id.name(i18n.FR, n.Kind)
 			if !taken[name] {
 				break
 			}
@@ -383,8 +404,16 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 		taken[name] = true
 		s.NPCs = append(s.NPCs, NPC{
 			Kind: n.Kind, Pos: Pos{origin.X + n.Pos.X, origin.Y + n.Pos.Y},
-			Region: rp, Index: i, Name: name, Persona: persona,
+			Region: rp, Index: i, Name: name, Persona: id.persona(i18n.FR), id: id,
 		})
+	}
+	firstVillager := true
+	for i := range s.NPCs {
+		if s.NPCs[i].Kind != NPCVillager {
+			continue
+		}
+		s.NPCs[i].GivesQuests = firstVillager || identityRNG(w.Seed, rp, 5000+uint64(i)).IntN(2) == 0
+		firstVillager = false
 	}
 	for _, sl := range c.slots {
 		s.Slots = append(s.Slots, Slot{Pos{origin.X + sl.Pos.X, origin.Y + sl.Pos.Y}, sl.Role})
@@ -395,6 +424,16 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 // StructureOfRegion renvoie la structure de la région (ou nil). Sert à nommer les
 // lieux lointains d'après leur région.
 func (w *World) StructureOfRegion(rp RegionPos) *Structure { return w.structureForRegion(rp) }
+
+// PlaceAt renvoie le lieu où se trouve (x, y) : la structure dont l'emprise ou la zone sûre contient
+// la case, ou nil en pleine nature. Sert à afficher « où l'on est ».
+func (w *World) PlaceAt(x, y int) *Structure {
+	s := w.structureForRegion(RegionOf(x, y))
+	if s != nil && (s.Contains(x, y) || s.Safe(x, y)) {
+		return s
+	}
+	return nil
+}
 
 // StructureAt renvoie la structure dont l'emprise contient (x, y), ou nil.
 func (w *World) StructureAt(x, y int) *Structure {

@@ -10,8 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -41,7 +43,7 @@ type Service struct {
 	cfg      Config
 	log      *slog.Logger
 	now      func() time.Time
-	places   func(world.RegionPos) string
+	places   func(i18n.Lang, world.RegionPos) string
 	blocked  map[string]bool
 	provider string
 
@@ -62,6 +64,7 @@ type Service struct {
 	openTill time.Time // disjoncteur: pas d'appel avant cet instant
 
 	nRequests, nFailures, nBlocked, nRemembered atomic.Uint64
+	nQuestsProposed, nQuestsRejected            atomic.Uint64
 	latencyMS, latencyN                         atomic.Int64
 	active                                      atomic.Int32
 }
@@ -79,7 +82,9 @@ func WithClock(now func() time.Time) Option { return func(s *Service) { s.now = 
 func WithProvider(name string) Option { return func(s *Service) { s.provider = name } }
 
 // WithPlaceNames fournit le nom d'un lieu d'après sa région, pour nommer l'origine des rumeurs.
-func WithPlaceNames(f func(world.RegionPos) string) Option { return func(s *Service) { s.places = f } }
+func WithPlaceNames(f func(i18n.Lang, world.RegionPos) string) Option {
+	return func(s *Service) { s.places = f }
+}
 
 // WithBlockedCategories remplace les catégories de modération bloquantes.
 func WithBlockedCategories(cats []string) Option {
@@ -130,13 +135,10 @@ func (s *Service) Start(ctx context.Context) {
 // Wait attend la fin des workers (après l'annulation du contexte de Start).
 func (s *Service) Wait() { s.wg.Wait() }
 
-// Provider renvoie le nom du fournisseur du modèle (pour l'avis de confidentialité).
-func (s *Service) Provider() string {
-	if s.provider == "" {
-		return "un service de langage tiers"
-	}
-	return s.provider
-}
+// Provider renvoie le nom du fournisseur du modèle (pour l'avis de confidentialité),
+// ou "" s'il n'est pas connu: l'appelant emploie alors une formule générique dans la
+// langue du joueur.
+func (s *Service) Provider() string { return s.provider }
 
 // Available indique si les PNJ peuvent converser: l'API répond et le disjoncteur est fermé.
 func (s *Service) Available() bool {
@@ -154,7 +156,7 @@ func (s *Service) Available() bool {
 func (s *Service) Ask(req Request, done func(Reply)) {
 	reject := func(f Failure) {
 		s.nFailures.Add(1)
-		go done(s.failureReply(req.NPC, f))
+		go done(s.failureReply(req, f))
 	}
 	if !s.Available() {
 		reject(Unavailable)
@@ -240,7 +242,7 @@ func (s *Service) run(ctx context.Context, j *job) {
 		defer func() {
 			if p := recover(); p != nil {
 				s.log.Error("plantage dans le service de dialogue", "panic", fmt.Sprint(p))
-				r = s.failureReply(j.req.NPC, Unavailable)
+				r = s.failureReply(j.req, Unavailable)
 			}
 		}()
 		return s.process(ctx, j.req, j.acct)
@@ -303,11 +305,21 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		s.log.Warn("lecture du souvenir", "err", err)
 	}
 
+	mine, others, err := s.book.HeardDeeds(ctx, npc.Region, account)
+	if err != nil {
+		s.log.Warn("lecture des quêtes rendues", "err", err)
+	}
+	req.Deeds = Deeds{Mine: mine, Others: others}
+
+	maxTokens := s.cfg.MaxTokens
+	if req.Offer != nil {
+		maxTokens += questExtraTokens // le champ "quest" allonge la réponse
+	}
 	temp := s.cfg.Temperature
 	chat := llm.Request{
 		Messages:    BuildMessages(req, heard, memory, s.cfg.MaxHistory, s.places),
 		JSON:        true,
-		MaxTokens:   s.cfg.MaxTokens,
+		MaxTokens:   maxTokens,
 		Temperature: &temp,
 	}
 
@@ -317,7 +329,7 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		chat.Guardrail = s.guardrail()
 	} else if blocked, checked := s.screen(ctx, req.Message); blocked {
 		s.nBlocked.Add(1)
-		return s.failureReply(npc, Blocked)
+		return s.failureReply(req, Blocked)
 	} else if !checked {
 		memoryWrites = false // pas pu vérifier ce message: on parle, mais on ne retient rien
 	}
@@ -330,14 +342,14 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		chat.Guardrail = nil
 		if blocked, checked := s.screen(ctx, req.Message); blocked {
 			s.nBlocked.Add(1)
-			return s.failureReply(npc, Blocked)
+			return s.failureReply(req, Blocked)
 		} else if !checked {
 			memoryWrites = false
 		}
 		resp, err = s.llm.Chat(ctx, chat)
 	}
 	if err != nil {
-		return s.chatFailure(npc, err)
+		return s.chatFailure(req, err)
 	}
 	tokens := resp.TotalTokens(chat)
 	s.success(tokens)
@@ -345,9 +357,12 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 	out, ok := parseOutput(resp.Content)
 	if !ok {
 		s.log.Warn("réponse du modèle inexploitable")
-		return Reply{Text: s.failureReply(npc, Unavailable).Text, Failure: Unavailable, Tokens: tokens}
+		return Reply{Text: s.failureReply(req, Unavailable).Text, Failure: Unavailable, Tokens: tokens}
 	}
 	reply := Reply{Text: out.Reply, Tokens: tokens}
+	if req.Offer != nil && out.Quest != nil && out.Structured && !req.Opening {
+		reply.Quest = s.checkQuest(ctx, *out.Quest, req.Offer.Quest)
+	}
 
 	// Ce qui est retenu n'est écrit que si la réponse respecte le format et que la modération fonctionne.
 	if out.Structured && memoryWrites && !req.Opening {
@@ -369,6 +384,31 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		}
 	}
 	return reply
+}
+
+// questExtraTokens est la marge de réponse ajoutée quand le modèle peut proposer une quête.
+const questExtraTokens = 160
+
+// checkQuest valide (quest.Validate) puis modère une quête proposée. Toute erreur, y compris une
+// modération indisponible, écarte la proposition : on n'affiche jamais un texte non contrôlé.
+func (s *Service) checkQuest(ctx context.Context, p quest.Proposal, qc quest.Context) *quest.Quest {
+	s.nQuestsProposed.Add(1)
+	q, err := quest.Validate(p, qc)
+	if err != nil {
+		s.nQuestsRejected.Add(1)
+		s.log.Info("quête proposée écartée", "raison", err.Error())
+		return nil
+	}
+	texts := []string{q.Title, q.Story}
+	if q.Reward.Note != "" {
+		texts = append(texts, q.Reward.Note)
+	}
+	if err := s.moderator(ctx, texts); err != nil {
+		s.nQuestsRejected.Add(1)
+		s.log.Info("quête proposée non modérée", "raison", err.Error())
+		return nil
+	}
+	return &q
 }
 
 // screen modère un message avec l'endpoint de modération. blocked: le message est refusé.
@@ -407,17 +447,17 @@ func (s *Service) success(tokens int) {
 }
 
 // chatFailure traduit une erreur du fournisseur en réplique d'échec et alimente le disjoncteur.
-func (s *Service) chatFailure(npc world.NPC, err error) Reply {
+func (s *Service) chatFailure(req Request, err error) Reply {
 	switch {
 	case errors.Is(err, llm.ErrBlocked):
 		s.nBlocked.Add(1)
-		return s.failureReply(npc, Blocked)
+		return s.failureReply(req, Blocked)
 	case errors.Is(err, llm.ErrRateLimited):
-		return s.failureReply(npc, Busy)
+		return s.failureReply(req, Busy)
 	case errors.Is(err, llm.ErrUnauthorized):
 		s.log.Error("clé d'API refusée: dialogues de PNJ désactivés")
 		s.chatOK.Store(false)
-		return s.failureReply(npc, Unavailable)
+		return s.failureReply(req, Unavailable)
 	}
 	// Panne, délai dépassé, réponse inexploitable: le disjoncteur s'ouvre après plusieurs échecs
 	// consécutifs pour ne pas faire attendre chaque joueur sur un service qui ne répond plus.
@@ -430,31 +470,31 @@ func (s *Service) chatFailure(npc world.NPC, err error) Reply {
 		s.log.Error("service de dialogue suspendu", "pause", s.cfg.BreakerPause.String())
 	}
 	s.mu.Unlock()
-	return s.failureReply(npc, Unavailable)
+	return s.failureReply(req, Unavailable)
 }
 
 // failureReply fabrique une réplique « en personnage » pour un échec.
-func (s *Service) failureReply(npc world.NPC, f Failure) Reply {
-	return Reply{Text: InCharacter(npc.Name, f), Failure: f}
+func (s *Service) failureReply(req Request, f Failure) Reply {
+	return Reply{Text: InCharacter(req.Lang, req.NPC.NameIn(req.Lang), f), Failure: f}
 }
 
 // InCharacter renvoie la réplique d'un PNJ qui ne peut pas répondre, sans jamais
 // montrer au joueur de message technique.
-func InCharacter(name string, f Failure) string {
+func InCharacter(l i18n.Lang, name string, f Failure) string {
 	if name == "" {
-		name = "Le PNJ"
+		name = i18n.T(l, "npc.fail.anonymous")
 	}
 	switch f {
 	case Busy:
-		return name + " est assailli de questions: laissez-lui un instant."
+		return i18n.T(l, "npc.fail.busy", name)
 	case Cooldown:
-		return name + " lève la main: doucement, une chose à la fois."
+		return i18n.T(l, "npc.fail.cooldown", name)
 	case Budget:
-		return name + " bâille longuement: la journée a été longue. Revenez demain."
+		return i18n.T(l, "npc.fail.budget", name)
 	case Blocked:
-		return name + " fronce les sourcils et fait mine de n'avoir rien entendu."
+		return i18n.T(l, "npc.fail.blocked", name)
 	}
-	return name + " perd le fil de ses pensées et regarde au loin…"
+	return i18n.T(l, "npc.fail.default", name)
 }
 
 // ProbeResult est le résultat de la vérification de l'API.
@@ -535,6 +575,7 @@ func (s *Service) Stats() Stats {
 	st := Stats{
 		Available: s.Available(), Guardrails: s.guardrailsOK.Load(), Moderation: s.moderationOK.Load(),
 		Requests: s.nRequests.Load(), Failures: s.nFailures.Load(), Blocked: s.nBlocked.Load(), Remembered: s.nRemembered.Load(),
+		QuestsOffered: s.nQuestsProposed.Load(), QuestsRejected: s.nQuestsRejected.Load(),
 		TokensToday: tokens, DailyBudget: s.cfg.DailyTokens, InFlight: int(s.active.Load()), Queued: len(s.queue),
 	}
 	if n := s.latencyN.Load(); n > 0 {

@@ -36,7 +36,9 @@ type Moderator func(ctx context.Context, texts []string) error
 // Book est la mémoire collective des PNJ.
 type Book struct {
 	Repo Repo
-	Now  func() time.Time // injectable en test; time.Now par défaut
+	// Deeds, facultatif, donne accès aux quêtes rendues (voir HeardDeeds).
+	Deeds DeedRepo
+	Now   func() time.Time // injectable en test; time.Now par défaut
 }
 
 func (b *Book) now() time.Time {

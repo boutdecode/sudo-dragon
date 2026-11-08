@@ -22,9 +22,17 @@ func runLoreList(ctx context.Context, st *store.Store, account string, w io.Writ
 	if err != nil {
 		return err
 	}
-	if len(cards) == 0 {
+	deeds, err := st.ListDeeds(ctx, account, 100)
+	if err != nil {
+		return err
+	}
+	if len(cards) == 0 && len(deeds) == 0 {
 		fmt.Fprintln(w, "aucune présentation enregistrée")
 		return nil
+	}
+	for _, d := range deeds {
+		fmt.Fprintf(w, "%-16s région (%d,%d)  %s  quête rendue : « %s »\n",
+			d.Account, d.Place.X, d.Place.Y, d.DoneAt.Local().Format(time.DateTime), d.Title)
 	}
 	for _, c := range cards {
 		fmt.Fprintf(w, "%-16s région (%d,%d)  %s  « %s » %s | %s | %s | %s  [niv %d, seigneurs %d, morts %d]\n",
@@ -41,24 +49,24 @@ func runLorePurge(ctx context.Context, st *store.Store, target string, w io.Writ
 	if !ok || value == "" {
 		return fmt.Errorf("cible invalide %q : utilisez account:NOM ou place:RX,RY", target)
 	}
-	var cards, mems int64
+	var cards, mems, quests int64
 	var err error
 	switch kind {
 	case "account":
-		cards, mems, err = st.PurgeAccount(ctx, value)
+		cards, mems, quests, err = st.PurgeAccount(ctx, value)
 	case "place":
 		rx, ry, perr := parseRegion(value)
 		if perr != nil {
 			return perr
 		}
-		cards, mems, err = st.PurgePlace(ctx, world.RegionPos{X: rx, Y: ry})
+		cards, mems, quests, err = st.PurgePlace(ctx, world.RegionPos{X: rx, Y: ry})
 	default:
 		return fmt.Errorf("cible invalide %q : utilisez account:NOM ou place:RX,RY", target)
 	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "%d présentation(s) et %d souvenir(s) supprimé(s) pour %s\n", cards, mems, target)
+	fmt.Fprintf(w, "%d présentation(s), %d souvenir(s) et %d quête(s) supprimé(s) pour %s\n", cards, mems, quests, target)
 	return nil
 }
 

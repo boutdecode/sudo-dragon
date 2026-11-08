@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -458,7 +459,7 @@ func TestBalance(t *testing.T) {
 		const trials = 500
 		for i := 0; i < trials; i++ {
 			b := combat.New(st.Fighter(st.MaxHP), st.Potions,
-				combat.Fighter{HP: sp.HP, MaxHP: sp.HP, Atk: sp.Atk, Def: sp.Def}, sp.Name,
+				combat.Fighter{HP: sp.HP, MaxHP: sp.HP, Atk: sp.Atk, Def: sp.Def}, sp.name(i18n.FR),
 				rand.New(rand.NewPCG(uint64(i), 1)))
 			for turn := 0; b.Result == combat.Ongoing && turn < 500; turn++ {
 				if b.Player.HP <= st.MaxHP/3 && b.Potions > 0 {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/npcai"
@@ -78,12 +79,12 @@ func setupTalker(ctx context.Context, o llmOptions, st *store.Store, w *world.Wo
 	if o.Workers > 0 {
 		cfg.Workers = o.Workers
 	}
-	svc := npcai.New(client, &lore.Book{Repo: st}, cfg,
+	svc := npcai.New(client, &lore.Book{Repo: st, Deeds: st}, cfg,
 		npcai.WithLogger(log),
 		npcai.WithProvider("Mistral AI"),
-		npcai.WithPlaceNames(func(rp world.RegionPos) string {
+		npcai.WithPlaceNames(func(l i18n.Lang, rp world.RegionPos) string {
 			if s := w.StructureOfRegion(rp); s != nil {
-				return s.Name
+				return s.NameIn(l)
 			}
 			return ""
 		}),

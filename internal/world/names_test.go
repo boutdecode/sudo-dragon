@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"strings"
 	"testing"
 	"unicode"
@@ -64,7 +65,8 @@ func TestFortressNamesLookLikeFortresses(t *testing.T) {
 			}
 			found++
 			ok := false
-			for _, p := range fortPrefix {
+			for i := 0; i < numFortPrefixes; i++ {
+				p := i18n.T(i18n.FR, fmt.Sprintf("place.fort.%d", i))
 				ok = ok || strings.HasPrefix(s.Name, p)
 			}
 			if !ok {
@@ -255,5 +257,140 @@ func TestSymmetricRegionsGetDifferentNames(t *testing.T) {
 	// Quelques homonymes fortuits sont normaux (les tables sont finies), pas des dizaines.
 	if same*10 > pairs {
 		t.Fatalf("%d paires de lieux symétriques sur %d portent le même nom", same, pairs)
+	}
+}
+
+// Les noms de PNJ et de forteresses existent dans les deux langues, sans changer
+// l'identité (prénoms, lieux) ni les mondes déjà joués.
+func TestIdentitiesAreTranslated(t *testing.T) {
+	forts, npcs := 0, 0
+	for _, seed := range testSeeds {
+		for _, s := range allStructures(sharedWorld(seed), 5) {
+			if s.NameIn(i18n.FR) != s.Name {
+				t.Fatalf("NameIn(FR) = %q, Name = %q", s.NameIn(i18n.FR), s.Name)
+			}
+			if s.Kind == KindFortress {
+				forts++
+				en := s.NameIn(i18n.EN)
+				if en == s.Name && !strings.HasPrefix(s.Name, "Fort ") && !strings.HasPrefix(s.Name, "Bastion ") {
+					t.Fatalf("forteresse non traduite: %q", en)
+				}
+				if strings.HasPrefix(en, "Citadelle") || strings.HasPrefix(en, "Donjon") {
+					t.Fatalf("préfixe français dans %q", en)
+				}
+			} else if s.NameIn(i18n.EN) != s.Name {
+				t.Fatalf("%v: le nom propre %q ne doit pas changer", s.Kind, s.Name)
+			}
+			for _, n := range s.NPCs {
+				npcs++
+				if n.NameIn(i18n.FR) != n.Name || n.PersonaIn(i18n.FR) != n.Persona {
+					t.Fatalf("version française incohérente: %q / %q", n.NameIn(i18n.FR), n.Name)
+				}
+				en, p := n.NameIn(i18n.EN), n.PersonaIn(i18n.EN)
+				if p.Temperament == "" || p.Quirk == "" || p.Speech == "" || p == n.Persona {
+					t.Fatalf("personnalité non traduite: %+v", p)
+				}
+				switch n.Kind {
+				case NPCHealer:
+					if !strings.HasPrefix(en, "Brother ") && !strings.HasPrefix(en, "Sister ") {
+						t.Fatalf("soigneur %q", en)
+					}
+				case NPCMerchant:
+					if !strings.HasPrefix(en, "Master ") && !strings.HasPrefix(en, "Dame ") {
+						t.Fatalf("marchand %q", en)
+					}
+				}
+				// Les prénoms accentués (Aélis…) sont des noms propres: seuls titres et épithètes changent.
+				if rest := strings.Replace(en, firstNames[n.id.first].name, "", 1); strings.ContainsAny(rest, "éèêàçœ") {
+					t.Fatalf("français dans %q", en)
+				}
+			}
+		}
+	}
+	if forts == 0 || npcs == 0 {
+		t.Fatalf("rien à vérifier: %d forteresses, %d PNJ", forts, npcs)
+	}
+}
+
+// Les tirages d'identité sont bornés par des constantes: elles doivent suivre la taille des
+// listes du catalogue, dans chaque langue, sans quoi un indice tomberait dans le vide.
+func TestIdentityListsMatchTheCatalog(t *testing.T) {
+	lists := map[string]int{
+		"persona.temperament": numTemperaments, "persona.quirk": numQuirks, "persona.speech": numSpeeches,
+		"name.epithet.m": numEpithets, "name.epithet.f": numEpithets, "place.fort": numFortPrefixes,
+	}
+	for _, l := range i18n.Langs {
+		for prefix, want := range lists {
+			if got := i18n.Count(l, prefix); got != want {
+				t.Errorf("%s %s: %d entrées, attendu %d", l, prefix, got, want)
+			}
+		}
+	}
+}
+
+// Aucun radical de nom n'est partagé par deux lieux voisins (rayon des rumeurs et des quêtes).
+func TestPlaceStemsAreDistinctWithinClashRadius(t *testing.T) {
+	for _, seed := range []int64{1, 2, 7, 42, 1234} {
+		w := New(seed)
+		type placed struct {
+			rp   RegionPos
+			base string
+		}
+		var all []placed
+		for ry := -12; ry <= 12; ry++ {
+			for rx := -12; rx <= 12; rx++ {
+				rp := RegionPos{rx, ry}
+				if s := w.StructureOfRegion(rp); s != nil {
+					all = append(all, placed{rp, s.base})
+				}
+			}
+		}
+		for i, a := range all {
+			for _, b := range all[i+1:] {
+				if max(abs(a.rp.X-b.rp.X), abs(a.rp.Y-b.rp.Y)) <= nameClashRadius && a.base == b.base {
+					t.Errorf("seed %d : %q à la fois en %v et en %v", seed, a.base, a.rp, b.rp)
+				}
+			}
+		}
+	}
+}
+
+func TestMostPlacesKeepTheirOriginalName(t *testing.T) {
+	changed, total := 0, 0
+	for _, seed := range []int64{1, 2, 7, 42} {
+		for ry := -15; ry <= 15; ry++ {
+			for rx := -15; rx <= 15; rx++ {
+				rp := RegionPos{rx, ry}
+				total++
+				if baseFor(seed, rp) != rawStem(seed, rp).String() {
+					changed++
+				}
+			}
+		}
+	}
+	if ratio := float64(changed) / float64(total); ratio > 0.25 {
+		t.Fatalf("%.1f %% des noms changent : trop de remplacements", 100*ratio)
+	}
+}
+
+func TestStartVillageHasAStableName(t *testing.T) {
+	a, b := New(1), New(1)
+	pos := a.FindSpawn()
+	sa, sb := a.StructureOfRegion(RegionOf(pos.X, pos.Y)), b.StructureOfRegion(RegionOf(pos.X, pos.Y))
+	if sa == nil || sa.Name == "" || sa.Name != sb.Name {
+		t.Fatalf("village de départ : %v / %v", sa, sb)
+	}
+}
+
+func TestPlaceNamesAreDeterministic(t *testing.T) {
+	a, b := New(5), New(5)
+	for ry := -5; ry <= 5; ry++ {
+		for rx := -5; rx <= 5; rx++ {
+			rp := RegionPos{rx, ry}
+			sa, sb := a.StructureOfRegion(rp), b.StructureOfRegion(rp)
+			if (sa == nil) != (sb == nil) || (sa != nil && sa.Name != sb.Name) {
+				t.Fatalf("noms différents en %v", rp)
+			}
+		}
 	}
 }

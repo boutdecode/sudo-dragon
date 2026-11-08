@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kevin/ascii-adventure/internal/game"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -71,7 +72,7 @@ func TestGlyphsAreASCII(t *testing.T) {
 		if len(variants[tile]) == 0 {
 			t.Errorf("pas de glyphes pour la tuile %d", tile)
 		}
-		if TerrainName(tile) == "?" {
+		if TerrainName(i18n.FR, tile) == "?" {
 			t.Errorf("pas de nom pour la tuile %d", tile)
 		}
 	}
@@ -158,7 +159,7 @@ func TestTerrainGlyphsDoNotCollideWithEntities(t *testing.T) {
 
 func TestMonsterNamesMatchServer(t *testing.T) {
 	for _, kind := range game.SpeciesKinds() {
-		if got, want := MonsterName(kind), game.SpeciesName(kind); got != want {
+		if got, want := MonsterName(i18n.FR, kind), game.SpeciesName(i18n.FR, kind); got != want {
 			t.Errorf("%s: nom client %q, nom serveur %q", kind, got, want)
 		}
 	}
@@ -222,7 +223,7 @@ func TestEveryTileHasStyleGlyphAndName(t *testing.T) {
 		if len(variants[tile]) == 0 {
 			t.Errorf("tuile %d: pas de glyphes", tile)
 		}
-		if TerrainName(tile) == "?" {
+		if TerrainName(i18n.FR, tile) == "?" {
 			t.Errorf("tuile %d: pas de nom", tile)
 		}
 	}
@@ -257,7 +258,7 @@ func TestStructuresAreDrawnWithWallsDoorsAndNPCs(t *testing.T) {
 }
 
 func TestNPCNamesAndGlyphs(t *testing.T) {
-	if NPCName(world.NPCMerchant) != "Marchand" || NPCName(world.NPCHealer) != "Soigneur" {
+	if NPCName(i18n.FR, world.NPCMerchant) != "Marchand" || NPCName(i18n.FR, world.NPCHealer) != "Soigneur" {
 		t.Error("noms de PNJ inattendus")
 	}
 	if NPCGlyph(world.NPCMerchant) == NPCGlyph(world.NPCHealer) {
@@ -289,5 +290,35 @@ func TestPlayerAndMonsterDrawnOverNPC(t *testing.T) {
 	lines = plain(Viewport(w, npc.Pos.X, npc.Pos.Y, 11, 5, nil, []protocol.Monster{mon}, 0))
 	if lines[2][5] != 'r' {
 		t.Fatalf("le monstre doit être dessiné au-dessus du PNJ, trouvé %q", lines[2][5])
+	}
+}
+
+func TestReadyQuestGiverShowsQuestionMark(t *testing.T) {
+	w := world.New(1)
+	var giver world.NPC
+	found := false
+	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
+		for _, n := range s.NPCs {
+			if n.GivesQuests && !found {
+				giver, found = n, true
+			}
+		}
+	}
+	if !found {
+		t.Skip("pas de donneur près du départ")
+	}
+	draw := func(ready map[world.NPCKey]bool) string {
+		return ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, ready))
+	}
+	center := func(s string) rune { return []rune(strings.Split(s, "\n")[2])[4] }
+	if got := center(draw(nil)); got != '!' {
+		t.Fatalf("donneur sans quête prête : %q", got)
+	}
+	if got := center(draw(map[world.NPCKey]bool{giver.Key(): true})); got != '?' {
+		t.Fatalf("donneur avec quête prête : %q", got)
+	}
+	other := map[world.NPCKey]bool{{Region: giver.Region, Index: giver.Index + 50}: true}
+	if got := center(draw(other)); got != '!' {
+		t.Fatalf("une autre quête prête change ce PNJ : %q", got)
 	}
 }

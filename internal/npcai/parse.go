@@ -2,9 +2,11 @@ package npcai
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/kevin/ascii-adventure/internal/lore"
+	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 )
 
@@ -15,6 +17,7 @@ type output struct {
 	Reply  string
 	Intro  *lore.Intro // nil si le joueur ne s'est pas présenté (ou champs inexploitables)
 	Memory string
+	Quest  *quest.Proposal // proposition brute, à valider (quest.Validate) ; nil si aucune
 	// Structured est faux quand le modèle n'a pas respecté le format JSON: on
 	// garde alors son texte comme réplique, mais on n'en tire aucune mémoire.
 	Structured bool
@@ -43,6 +46,63 @@ type rawOutput struct {
 	Reply  flexString      `json:"reply"`
 	Intro  json.RawMessage `json:"intro"`
 	Memory flexString      `json:"memory"`
+	Quest  json.RawMessage `json:"quest"`
+}
+
+// flexInt accepte un nombre, une chaîne numérique ou null (0). Les valeurs hors bornes sont ramenées
+// dans [-1e9, 1e9] : la validation de la quête fait le reste.
+type flexInt int
+
+func (f *flexInt) UnmarshalJSON(b []byte) error {
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	var n float64
+	switch x := v.(type) {
+	case float64:
+		n = x
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(x), 64); err == nil {
+			n = parsed
+		}
+	}
+	*f = flexInt(max(-1e9, min(1e9, n)))
+	return nil
+}
+
+type rawQuest struct {
+	Title     flexString `json:"title"`
+	Story     flexString `json:"story"`
+	Objective struct {
+		Type    flexString `json:"type"`
+		Species flexString `json:"species"`
+		Place   flexString `json:"place"`
+		Count   flexInt    `json:"count"`
+	} `json:"objective"`
+	Reward struct {
+		Gold    flexInt    `json:"gold"`
+		XP      flexInt    `json:"xp"`
+		Potions flexInt    `json:"potions"`
+		Note    flexString `json:"note"`
+	} `json:"reward"`
+}
+
+func parseQuest(raw json.RawMessage) *quest.Proposal {
+	raw = []byte(strings.TrimSpace(string(raw)))
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil
+	}
+	var rq rawQuest
+	if err := json.Unmarshal(raw, &rq); err != nil {
+		return nil
+	}
+	o, r := rq.Objective, rq.Reward
+	return &quest.Proposal{
+		Title: string(rq.Title), Story: string(rq.Story),
+		Type: string(o.Type), Species: string(o.Species), Place: string(o.Place), Count: int(o.Count),
+		Gold: int(r.Gold), XP: int(r.XP), Potions: int(r.Potions), Note: string(r.Note),
+	}
 }
 
 type rawIntro struct {
@@ -67,6 +127,7 @@ func parseOutput(content string) (out output, ok bool) {
 				out.Structured = true
 				out.Memory = string(raw.Memory)
 				out.Intro = parseIntro(raw.Intro)
+				out.Quest = parseQuest(raw.Quest)
 				return out, true
 			}
 		}

@@ -4,8 +4,9 @@
 package combat
 
 import (
-	"fmt"
 	"math/rand/v2"
+
+	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
 // Action est le choix d'un joueur pour un tour.
@@ -75,7 +76,8 @@ type Fighter struct {
 type Battle struct {
 	Player      Fighter
 	Monster     Fighter
-	MonsterName string // pour les messages, ex. "Rat"
+	MonsterName string    // pour les messages, ex. "Rat" (déjà dans la langue du joueur)
+	Lang        i18n.Lang // langue du journal; le zéro vaut le français
 	Potions     int
 	Round       int
 	Result      Result
@@ -87,6 +89,8 @@ type Battle struct {
 func New(player Fighter, potions int, monster Fighter, monsterName string, rng *rand.Rand) *Battle {
 	return &Battle{Player: player, Monster: monster, MonsterName: monsterName, Potions: potions, rng: rng}
 }
+
+func (b *Battle) t(key string, args ...any) string { return i18n.T(b.Lang, key, args...) }
 
 // damage calcule les dégâts d'une attaque: attaque moins défense, ±1, minimum 1.
 func (b *Battle) damage(atk, def int, critRate float64) (dmg int, crit bool) {
@@ -112,34 +116,34 @@ func (b *Battle) Act(a Action) []string {
 		dmg, crit := b.damage(b.Player.Atk, b.Monster.Def, playerCritRate)
 		b.Monster.HP = max(0, b.Monster.HP-dmg)
 		if crit {
-			log = append(log, fmt.Sprintf("Coup critique ! Vous infligez %d dégâts au %s.", dmg, b.MonsterName))
+			log = append(log, b.t("combat.player_crit", dmg, b.MonsterName))
 		} else {
-			log = append(log, fmt.Sprintf("Vous frappez le %s: %d dégâts.", b.MonsterName, dmg))
+			log = append(log, b.t("combat.player_hit", b.MonsterName, dmg))
 		}
 	case Defend:
 		defending = true
-		log = append(log, "Vous vous mettez en garde.")
+		log = append(log, b.t("combat.defend"))
 	case Item:
 		if b.Potions <= 0 {
-			return []string{"Vous n'avez plus de potion."}
+			return []string{b.t("combat.no_potion")}
 		}
 		b.Potions--
 		healed := min(HealAmount, b.Player.MaxHP-b.Player.HP)
 		b.Player.HP += healed
-		log = append(log, fmt.Sprintf("Vous buvez une potion: +%d PV.", healed))
+		log = append(log, b.t("combat.drink", healed))
 	case Flee:
 		if b.rng.Float64() < fleeChance {
 			b.Result = Fled
-			return append(log, "Vous prenez la fuite !")
+			return append(log, b.t("combat.flee_ok"))
 		}
-		log = append(log, "Vous n'arrivez pas à fuir !")
+		log = append(log, b.t("combat.flee_fail"))
 	default:
-		return []string{"Action inconnue."}
+		return []string{b.t("combat.unknown_action")}
 	}
 
 	if b.Monster.HP <= 0 {
 		b.Result = Won
-		return append(log, fmt.Sprintf("Le %s est vaincu !", b.MonsterName))
+		return append(log, b.t("combat.monster_dead", b.MonsterName))
 	}
 
 	// Riposte du monstre.
@@ -150,15 +154,15 @@ func (b *Battle) Act(a Action) []string {
 	b.Player.HP = max(0, b.Player.HP-dmg)
 	switch {
 	case crit:
-		log = append(log, fmt.Sprintf("Le %s vous porte un coup terrible: %d dégâts !", b.MonsterName, dmg))
+		log = append(log, b.t("combat.monster_crit", b.MonsterName, dmg))
 	case defending:
-		log = append(log, fmt.Sprintf("Le %s attaque, vous parez en partie: %d dégâts.", b.MonsterName, dmg))
+		log = append(log, b.t("combat.monster_partial", b.MonsterName, dmg))
 	default:
-		log = append(log, fmt.Sprintf("Le %s vous attaque: %d dégâts.", b.MonsterName, dmg))
+		log = append(log, b.t("combat.monster_hit", b.MonsterName, dmg))
 	}
 	if b.Player.HP <= 0 {
 		b.Result = Lost
-		log = append(log, "Vous êtes terrassé…")
+		log = append(log, b.t("combat.you_died"))
 		return log
 	}
 	b.Round++

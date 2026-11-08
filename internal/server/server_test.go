@@ -498,3 +498,86 @@ func TestPingGetsPongAndSnapshotCountsOnline(t *testing.T) {
 	}
 	t.Fatal("le compteur de joueurs en ligne n'a jamais atteint 2")
 }
+
+// loginLang ouvre une session avec la langue donnée.
+func loginLang(t *testing.T, url, name, lang string) *websocket.Conn {
+	t.Helper()
+	c := dial(t, url)
+	lg := reg(name)
+	lg.Lang = lang
+	send(t, c, protocol.TLogin, lg)
+	recvType(t, c, protocol.TWelcome)
+	return c
+}
+
+func TestServerSpeaksTheClientsLanguage(t *testing.T) {
+	url := newTestServer(t)
+
+	// Erreurs de connexion: anglais, français par défaut et pour une langue inconnue.
+	for lang, want := range map[string]string{"en": "invalid username", "": "pseudo invalide", "tlh": "pseudo invalide"} {
+		c := dial(t, url)
+		lg := reg("x")
+		lg.Lang = lang
+		send(t, c, protocol.TLogin, lg)
+		var e protocol.Error
+		if err := recvType(t, c, protocol.TError).Payload(&e); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(e.Msg, want) {
+			t.Errorf("langue %q: %q, attendu %q", lang, e.Msg, want)
+		}
+	}
+
+	// Erreurs de chat et aide.
+	en := loginLang(t, url, "alice", "en")
+	send(t, en, protocol.TChatSend, protocol.ChatSend{Text: "/w nobody hi"})
+	var e protocol.Error
+	if err := recvType(t, en, protocol.TError).Payload(&e); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(e.Msg, "player not found") {
+		t.Errorf("erreur de chuchotement: %q", e.Msg)
+	}
+	time.Sleep(250 * time.Millisecond)
+	send(t, en, protocol.TChatSend, protocol.ChatSend{Text: "/help"})
+	for range 5 {
+		var ch protocol.Chat
+		if err := recvType(t, en, protocol.TChat).Payload(&ch); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(ch.Text, "/w username") {
+			goto helpOK
+		}
+	}
+	t.Fatal("aide anglaise non reçue")
+helpOK:
+
+	// Les annonces suivent la langue de chaque destinataire.
+	fr := loginLang(t, url, "bernard", "fr")
+	for range 10 {
+		var ch protocol.Chat
+		if err := recvType(t, en, protocol.TChat).Payload(&ch); err != nil {
+			t.Fatal(err)
+		}
+		if ch.Channel == protocol.ChanSystem && strings.Contains(ch.Text, "bernard") {
+			if ch.Text != "bernard has joined the world" {
+				t.Fatalf("annonce anglaise: %q", ch.Text)
+			}
+			break
+		}
+	}
+	loginLang(t, url, "carole", "en")
+	for range 10 {
+		var ch protocol.Chat
+		if err := recvType(t, fr, protocol.TChat).Payload(&ch); err != nil {
+			t.Fatal(err)
+		}
+		if ch.Channel == protocol.ChanSystem && strings.Contains(ch.Text, "carole") {
+			if ch.Text != "carole a rejoint le monde" {
+				t.Fatalf("annonce française: %q", ch.Text)
+			}
+			return
+		}
+	}
+	t.Fatal("annonce non reçue")
+}

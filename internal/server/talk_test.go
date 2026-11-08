@@ -50,7 +50,7 @@ func startTalkServer(t *testing.T) *talkEnv {
 		b, _ := json.Marshal(out)
 		return llm.Response{Content: string(b), Usage: llm.Usage{Total: 50}}, nil
 	}
-	book := &lore.Book{Repo: be.Store}
+	book := &lore.Book{Repo: be.Store, Deeds: be.Store}
 	cfg := npcai.DefaultConfig()
 	cfg.MinInterval = -1
 	svc := npcai.New(fake, book, cfg,

@@ -579,3 +579,31 @@ func BenchmarkChunkWithStructures(b *testing.B) {
 		}
 	}
 }
+
+func TestEveryPlaceHasAQuestGiverAndOthersAreVillagers(t *testing.T) {
+	someOther := false
+	for _, seed := range testSeeds {
+		for _, s := range allStructures(sharedWorld(seed), 5) {
+			givers, villagers := 0, 0
+			for _, n := range s.NPCs {
+				if n.GivesQuests && n.Kind != NPCVillager {
+					t.Fatalf("%s ne devrait pas donner de quêtes", n.Kind)
+				}
+				if n.Kind == NPCVillager {
+					villagers++
+					if n.GivesQuests {
+						givers++
+					} else {
+						someOther = true
+					}
+				}
+			}
+			if villagers > 0 && givers == 0 {
+				t.Fatalf("seed %d %v : aucun donneur de quêtes parmi %d villageois", seed, s.Kind, villagers)
+			}
+		}
+	}
+	if !someOther {
+		t.Error("tous les villageois donnent des quêtes : le tirage ne varie pas")
+	}
+}

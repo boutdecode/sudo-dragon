@@ -3,6 +3,7 @@ package game
 import (
 	"slices"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
@@ -36,25 +37,23 @@ func (t *talk) idleLimit() uint64 {
 func (g *Game) talkerReady() bool { return g.Talker != nil && g.Talker.Available() }
 
 // placeName renvoie le nom du lieu d'une région.
-func (g *Game) placeName(rp world.RegionPos) string {
+func (g *Game) placeName(l i18n.Lang, rp world.RegionPos) string {
 	if s := g.World.StructureOfRegion(rp); s != nil {
-		return s.Name
+		return s.NameIn(l)
 	}
 	return ""
 }
 
 // noticeText est l'avis montré avant la première discussion: ce qui part vers un
 // service tiers, ce qui est retenu et partagé.
-func (g *Game) noticeText() string {
-	provider := "un service de langage tiers"
+func (g *Game) noticeText(l i18n.Lang) string {
+	provider := i18n.T(l, "talk.notice.default_provider")
 	if g.Talker != nil {
-		provider = g.Talker.Provider()
+		if name := g.Talker.Provider(); name != "" {
+			provider = name
+		}
 	}
-	return "Pour discuter, vos messages sont envoyés à " + provider + ", qui les traite pour faire répondre le PNJ. " +
-		"N'y mettez aucune information personnelle. " +
-		"Ce que vous dites de vous (nom, métier, origine, but) est retenu par les PNJ et peut être répété à d'autres joueurs, " +
-		"sous forme de rumeurs, pendant environ deux semaines. " +
-		"Rien de ce que dit un PNJ n'a d'effet sur le jeu: on ne l'achète ni ne l'obtient par la parole."
+	return i18n.T(l, "talk.notice", provider)
 }
 
 // chatAct traite les actions propres à la discussion libre.
@@ -66,7 +65,7 @@ func (g *Game) chatAct(p *player, action, text string) {
 			return
 		}
 		if !g.talkerReady() {
-			g.sendTalk(p, t.npc.Kind, []string{t.npc.Name + " ne semble pas d'humeur à bavarder."}, false)
+			g.sendTalk(p, t.npc.Kind, []string{i18n.T(p.lang, "talk.not_in_mood", t.npc.NameIn(p.lang))}, false)
 			return
 		}
 		if !p.consent {
@@ -89,7 +88,7 @@ func (g *Game) chatAct(p *player, action, text string) {
 			return
 		}
 		t.mode = protocol.NPCModeMenu
-		g.sendTalk(p, t.npc.Kind, []string{"Vous gardez vos paroles pour vous."}, false)
+		g.sendTalk(p, t.npc.Kind, []string{i18n.T(p.lang, "talk.keep_silent")}, false)
 
 	case protocol.NPCBack:
 		if t.mode == protocol.NPCModeMenu {
@@ -128,7 +127,7 @@ func (g *Game) say(p *player, text string) {
 	}
 	t.lines = appendLine(t.lines, protocol.NPCLine{Who: "you", Text: text})
 	if !g.talkerReady() {
-		t.lines = appendLine(t.lines, protocol.NPCLine{Who: "npc", Text: npcai.InCharacter(t.npc.Name, npcai.Unavailable)})
+		t.lines = appendLine(t.lines, protocol.NPCLine{Who: "npc", Text: npcai.InCharacter(p.lang, t.npc.NameIn(p.lang), npcai.Unavailable)})
 		g.sendTalk(p, t.npc.Kind, nil, false)
 		return
 	}
@@ -140,17 +139,19 @@ func (g *Game) say(p *player, text string) {
 // ask lance la demande au modèle. La réponse revient dans la goroutine de jeu via g.do.
 func (g *Game) ask(p *player, text string, opening bool) {
 	t := p.talk
-	place, kind := "ce lieu", world.KindVillage
+	place, kind := i18n.T(p.lang, "talk.this_place"), world.KindVillage
 	if s := g.World.StructureOfRegion(t.npc.Region); s != nil {
-		place, kind = s.Name, s.Kind
+		place, kind = s.NameIn(p.lang), s.Kind
 	}
 	req := npcai.Request{
-		NPC: t.npc, Place: place, PlaceKind: kind,
+		NPC: t.npc, Lang: p.lang, Place: place, PlaceKind: kind,
+		Region: g.World.TerritoryAt(t.npc.Pos.X, t.npc.Pos.Y).NameIn(p.lang),
 		Speaker: npcai.Speaker{
 			Account: p.name, Level: p.stats.Level, Kills: p.stats.Kills,
 			BossKills: p.stats.BossKills, Deaths: p.stats.Deaths,
 		},
 		Message: text, History: slices.Clone(t.history), Opening: opening,
+		Reputation: p.rep[t.npc.Region], Offer: g.offerContext(p, t.npc),
 	}
 	id, gen := p.id, t.gen
 	g.Talker.Ask(req, func(rep npcai.Reply) {
@@ -169,7 +170,7 @@ func (g *Game) deliver(id int, gen uint64, text string, opening bool, rep npcai.
 	t.pending = false
 	t.lines = appendLine(t.lines, protocol.NPCLine{Who: "npc", Text: rep.Text})
 	if rep.Remembered {
-		t.lines = appendLine(t.lines, protocol.NPCLine{Who: "sys", Text: "(" + t.npc.Name + " retient ce que vous venez de dire.)"})
+		t.lines = appendLine(t.lines, protocol.NPCLine{Who: "sys", Text: i18n.T(p.lang, "talk.remembers", t.npc.NameIn(p.lang))})
 	}
 	if rep.Failure == npcai.OK && !opening {
 		t.history = append(t.history, npcai.Turn{Player: text, NPC: rep.Text})
@@ -177,7 +178,10 @@ func (g *Game) deliver(id int, gen uint64, text string, opening bool, rep npcai.
 			t.history = t.history[len(t.history)-maxHistory:]
 		}
 	}
-	if t.mode == protocol.NPCModeChat { // sinon la ligne est gardée pour le retour en discussion
+	if rep.Quest != nil && rep.Failure == npcai.OK {
+		g.proposeQuest(p, rep.Quest) // passe en mode quête si la proposition est encore recevable
+	}
+	if t.mode == protocol.NPCModeChat || t.mode == protocol.NPCModeQuest { // sinon la ligne est gardée pour le retour en discussion
 		g.sendTalk(p, t.npc.Kind, nil, false)
 	}
 }

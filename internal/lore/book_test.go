@@ -317,7 +317,7 @@ func TestPurgeByAccountAndByPlace(t *testing.T) {
 	_ = e.book.Memorize(e.ctx, world.NPCKey{Region: rp(0, 0)}, "aldric", "souvenir a")
 	_ = e.book.Memorize(e.ctx, world.NPCKey{Region: rp(0, 0)}, "brenna", "souvenir b")
 
-	cards, mems, err := e.st.PurgeAccount(e.ctx, "ALDRIC")
+	cards, mems, _, err := e.st.PurgeAccount(e.ctx, "ALDRIC")
 	if err != nil || cards != 2 || mems != 1 {
 		t.Fatalf("purge du compte: %d fiches, %d souvenirs, %v", cards, mems, err)
 	}
@@ -325,14 +325,14 @@ func TestPurgeByAccountAndByPlace(t *testing.T) {
 		t.Fatalf("après purge: %+v", left)
 	}
 
-	cards, mems, err = e.st.PurgePlace(e.ctx, rp(0, 0))
+	cards, mems, _, err = e.st.PurgePlace(e.ctx, rp(0, 0))
 	if err != nil || cards != 1 || mems != 1 {
 		t.Fatalf("purge du lieu: %d fiches, %d souvenirs, %v", cards, mems, err)
 	}
 	if left, _ := e.st.ListCards(e.ctx, "", 10); len(left) != 0 {
 		t.Fatalf("reste: %+v", left)
 	}
-	if cards, mems, _ := e.st.PurgeAccount(e.ctx, "personne"); cards != 0 || mems != 0 {
+	if cards, mems, _, _ := e.st.PurgeAccount(e.ctx, "personne"); cards != 0 || mems != 0 {
 		t.Fatal("purge d'un compte sans données")
 	}
 }
