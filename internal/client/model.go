@@ -155,6 +155,14 @@ type Model struct {
 	locTerritory world.TerritoryID
 	locPlace     world.RegionPos
 	locInPlace   bool
+
+	// Marche automatique /moveto (voir moveto.go).
+	walking    bool
+	walkTarget world.Pos
+	walkPath   []world.Pos
+	walkGen    int
+	walkLast   world.Pos // position au dernier pas envoyé
+	walkStuck  int       // ticks consécutifs sans progrès
 }
 
 // New crée le modèle initial, en français. Voir NewLang pour une autre langue.
@@ -305,6 +313,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
 		m.locSeen, m.locInPlace = false, false
 		m.hasPing = false
+		m.walkGen++
+		m.walking, m.walkPath = false, nil
 		m = m.sendPing()
 		return m, tea.Batch(waitEvent(m.conn), pingTick(m.conn))
 
@@ -314,6 +324,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m = m.sendPing()
 		return m, pingTick(m.conn)
+
+	case walkTickMsg:
+		return m.updateWalk(msg)
 
 	case connectFailedMsg:
 		m.state = stateLogin
@@ -445,6 +458,17 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateNPCKey(msg)
 	}
 
+	// Une touche de déplacement, Échap, q ou i interrompt la marche automatique.
+	if !m.chatting && m.walking {
+		k := msg.String()
+		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" {
+			m.stopWalk("cli.moveto.interrupted")
+			if isDir || k == "esc" {
+				return m, nil
+			}
+		}
+	}
+
 	if m.chatting {
 		switch msg.String() {
 		case "esc":
@@ -453,12 +477,20 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.chatInput.Blur()
 			return m, nil
 		case "enter":
-			if text := strings.TrimSpace(m.chatInput.Value()); text != "" && m.conn != nil {
-				m.conn.Send(protocol.TChatSend, protocol.ChatSend{Text: text})
-			}
+			text := strings.TrimSpace(m.chatInput.Value())
 			m.chatting = false
 			m.chatInput.Reset()
 			m.chatInput.Blur()
+			if target, isCmd, ok := parseMoveto(text); isCmd {
+				if !ok {
+					m.sysLine("cli.err.usage_moveto")
+					return m, nil
+				}
+				return m.startMoveto(target)
+			}
+			if text != "" && m.conn != nil {
+				m.conn.Send(protocol.TChatSend, protocol.ChatSend{Text: text})
+			}
 			return m, nil
 		}
 		return m.forwardToInput(msg)
