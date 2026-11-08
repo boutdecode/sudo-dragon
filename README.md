@@ -125,11 +125,11 @@ Un village se trouve toujours à quelques dizaines de cases du point de départ.
 
 | Lieu | Taille | Contenu |
 |---|---|---|
-| Village | ~32 × 26 | 4 à 8 maisons reliées à une place par des chemins, un **soigneur** et 3 **villageois** |
-| Ville | ~58 × 46 | muraille à quatre portes, deux avenues, une place, une vingtaine de bâtiments, un **marchand**, un **soigneur** et 5 **villageois** |
+| Village | ~32 × 26 | 4 à 8 maisons reliées à une place par des chemins, un **soigneur**, 3 **villageois** et un **chef** |
+| Ville | ~58 × 46 | muraille à quatre portes, deux avenues, une place, une vingtaine de bâtiments, un **marchand**, un **soigneur**, 5 **villageois** et un **maire** |
 | Forteresse | 48 × 40 | enceinte épaisse à tours d'angle et un portail, cour, deux casernes, donjon cloisonné ; **8 soldats et le seigneur de guerre** |
 
-Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `V` villageois, `!` villageois qui confie des quêtes (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance).
+Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `C` chef de village ou maire (il connaît les lieux à 3 régions alentour, direction et distance, et renseigne même sans clé Mistral), `V` villageois, `!` villageois qui confie des quêtes (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance).
 
 **Zones sûres.** Un village ou une ville, avec trois cases de marge, est une zone sûre : aucun monstre n'y apparaît ni n'y entre,
 un joueur qui s'y trouve n'est ni poursuivi ni attaqué, et il y regagne 1 PV par seconde (au lieu d'un toutes les 3 secondes).

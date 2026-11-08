@@ -184,7 +184,7 @@ func TestNPCsStandOnFloorAndNeverBlockEntrance(t *testing.T) {
 			seen := reachable(s) // les PNJ sont des obstacles dans ce parcours
 			for _, n := range s.NPCs {
 				// Les villageois peuvent se tenir sur la place (route) ; les autres PNJ restent à l'intérieur.
-				if tile := s.TileAt(n.Pos.X, n.Pos.Y); tile != Floor && !(n.Kind == NPCVillager && tile == Road) {
+				if tile := s.TileAt(n.Pos.X, n.Pos.Y); tile != Floor && !((n.Kind == NPCVillager || n.Kind == NPCChief || n.Kind == NPCMayor) && tile == Road) {
 					t.Fatalf("seed %d %v: PNJ %s hors d'un sol intérieur (tuile %d)", seed, s.Kind, n.Kind, tile)
 				}
 				// Au moins un voisin atteignable, sinon le joueur ne peut pas lui parler.
@@ -213,12 +213,18 @@ func TestNPCsPerKind(t *testing.T) {
 			}
 			switch s.Kind {
 			case KindVillage:
-				if counts[NPCHealer] != 1 || counts[NPCVillager] != 3 || len(s.NPCs) != 4 {
-					t.Fatalf("village: PNJ %v, attendu un soigneur et 3 villageois", counts)
+				if counts[NPCHealer] != 1 || counts[NPCVillager] != 3 || counts[NPCChief] != 1 || len(s.NPCs) != 5 {
+					t.Fatalf("village: PNJ %v, attendu un soigneur, 3 villageois et un chef", counts)
+				}
+				if s.NPCs[len(s.NPCs)-1].Kind != NPCChief {
+					t.Fatalf("village: le chef doit être le dernier PNJ: %v", s.NPCs)
 				}
 			case KindTown:
-				if counts[NPCHealer] != 1 || counts[NPCMerchant] != 1 || counts[NPCVillager] != 5 || len(s.NPCs) != 7 {
-					t.Fatalf("ville: PNJ %v, attendu un marchand, un soigneur et 5 villageois", counts)
+				if counts[NPCHealer] != 1 || counts[NPCMerchant] != 1 || counts[NPCVillager] != 5 || counts[NPCMayor] != 1 || len(s.NPCs) != 8 {
+					t.Fatalf("ville: PNJ %v, attendu un marchand, un soigneur, 5 villageois et un maire", counts)
+				}
+				if s.NPCs[len(s.NPCs)-1].Kind != NPCMayor {
+					t.Fatalf("ville: le maire doit être le dernier PNJ: %v", s.NPCs)
 				}
 				if s.NPCs[0].Kind != NPCMerchant || s.NPCs[1].Kind != NPCHealer {
 					t.Fatalf("ville: les indices des PNJ d'origine ont bougé : %v", s.NPCs)
@@ -249,7 +255,7 @@ func TestVillagersComeAfterOriginalNPCsAndAreDistinct(t *testing.T) {
 				}
 				if n.Kind == NPCVillager {
 					sawVillager = true
-				} else if sawVillager {
+				} else if sawVillager && n.Kind != NPCChief && n.Kind != NPCMayor {
 					t.Fatalf("PNJ %s après un villageois", n.Kind)
 				}
 				if seenPos[n.Pos] || seenName[n.Name] {

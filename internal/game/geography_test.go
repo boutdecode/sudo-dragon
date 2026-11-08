@@ -1,0 +1,124 @@
+package game
+
+import (
+	"math"
+	"strings"
+	"testing"
+
+	"github.com/kevin/ascii-adventure/internal/i18n"
+	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/world"
+)
+
+func TestCompassAndDistanceBuckets(t *testing.T) {
+	// Le nord est vers les y décroissants.
+	for _, c := range []struct {
+		dx, dy int
+		want   string
+	}{
+		{10, 0, "e"}, {-10, 0, "w"}, {0, -10, "n"}, {0, 10, "s"},
+		{10, -10, "ne"}, {-10, -10, "nw"}, {10, 10, "se"}, {-10, 10, "sw"},
+		{100, -20, "e"}, {20, -100, "n"},
+	} {
+		if got := compass(c.dx, c.dy); got != c.want {
+			t.Errorf("(%d,%d) → %s, attendu %s", c.dx, c.dy, got, c.want)
+		}
+	}
+	for d, want := range map[float64]string{0: "near", 299: "near", 300: "walk", 699: "walk", 700: "far", 5000: "far"} {
+		if got := distanceKey(d); got != want {
+			t.Errorf("%v → %s, attendu %s", d, got, want)
+		}
+	}
+}
+
+func TestChiefKnowsOnlyNearbyPlacesSortedByDistance(t *testing.T) {
+	r := newNPCRig(t, world.NPCChief)
+	lms := r.g.landmarksFor(r.npc, i18n.FR)
+	if len(lms) == 0 || len(lms) > maxLandmarks {
+		t.Fatalf("%d lieux connus", len(lms))
+	}
+	// Comparaison avec le monde : exactement les lieux à 3 régions au plus, hors le sien.
+	want := map[string]bool{}
+	for dy := -3; dy <= 3; dy++ {
+		for dx := -3; dx <= 3; dx++ {
+			rp := world.RegionPos{X: r.npc.Region.X + dx, Y: r.npc.Region.Y + dy}
+			if s := r.g.World.StructureOfRegion(rp); s != nil && rp != r.npc.Region {
+				want[s.NameIn(i18n.FR)] = true
+			}
+		}
+	}
+	prev := -1.0
+	for _, lm := range lms {
+		if !want[lm.Name] {
+			t.Errorf("%q ne devrait pas être connu", lm.Name)
+		}
+		if lm.Name == "" || lm.Kind == "" || lm.Direction == "" || lm.Distance == "" {
+			t.Errorf("fiche incomplète: %+v", lm)
+		}
+		_ = prev
+	}
+	if len(want) >= maxLandmarks && len(lms) != maxLandmarks {
+		t.Errorf("%d lieux possibles, %d retenus", len(want), len(lms))
+	}
+	// Le plus proche vient en premier.
+	best, bestD := "", math.MaxFloat64
+	for dy := -3; dy <= 3; dy++ {
+		for dx := -3; dx <= 3; dx++ {
+			rp := world.RegionPos{X: r.npc.Region.X + dx, Y: r.npc.Region.Y + dy}
+			if s := r.g.World.StructureOfRegion(rp); s != nil && rp != r.npc.Region {
+				c := s.Center()
+				if d := math.Hypot(float64(c.X-r.npc.Pos.X), float64(c.Y-r.npc.Pos.Y)); d < bestD {
+					best, bestD = s.NameIn(i18n.FR), d
+				}
+			}
+		}
+	}
+	if lms[0].Name != best {
+		t.Errorf("premier lieu %q, le plus proche est %q", lms[0].Name, best)
+	}
+	// Mémorisé, et localisé.
+	if again := r.g.landmarksFor(r.npc, i18n.FR); &again[0] != &lms[0] {
+		t.Error("liste recalculée au lieu d'être mémorisée")
+	}
+	en := r.g.landmarksFor(r.npc, i18n.EN)
+	if !strings.HasPrefix(en[0].Direction, "to the ") {
+		t.Errorf("direction anglaise: %q", en[0].Direction)
+	}
+}
+
+func TestOnlyChiefsAndMayorsGetLandmarks(t *testing.T) {
+	for kind, want := range map[world.NPCKind]bool{world.NPCChief: true, world.NPCMayor: true, world.NPCVillager: false, world.NPCHealer: false, world.NPCMerchant: false} {
+		r := newNPCRig(t, kind)
+		ft := newFakeTalker()
+		r.g.Talker, r.p.consent = ft, true
+		r.talk()
+		r.act(protocol.NPCTalk)
+		got := len(ft.req(0).Landmarks) > 0
+		if got != want {
+			t.Errorf("%s : lieux connus = %v, attendu %v", kind, got, want)
+		}
+	}
+}
+
+func TestChiefGreetsWithNeighboursWhenNoModelIsAvailable(t *testing.T) {
+	r := newNPCRig(t, world.NPCChief) // pas de Talker
+	r.talk()
+	d := r.last()
+	lms := r.g.landmarksFor(r.npc, i18n.FR)
+	if len(d.Log) != 1 || !strings.Contains(d.Log[0], lms[0].Name) || !strings.Contains(d.Log[0], "plus proches voisins") {
+		t.Fatalf("accueil sans IA: %+v", d.Log)
+	}
+	if len(d.Offers) != 0 {
+		t.Fatalf("un chef ne vend ni ne soigne: %+v", d.Offers)
+	}
+	// Avec un modèle : simple salutation.
+	r2 := newNPCRig(t, world.NPCChief)
+	r2.g.Talker = newFakeTalker()
+	r2.talk()
+	if l := r2.last().Log; len(l) != 1 || strings.Contains(l[0], "voisins") {
+		t.Fatalf("accueil avec IA: %+v", l)
+	}
+	if _, has := r2.offer(protocol.NPCTalk); !has {
+		t.Fatal("« Discuter » absent")
+	}
+}

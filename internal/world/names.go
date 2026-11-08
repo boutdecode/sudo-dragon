@@ -139,6 +139,10 @@ func (id ident) name(l i18n.Lang, kind NPCKind) string {
 		return fn + " " + i18n.T(l, fmt.Sprintf("name.epithet.%s.%d", g, id.epithet))
 	case NPCHealer:
 		return i18n.T(l, "name.title.healer."+g) + " " + fn
+	case NPCChief:
+		return i18n.T(l, "name.title.chief."+g) + " " + fn
+	case NPCMayor:
+		return i18n.T(l, "name.title.mayor."+g) + " " + fn
 	}
 	return i18n.T(l, "name.title.merchant."+g) + " " + fn
 }

@@ -61,11 +61,13 @@ const (
 	NPCMerchant NPCKind = "merchant" // achète et vend des potions
 	NPCHealer   NPCKind = "healer"   // soigne contre de l'or
 	NPCVillager NPCKind = "villager" // sans métier : on ne peut que discuter avec lui
+	NPCChief    NPCKind = "chief"    // chef d'un village : connaît les lieux voisins
+	NPCMayor    NPCKind = "mayor"    // maire d'une ville : connaît les lieux voisins
 )
 
 // NPCKinds liste les types de PNJ que le générateur peut placer (pour vérifier
 // que le client sait tous les dessiner).
-func NPCKinds() []NPCKind { return []NPCKind{NPCMerchant, NPCHealer, NPCVillager} }
+func NPCKinds() []NPCKind { return []NPCKind{NPCMerchant, NPCHealer, NPCVillager, NPCChief, NPCMayor} }
 
 // NPC est un personnage immobile placé par le générateur. Il est calculé à
 // l'identique par le serveur et par le client à partir de la seed.

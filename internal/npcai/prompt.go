@@ -87,7 +87,17 @@ type offerJSON struct {
 	Existing []string      `json:"deja_confiees,omitempty"`
 }
 
+type landmarkJSON struct {
+	Name      string `json:"nom"`
+	Kind      string `json:"genre"`
+	Region    string `json:"contree,omitempty"`
+	Direction string `json:"direction"`
+	Distance  string `json:"distance"`
+	Note      string `json:"a_savoir,omitempty"`
+}
+
 type dataJSON struct {
+	Landmarks    []landmarkJSON    `json:"lieux_connus,omitempty"`
 	Interlocutor interlocutorJSON  `json:"interlocuteur"`
 	Rumors       []rumorJSON       `json:"rumeurs"`
 	DeedRumors   []hearsayDeedJSON `json:"quetes_rendues_par_d_autres,omitempty"`
@@ -117,6 +127,10 @@ func age(l i18n.Lang, d time.Duration) string {
 
 func jobLabel(l i18n.Lang, k world.NPCKind) string {
 	switch k {
+	case world.NPCChief:
+		return i18n.T(l, "prompt.job.chief")
+	case world.NPCMayor:
+		return i18n.T(l, "prompt.job.mayor")
 	case world.NPCHealer:
 		return i18n.T(l, "prompt.job.healer")
 	case world.NPCVillager:
@@ -157,6 +171,16 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	if n.Kind == world.NPCVillager {
 		b.WriteString(i18n.T(l, "prompt.villager_rule"))
 	}
+	if n.Kind == world.NPCChief || n.Kind == world.NPCMayor {
+		b.WriteString(i18n.T(l, "prompt.official_rule"))
+		b.WriteString("\n")
+		if len(req.Landmarks) > 0 {
+			b.WriteString(i18n.T(l, "prompt.geography_rule"))
+		} else {
+			b.WriteString(i18n.T(l, "prompt.geography_none"))
+		}
+		b.WriteString("\n")
+	}
 	if req.Offer != nil {
 		b.WriteString(i18n.T(l, "prompt.quest_rules"))
 		b.WriteString("\n")
@@ -189,6 +213,12 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 			prov = i18n.T(l, "prompt.prov.hearsay", from, age(l, h.Age))
 		}
 		data.Rumors = append(data.Rumors, rumorJSON{Pseudo: h.Account, Provenance: prov, Said: cardOf(h.Intro), Certain: factsOf(h.Facts)})
+	}
+	for _, lm := range req.Landmarks {
+		if n.Kind != world.NPCChief && n.Kind != world.NPCMayor {
+			break // seuls les chefs et maires connaissent les environs, quoi qu'on leur transmette
+		}
+		data.Landmarks = append(data.Landmarks, landmarkJSON{Name: lm.Name, Kind: lm.Kind, Region: lm.Region, Direction: lm.Direction, Distance: lm.Distance, Note: lm.Note})
 	}
 	if req.Reputation > 0 {
 		data.Interlocutor.Reputation = &reputationJSON{Tier: quest.TierLabel(l, req.Reputation), Points: req.Reputation}

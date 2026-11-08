@@ -301,14 +301,16 @@ func layoutVillage(w, h int, rng *rand.Rand) *canvas {
 	// Villageois, ajoutés après le soigneur (les indices des PNJ existants ne bougent pas) :
 	// un sur la place, deux au fond des maisons voisines. Aucun tirage aléatoire.
 	plaza := []Pos{{w/2 - 2, h/2 - 1}, {w/2 + 1, h / 2}, {w/2 - 2, h / 2}, {w/2 + 1, h/2 - 1}}
-	c.addVillagers(3, 1, plaza, houses, order[1:])
+	c.addNPCs(NPCVillager, 3, 1, plaza, houses, order[1:])
+	// Le chef, en dernier (les indices des PNJ précédents ne bougent pas) : au fond d'une maison libre.
+	c.addNPCs(NPCChief, 1, 0, plaza, houses, order[1:])
 	return c
 }
 
-// addVillagers pose count villageois : outdoor sur les premières cases de place, puis
+// addNPCs pose count PNJ du type kind : outdoor sur les premières cases de place, puis
 // au fond des bâtiments order (indices dans bs) et, si les bâtiments manquent, sur les
 // cases de place restantes. Choix entièrement déterministe, sans le flux aléatoire du plan.
-func (c *canvas) addVillagers(count, outdoor int, plaza []Pos, bs []building, order []int) {
+func (c *canvas) addNPCs(kind NPCKind, count, outdoor int, plaza []Pos, bs []building, order []int) {
 	var spots []Pos
 	spots = append(spots, plaza[:min(outdoor, len(plaza))]...)
 	for _, i := range order {
@@ -326,7 +328,7 @@ func (c *canvas) addVillagers(count, outdoor int, plaza []Pos, bs []building, or
 			taken = taken || n.Pos == sp
 		}
 		if !taken {
-			c.npcs = append(c.npcs, NPC{Kind: NPCVillager, Pos: sp})
+			c.npcs = append(c.npcs, NPC{Kind: kind, Pos: sp})
 			count--
 		}
 	}
@@ -383,7 +385,9 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	if len(order) > len(kinds) {
 		rest = order[len(kinds):]
 	}
-	c.addVillagers(5, 2, plaza, bs, rest)
+	c.addNPCs(NPCVillager, 5, 2, plaza, bs, rest)
+	// Le maire, en dernier : au fond d'un bâtiment libre.
+	c.addNPCs(NPCMayor, 1, 0, plaza, bs, rest)
 	return c
 }
 

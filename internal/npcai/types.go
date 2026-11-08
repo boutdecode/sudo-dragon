@@ -50,8 +50,22 @@ type Request struct {
 	// au joueur, autorise le modèle à proposer une quête (voir quest.Validate).
 	Offer *OfferContext
 
+	// Landmarks : les lieux alentour que ce PNJ connaît (chef de village, maire), établis par le
+	// serveur et déjà localisés. Vide pour les autres PNJ.
+	Landmarks []Landmark
+
 	// Deeds : quêtes rendues dont ce PNJ a connaissance (renseigné par le service, pas par le jeu).
 	Deeds Deeds
+}
+
+// Landmark est un lieu voisin tel que le décrit le serveur à un PNJ qui le connaît.
+type Landmark struct {
+	Name      string // « Kerhaven »
+	Kind      string // « village », « ville », « forteresse »
+	Region    string // contrée, si elle diffère de celle du PNJ
+	Direction string // « à l'est »
+	Distance  string // « tout près », « à une bonne marche », « loin »
+	Note      string // fait notable (ex. garnison)
 }
 
 // Deeds sont les quêtes rendues connues d'un PNJ : celles de son interlocuteur et, en rumeur, celles des autres.

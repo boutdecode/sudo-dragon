@@ -346,3 +346,34 @@ func TestPromptNamesTheRegion(t *testing.T) {
 		t.Fatal("contrée inventée quand elle n'est pas fournie")
 	}
 }
+
+func TestChiefPromptListsOnlyTheKnownPlaces(t *testing.T) {
+	req := testReq("où est la prochaine ville ?")
+	req.NPC.Kind = world.NPCChief
+	req.Landmarks = []Landmark{
+		{Name: "Kerhaven", Kind: "village", Direction: "à l'est", Distance: "tout près"},
+		{Name: "Bastion rocval", Kind: "forteresse", Region: "Monts de Val", Direction: "au nord", Distance: "loin", Note: "une garnison"},
+	}
+	sys := BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	for _, want := range []string{"chef du village de Valdurne", "lieux_connus", `"nom":"Kerhaven"`, `"direction":"à l'est"`, `"contree":"Monts de Val"`, "tout ce que tu sais des environs", "responsable de ce lieu"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("prompt sans %q", want)
+		}
+	}
+	// Sans lieu connu : la règle dit de n'en citer aucun.
+	req.Landmarks = nil
+	none := BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	if !strings.Contains(none, "aucun lieu alentour") || strings.Contains(none, "lieux_connus") {
+		t.Error("règle « aucun lieu » attendue")
+	}
+	// Les autres PNJ ne reçoivent ni règle ni lieux.
+	req.NPC.Kind = world.NPCHealer
+	req.Landmarks = []Landmark{{Name: "Kerhaven"}}
+	if other := BuildMessages(req, nil, "", 12, placeNames)[0].Content; strings.Contains(other, "Kerhaven") || strings.Contains(other, "responsable de ce lieu") {
+		t.Error("un soigneur connaît des lieux")
+	}
+	req.NPC.Kind, req.PlaceKind = world.NPCMayor, world.KindTown
+	if town := BuildMessages(req, nil, "", 12, placeNames)[0].Content; !strings.Contains(town, "maire de la ville de") {
+		t.Error("métier du maire")
+	}
+}

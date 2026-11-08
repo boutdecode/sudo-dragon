@@ -92,6 +92,16 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	switch npc.Kind {
 	case world.NPCHealer:
 		greeting = i18n.T(p.lang, "npc.greet.healer")
+	case world.NPCChief, world.NPCMayor:
+		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
+		if !g.talkerReady() {
+			// Sans modèle de langage, le chef renseigne quand même : ses plus proches voisins.
+			if line := g.neighboursGreeting(npc, p.lang); line != "" {
+				greeting = line
+			} else {
+				greeting = ambientLine(p.lang, npc)
+			}
+		}
 	case world.NPCVillager:
 		// Sans métier, un villageois n'a que sa conversation. Quand elle est indisponible
 		// (pas de clé, panne), il dit une phrase d'ambiance fixe pour que le monde reste vivant.

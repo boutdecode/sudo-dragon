@@ -17,6 +17,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/i18n"
+	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -95,6 +96,8 @@ type Game struct {
 	// Talker, si défini et disponible, fait parler les PNJ avec un modèle de langage
 	// (voir talk.go). nil: pas de discussion libre, seulement les menus. À définir avant Run.
 	Talker Talker
+
+	geo map[geoKey][]npcai.Landmark // lieux connus des chefs et maires (voir geography.go)
 
 	// Clock donne l'heure des quêtes (création, remise, expiration). nil: time.Now.
 	// À définir avant Run (tests).
