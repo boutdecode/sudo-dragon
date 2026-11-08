@@ -508,6 +508,8 @@ func (sess *session) readLoop(ctx context.Context) {
 				continue
 			}
 			sess.srv.Game.TalkAct(sess.id, a.Action)
+		case protocol.TPing:
+			sess.sendMsg(protocol.TPong, nil)
 		case protocol.TChatSend:
 			var c protocol.ChatSend
 			if err := env.Payload(&c); err != nil {

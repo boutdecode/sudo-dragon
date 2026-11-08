@@ -478,3 +478,23 @@ func TestNPCActionValidation(t *testing.T) {
 	}
 	t.Fatal("chat non reçu")
 }
+
+func TestPingGetsPongAndSnapshotCountsOnline(t *testing.T) {
+	url := newTestServer(t)
+	alice := login(t, url, "alice")
+	_ = login(t, url, "bob")
+
+	send(t, alice, protocol.TPing, nil)
+	recvType(t, alice, protocol.TPong)
+
+	for range 50 {
+		var snap protocol.Snapshot
+		if err := recvType(t, alice, protocol.TSnapshot).Payload(&snap); err != nil {
+			t.Fatal(err)
+		}
+		if snap.Online == 2 {
+			return
+		}
+	}
+	t.Fatal("le compteur de joueurs en ligne n'a jamais atteint 2")
+}

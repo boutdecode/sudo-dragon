@@ -28,6 +28,7 @@ func randSnapshot(r *rand.Rand) *Snapshot {
 			MaxHP: r.IntN(500), Atk: r.IntN(200), Def: r.IntN(200), Potions: r.IntN(10),
 			Gold: r.IntN(1_000_000),
 		},
+		Online: r.IntN(500),
 	}
 	for i, n := 0, r.IntN(40); i < n; i++ {
 		s.Others = append(s.Others, ent())

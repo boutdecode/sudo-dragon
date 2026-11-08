@@ -259,10 +259,10 @@ func TestChatScroll(t *testing.T) {
 	}
 
 	// Un nouveau message ne déplace pas la page lue.
-	// Les 5 lignes de chat sont juste au-dessus de la ligne d'aide (dernière ligne).
+	// Les 5 lignes de chat sont dans le cadre juste au-dessus de la ligne d'aide.
 	chatRegion := func(s string) []string {
 		lines := strings.Split(s, "\n")
-		return lines[len(lines)-1-chatLines : len(lines)-1]
+		return lines[len(lines)-2-chatLines : len(lines)-2]
 	}
 	before := chatRegion(view())
 	m.addChat(chatLine{Channel: protocol.ChanLocal, From: "zoe", Text: "nouveau"})
@@ -297,7 +297,7 @@ func TestConnectionLostReturnsToLogin(t *testing.T) {
 func TestLoginViewRenders(t *testing.T) {
 	m := New("ws://localhost:8080/ws", "")
 	out := ansi.Strip(m.View().Content)
-	for _, want := range []string{"D R A G O N", "Serveur", "Pseudo", "Mot de passe", "Connexion", "ws://localhost:8080/ws"} {
+	for _, want := range []string{"sudo", "Bonne chance", "Serveur", "Pseudo", "Mot de passe", "Connexion", "ws://localhost:8080/ws"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("écran de connexion sans %q", want)
 		}
@@ -386,7 +386,7 @@ func TestCombatIgnoresMovementAndChatKeys(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
 	m = startCombat(t, m)
 
-	for _, k := range []string{"z", "q", "s", "h", "j", "k", "l", "w", "y", "enter", "x"} {
+	for _, k := range []string{"z", "q", "s", "h", "j", "k", "l", "w", "y", "x"} {
 		m = press(m, k)
 	}
 	actions, others := sentActions(out)
@@ -395,6 +395,26 @@ func TestCombatIgnoresMovementAndChatKeys(t *testing.T) {
 	}
 	if m.chatting {
 		t.Fatal("le chat ne doit pas s'ouvrir pendant un combat")
+	}
+}
+
+func TestCombatMenuNavigation(t *testing.T) {
+	m, out := withConn(playingModel(t, 110, 34))
+	m = startCombat(t, m)
+	m = press(m, "down")
+	m = press(m, "down")
+	if m.combatSel != 2 {
+		t.Fatalf("combatSel=%d", m.combatSel)
+	}
+	m = press(m, "enter")
+	if got, _ := sentActions(out); len(got) != 1 || got[0] != "item" {
+		t.Fatalf("Entrée devait envoyer l'entrée choisie: %v", got)
+	}
+	m = press(m, "up")
+	m = press(m, "up")
+	m = press(m, "up") // 2 -> 1 -> 0 -> 3 (boucle)
+	if m.combatSel != 3 {
+		t.Fatalf("combatSel=%d, attendu 3", m.combatSel)
 	}
 }
 
@@ -931,5 +951,72 @@ func TestConnectionLostClearsNPCDialog(t *testing.T) {
 	got := tm.(Model)
 	if got.npc != nil || got.npcLog != nil {
 		t.Fatal("le dialogue aurait dû être effacé à la déconnexion")
+	}
+}
+
+func TestGameClock(t *testing.T) {
+	for _, c := range []struct {
+		tick      uint64
+		day, hour int
+	}{
+		{0, 1, 8},
+		{ticksPerGameHour, 1, 9},
+		{16 * ticksPerGameHour, 2, 0},
+		{(24*3 + 13) * ticksPerGameHour, 4, 21},
+	} {
+		if d, h := gameClock(c.tick); d != c.day || h != c.hour {
+			t.Errorf("tick %d: jour %d, %dh (attendu %d, %dh)", c.tick, d, h, c.day, c.hour)
+		}
+	}
+}
+
+func TestHeaderShowsOnlinePingAndTime(t *testing.T) {
+	m := playingModel(t, 110, 34)
+	m.snap.Online, m.snap.Tick = 12, 16*ticksPerGameHour
+	m.pingMS, m.hasPing = 28, true
+	out := ansi.Strip(m.View().Content)
+	for _, want := range []string{"sudo Dragon", "12 en ligne", "28 ms", "Jour 2, 00h"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("en-tête sans %q", want)
+		}
+	}
+}
+
+func TestPongSetsPing(t *testing.T) {
+	m, _ := withConn(playingModel(t, 110, 34))
+	m.pingSent = time.Now().Add(-40 * time.Millisecond)
+	data, _ := protocol.Encode(protocol.TPong, nil)
+	env, _ := protocol.Decode(data)
+	tm, _ := m.Update(eventMsg{Event{Env: env}})
+	got := tm.(Model)
+	if !got.hasPing || got.pingMS < 40 {
+		t.Fatalf("ping=%d ok=%v", got.pingMS, got.hasPing)
+	}
+}
+
+func TestInventoryScreen(t *testing.T) {
+	m, out := withConn(playingModel(t, 110, 34))
+	m = press(m, "i")
+	if !m.inventory {
+		t.Fatal("inventaire non ouvert")
+	}
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"Sac à dos", "Potion de soin", "Détail"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("inventaire sans %q", want)
+		}
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > 110 {
+			t.Fatalf("ligne trop large: %q", line)
+		}
+	}
+	m = press(m, "d") // les déplacements sont bloqués tant que le sac est ouvert
+	if _, others := sentActions(out); len(others) != 0 {
+		t.Fatalf("message émis depuis l'inventaire: %v", others)
+	}
+	m = press(m, "esc")
+	if m.inventory {
+		t.Fatal("inventaire non fermé")
 	}
 }

@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/kevin/ascii-adventure/internal/game"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -45,41 +43,6 @@ func TestMonsterArtLinesHaveEqualWidth(t *testing.T) {
 	// Une espèce inconnue a un sprite de secours, jamais vide.
 	if art := MonsterArt("licorne"); len(art) == 0 || strings.TrimSpace(strings.Join(art, "")) == "" {
 		t.Error("pas de sprite de secours")
-	}
-}
-
-func TestBarWidthAndFill(t *testing.T) {
-	cases := []struct {
-		cur, max, width int
-		filled          int
-	}{
-		{10, 10, 10, 10},
-		{5, 10, 10, 5},
-		{0, 10, 10, 0},
-		{1, 100, 10, 1},  // jamais vide tant qu'il reste des PV
-		{99, 100, 10, 9}, // jamais plein tant qu'il en manque
-		{-5, 10, 10, 0},  // valeurs hors bornes
-		{50, 10, 10, 10},
-		{3, 0, 10, 10}, // max invalide: traité comme 1
-	}
-	for _, c := range cases {
-		out := ansi.Strip(Bar(c.cur, c.max, c.width))
-		if len([]rune(out)) != c.width {
-			t.Errorf("Bar(%d,%d,%d) largeur %d", c.cur, c.max, c.width, len([]rune(out)))
-		}
-		if got := strings.Count(out, "#"); got != c.filled {
-			t.Errorf("Bar(%d,%d,%d) = %q, %d cases pleines, attendu %d", c.cur, c.max, c.width, out, got, c.filled)
-		}
-	}
-	if Bar(5, 10, 0) != "" {
-		t.Error("largeur nulle: chaîne vide attendue")
-	}
-}
-
-func TestBarColorChangesWithHealth(t *testing.T) {
-	full, mid, low := Bar(10, 10, 10), Bar(5, 10, 10), Bar(2, 10, 10)
-	if full == mid || mid == low || full == low {
-		t.Fatal("la couleur de la jauge devrait changer selon les PV")
 	}
 }
 

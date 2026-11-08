@@ -151,5 +151,8 @@ func (s *Snapshot) AppendJSON(b []byte) []byte {
 	}
 	b = append(b, `,"stats":`...)
 	b = s.Stats.AppendJSON(b)
+	if s.Online > 0 {
+		b = appendInt(b, `,"on":`, s.Online)
+	}
 	return append(b, '}')
 }

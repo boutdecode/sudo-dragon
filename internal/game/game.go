@@ -434,7 +434,7 @@ func entityOf(p *player) protocol.Entity {
 
 // snapshotFor construit ce que p voit (zone de vision rectangulaire).
 func (g *Game) snapshotFor(p *player, monsterIDs []int) protocol.Snapshot {
-	snap := protocol.Snapshot{Tick: g.tick, Self: entityOf(p), Stats: statsOf(p)}
+	snap := protocol.Snapshot{Tick: g.tick, Self: entityOf(p), Stats: statsOf(p), Online: len(g.players)}
 	for _, id := range g.sortedIDs() {
 		o := g.players[id]
 		if o == p {
@@ -454,7 +454,7 @@ func (g *Game) snapshotFor(p *player, monsterIDs []int) protocol.Snapshot {
 }
 
 func sameView(a, b protocol.Snapshot) bool {
-	return a.Self == b.Self && a.Stats == b.Stats &&
+	return a.Self == b.Self && a.Stats == b.Stats && a.Online == b.Online &&
 		slices.Equal(a.Others, b.Others) && slices.Equal(a.Monsters, b.Monsters)
 }
 

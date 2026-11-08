@@ -19,6 +19,8 @@ const (
 	TCombatAction = "combat_action"
 	// TNPCAction: voir NPCAction.
 	TNPCAction = "npc_action"
+	// TPing: mesure de latence, le serveur répond TPong (sans charge utile).
+	TPing = "ping"
 
 	// Serveur -> client
 	TWelcome  = "welcome"
@@ -27,6 +29,7 @@ const (
 	TSnapshot = "snapshot"
 	TCombat   = "combat"
 	TNPC      = "npc"
+	TPong     = "pong"
 )
 
 // Limites partagées.
@@ -92,6 +95,7 @@ type Snapshot struct {
 	Others   []Entity  `json:"others,omitempty"`
 	Monsters []Monster `json:"monsters,omitempty"`
 	Stats    Stats     `json:"stats"`
+	Online   int       `json:"on,omitempty"` // joueurs connectés
 }
 
 // CombatAction est le choix du joueur pour son tour de combat:

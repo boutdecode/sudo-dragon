@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
+	"github.com/kevin/ascii-adventure/internal/ui"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -50,22 +52,43 @@ type (
 	}
 	connectFailedMsg struct{ err error }
 	eventMsg         struct{ Event }
+	// pingTickMsg déclenche une mesure de latence; conn évite qu'une ancienne
+	// connexion continue d'en émettre après une reconnexion.
+	pingTickMsg struct{ conn *Conn }
 )
+
+const pingEvery = 5 * time.Second
+
+// Un tick de jeu dure 100 ms: 1 heure de jeu = 1 minute réelle. Le monde
+// démarre à 8 h du jour 1.
+const (
+	ticksPerGameHour = 600
+	startGameHour    = 8
+)
+
+// gameClock donne le jour (à partir de 1) et l'heure du jeu pour un tick.
+func gameClock(tick uint64) (day, hour int) {
+	h := int(tick/ticksPerGameHour) + startGameHour
+	return h/24 + 1, h % 24
+}
+
+func pingTick(c *Conn) tea.Cmd {
+	return tea.Tick(pingEvery, func(time.Time) tea.Msg { return pingTickMsg{c} })
+}
 
 var errClosed = errors.New("connexion fermée")
 
-// Styles de l'interface.
+// Styles de l'interface (voir package ui).
 var (
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#facc15"))
-	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#6b7280"))
-	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#f87171"))
-	nameStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#22d3ee"))
-
-	goldStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#fbbf24"))
-	globalTagStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fb923c"))
-	emoteStyle     = lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#c084fc"))
-	whisperStyle   = lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("#f472b6"))
-	boxStyle       = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#4b5563"))
+	titleStyle     = ui.Title
+	dimStyle       = ui.Dim
+	errStyle       = ui.Err
+	nameStyle      = ui.Name
+	goldStyle      = ui.Gold
+	globalTagStyle = ui.Global
+	emoteStyle     = ui.Emote
+	whisperStyle   = ui.Whisp
+	boxStyle       = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(ui.ColFrame))
 )
 
 // Model est le modèle Bubble Tea du client.
@@ -95,6 +118,14 @@ type Model struct {
 	// jusqu'à ce que le joueur le ferme.
 	combat    *protocol.Combat
 	combatLog []string
+	combatSel int // entrée choisie dans le menu d'actions
+
+	inventory bool // écran d'inventaire ouvert (touche i)
+
+	// Latence mesurée par ping/pong (hasPing faux tant qu'aucune réponse).
+	pingSent time.Time
+	pingMS   int
+	hasPing  bool
 
 	// Dialogue avec un PNJ en cours (nil sinon). Le serveur le ferme (Over) ou
 	// le joueur le quitte avec Échap.
@@ -201,7 +232,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatScroll = 0
 		m.combat, m.combatLog = nil, nil
 		m.npc, m.npcLog = nil, nil
-		return m, waitEvent(m.conn)
+		m.hasPing = false
+		m = m.sendPing()
+		return m, tea.Batch(waitEvent(m.conn), pingTick(m.conn))
+
+	case pingTickMsg:
+		if msg.conn == nil || msg.conn != m.conn || m.state != statePlaying {
+			return m, nil // connexion remplacée ou fermée: la chaîne s'arrête
+		}
+		m = m.sendPing()
+		return m, pingTick(m.conn)
 
 	case connectFailedMsg:
 		m.state = stateLogin
@@ -214,6 +254,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Autres messages (clignotement du curseur…) : au champ actif.
 	return m.forwardToInput(msg)
+}
+
+// sendPing émet un ping et note l'heure d'envoi.
+func (m Model) sendPing() Model {
+	if m.conn != nil && m.conn.Send(protocol.TPing, nil) {
+		m.pingSent = time.Now()
+	}
+	return m
 }
 
 func (m Model) forwardToInput(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -344,6 +392,16 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.forwardToInput(msg)
 	}
 
+	if m.inventory {
+		if k := msg.String(); k == "esc" || k == "i" {
+			m.inventory = false
+		}
+		return m, nil
+	}
+	if msg.String() == "i" {
+		m.inventory = true
+		return m, nil
+	}
 	if msg.String() == "enter" {
 		m.chatting = true
 		return m, m.chatInput.Focus()
@@ -388,6 +446,10 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		if err := ev.Env.Payload(&c); err == nil {
 			m.applyCombat(c)
 		}
+	case protocol.TPong:
+		if !m.pingSent.IsZero() {
+			m.pingMS, m.hasPing = int(time.Since(m.pingSent).Milliseconds()), true
+		}
 	case protocol.TNPC:
 		var d protocol.NPCDialog
 		if err := ev.Env.Payload(&d); err == nil {
@@ -409,8 +471,9 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 func (m *Model) applyCombat(c protocol.Combat) {
 	if m.combat == nil || m.combat.Over { // nouveau combat
 		m.combatLog = nil
+		m.combatSel = 0
 	}
-	m.chatting = false
+	m.chatting, m.inventory = false, false
 	m.chatInput.Reset()
 	m.chatInput.Blur()
 
@@ -432,7 +495,7 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 	if m.npc == nil { // nouveau dialogue
 		m.npcLog = nil
 	}
-	m.chatting = false
+	m.chatting, m.inventory = false, false
 	m.chatInput.Reset()
 	m.chatInput.Blur()
 
@@ -491,10 +554,31 @@ func (m Model) updateCombatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	switch key {
+	case "up":
+		m.combatSel = (m.combatSel + len(combatMenu) - 1) % len(combatMenu)
+		return m, nil
+	case "down":
+		m.combatSel = (m.combatSel + 1) % len(combatMenu)
+		return m, nil
+	case "enter":
+		if m.conn != nil {
+			m.conn.Send(protocol.TCombatAction, protocol.CombatAction{Action: combatMenu[m.combatSel].action})
+		}
+		return m, nil
+	}
 	if action, ok := combatKeys[key]; ok && m.conn != nil {
 		m.conn.Send(protocol.TCombatAction, protocol.CombatAction{Action: action})
 	}
 	return m, nil
+}
+
+// combatMenu est le menu d'actions, dans l'ordre d'affichage.
+var combatMenu = []struct{ key, action, label string }{
+	{"A", "attack", "Attaquer"},
+	{"D", "defend", "Défendre"},
+	{"I", "item", "Potion"},
+	{"F", "flee", "Fuir"},
 }
 
 func (m *Model) addChat(l chatLine) {
@@ -568,37 +652,58 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) viewLogin() string {
-	var b strings.Builder
-	b.WriteString(titleStyle.Render("s u d o   D R A G O N") + "\n")
-	mode := "Connexion"
-	if m.register {
-		mode = "Création de compte"
+	panelW := min(m.width, 56)
+	inner := panelW - 2
+	rich := m.height >= 24 && m.width >= ui.LogoWidth()+6 // assez de place pour le logo
+
+	var lines []string
+	if rich {
+		lines = append(lines,
+			ui.Center(ui.Faint.Render(".   '   *   .   '   .   *   '"), inner),
+			ui.Center(ui.OK.Render("$")+" "+titleStyle.Render("sudo"), inner))
+		for _, l := range ui.Logo() {
+			lines = append(lines, ui.Center(l, inner))
+		}
+		lines = append(lines, ui.Center(dimStyle.Render("[")+ui.OK.Render("sudo")+dimStyle.Render("] privilèges accordés. Bonne chance."), inner))
+	} else {
+		lines = append(lines, ui.Center(titleStyle.Render("sudo Dragon"), inner))
 	}
-	b.WriteString(dimStyle.Render(mode) + "\n\n")
-	b.WriteString("Serveur\n" + m.addr.View() + "\n\n")
-	b.WriteString("Pseudo\n" + m.name.View() + "\n\n")
-	b.WriteString("Mot de passe\n" + m.pass.View() + "\n\n")
+	lines = append(lines, "")
+
+	// Mode: Ctrl+R bascule entre les deux entrées.
+	modeEntry := func(label string, on bool) string {
+		if on {
+			return ui.Select.Render(" › " + label + " ")
+		}
+		return dimStyle.Render("   " + label + " ")
+	}
+	lines = append(lines, ui.Center(modeEntry("Connexion", !m.register)+" "+modeEntry("Création de compte", m.register), inner), "")
+
+	field := func(i int, label string, view string) string {
+		mark := "  "
+		if m.focus == i {
+			mark = titleStyle.Render("› ")
+		}
+		return " " + mark + dimStyle.Render(ui.Fit(label, 13)) + view
+	}
+	lines = append(lines,
+		field(0, "Serveur", m.addr.View()),
+		field(1, "Pseudo", m.name.View()),
+		field(2, "Mot de passe", m.pass.View()),
+		"")
+
 	switch {
 	case m.state == stateConnecting:
-		b.WriteString("Connexion…")
+		lines = append(lines, ui.Center("Connexion…", inner))
 	case m.errMsg != "":
-		b.WriteString(errStyle.Render(m.errMsg))
+		lines = append(lines, ui.Center(errStyle.Render(m.errMsg), inner))
 	default:
-		b.WriteString(dimStyle.Render("Tab: champ suivant · Entrée: valider\nCtrl+R: connexion / création de compte · Ctrl+C: quitter"))
+		lines = append(lines, ui.Center(ui.KeyBar([2]string{"tab", "champ"}, [2]string{"↵", "ok"}, [2]string{"^r", "mode"}, [2]string{"^c", "quitter"}), inner))
 	}
-	box := boxStyle.Padding(1, 3).Render(b.String())
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-}
 
-// padRight tronque ou complète s pour qu'il occupe exactement w colonnes.
-func padRight(s string, w int) string {
-	if ansi.StringWidth(s) > w {
-		s = ansi.Truncate(s, w, "…")
-	}
-	if n := w - ansi.StringWidth(s); n > 0 {
-		s += strings.Repeat(" ", n)
-	}
-	return s
+	box := ui.Panel("sudo Dragon", strings.Join(lines, "\n"), panelW, len(lines)+2)
+	footer := ui.Fit(dimStyle.Render(" v0.1.0")+strings.Repeat(" ", max(1, panelW-len(" v0.1.0")-len("Bubble Tea · Lip Gloss · Bubbles ")))+dimStyle.Render("Bubble Tea · Lip Gloss · Bubbles"), panelW)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n"+footer)
 }
 
 func (m Model) viewPlaying() string {
@@ -609,96 +714,133 @@ func (m Model) viewPlaying() string {
 		return "Chargement du monde…"
 	}
 
+	// Hauteur: en-tête (1) + panneau central (mapH+2) + discussion (chatLines+2) + raccourcis (1).
 	mapW := min(m.width-sideWidth-4, 2*protocol.ViewHalfW+1)
-	mapH := min(m.height-2-chatLines-1, 2*protocol.ViewHalfH+1)
+	mapH := min(m.height-chatLines-6, 2*protocol.ViewHalfH+1)
+	fullW := mapW + sideWidth + 4
 
-	ents := append([]protocol.Entity{m.snap.Self}, m.snap.Others...)
-	mapStr := render.Viewport(m.world, m.snap.Self.X, m.snap.Self.Y, mapW, mapH, ents, m.snap.Monsters, m.snap.Self.ID)
+	self := m.snap.Self
+	ents := append([]protocol.Entity{self}, m.snap.Others...)
+	mapStr := render.Viewport(m.world, self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID)
 
 	var top string
-	if m.combat != nil {
-		top = boxStyle.Render(m.combatPanel(mapW+sideWidth+2, mapH))
-	} else if m.npc != nil {
-		top = boxStyle.Render(m.npcPanel(mapW+sideWidth+2, mapH))
-	} else {
+	switch {
+	case m.inventory && m.combat == nil && m.npc == nil:
+		top = m.inventoryView(fullW, mapH+2)
+	case m.combat != nil:
+		top = m.combatView(fullW, mapH+2)
+	case m.npc != nil:
+		top = m.npcView(fullW, mapH+2)
+	default:
+		terrain := fmt.Sprintf("%s · (%d, %d)", render.TerrainName(m.world.At(self.X, self.Y)), self.X, self.Y)
 		top = lipgloss.JoinHorizontal(lipgloss.Top,
-			boxStyle.Render(mapStr),
-			boxStyle.Render(m.sidePanel(mapH)),
+			ui.Panel(terrain, mapStr, mapW+2, mapH+2),
+			ui.Panel("Joueurs", m.sidePanel(), sideWidth+2, mapH+2),
 		)
 	}
-	return top + "\n" + m.chatPanel()
+	return m.headerLine(fullW) + "\n" + top + "\n" + m.chatPanel(fullW) + "\n" + ui.Fit(m.helpLine(), fullW)
 }
 
-func (m Model) sidePanel(h int) string {
+// headerLine est la ligne du haut: nom du jeu à gauche, infos de session à droite.
+func (m Model) headerLine(w int) string {
+	parts := []string{m.serverHost()}
+	if m.snap.Online > 0 {
+		parts = append(parts, fmt.Sprintf("%d en ligne", m.snap.Online))
+	}
+	if m.hasPing {
+		parts = append(parts, ui.OK.Render(fmt.Sprintf("%d ms", m.pingMS)))
+	}
+	day, hour := gameClock(m.snap.Tick)
+	parts = append(parts, fmt.Sprintf("Jour %d, %02dh", day, hour))
+	right := dimStyle.Render(parts[0])
+	for _, p := range parts[1:] {
+		right += dimStyle.Render(" · ") + p
+	}
+	pad := max(1, w-ansi.StringWidth("sudo Dragon")-ansi.StringWidth(right))
+	return ui.Fit(titleStyle.Render("sudo Dragon")+strings.Repeat(" ", pad)+right, w)
+}
+
+// serverHost extrait l'hôte de l'adresse saisie (ws://hote:8080/ws -> hote:8080).
+func (m Model) serverHost() string {
+	a := strings.TrimSpace(m.addr.Value())
+	if _, rest, ok := strings.Cut(a, "://"); ok {
+		a = rest
+	}
+	host, _, _ := strings.Cut(a, "/")
+	return host
+}
+
+func (m Model) sidePanel() string {
 	self := m.snap.Self
-	terrain := render.TerrainName(m.world.At(self.X, self.Y))
 	st := m.snap.Stats
 
 	lines := []string{
-		nameStyle.Render(self.Name),
-		dimStyle.Render(fmt.Sprintf("Pos  %d, %d", self.X, self.Y)),
-		dimStyle.Render("Sol  " + terrain),
-		fmt.Sprintf("Niv %d   XP %d/%d", st.Level, st.XP, st.XPNext),
-		"PV " + render.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
-		dimStyle.Render(fmt.Sprintf("Atq %d  Déf %d  Pot %d", st.Atk, st.Def, st.Potions)),
-		goldStyle.Render(fmt.Sprintf("Or  %d", st.Gold)),
+		" " + nameStyle.Render(self.Name),
+		fmt.Sprintf(" Niv %d   XP %d/%d", st.Level, st.XP, st.XPNext),
+		"    " + ui.FlatBar(st.XP, st.XPNext, 10, ui.ColOK),
+		" PV " + ui.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
+		dimStyle.Render(fmt.Sprintf(" Atq %d  Déf %d  Pot %d", st.Atk, st.Def, st.Potions)),
+		" " + goldStyle.Render(fmt.Sprintf("Or  %d", st.Gold)),
 		"",
-		fmt.Sprintf("Joueurs proches (%d)", len(m.snap.Others)),
+		" " + dimStyle.Render(fmt.Sprintf("JOUEURS PROCHES (%d)", len(m.snap.Others))),
 	}
 	for _, o := range m.snap.Others {
-		lines = append(lines, "  "+o.Name)
+		lines = append(lines, "  "+nameStyle.Render("@")+" "+o.Name)
 	}
 
 	// Monstres en vue, du plus proche au plus loin, avec leur position relative.
 	mons := slices.Clone(m.snap.Monsters)
 	dist := func(mo protocol.Monster) int { return max(abs(mo.X-self.X), abs(mo.Y-self.Y)) }
 	slices.SortStableFunc(mons, func(a, b protocol.Monster) int { return dist(a) - dist(b) })
-	lines = append(lines, "", fmt.Sprintf("Monstres en vue (%d)", len(mons)))
+	lines = append(lines, "", " "+dimStyle.Render(fmt.Sprintf("MONSTRES EN VUE (%d)", len(mons))))
 	for _, mo := range mons {
 		lines = append(lines, fmt.Sprintf("  %c %s %+d,%+d", render.MonsterGlyph(mo.Kind), render.MonsterName(mo.Kind), mo.X-self.X, mo.Y-self.Y))
 	}
-	if len(lines) > h {
-		lines = lines[:h]
-	}
-	for len(lines) < h {
-		lines = append(lines, "")
-	}
-	for i := range lines {
-		lines[i] = padRight(lines[i], sideWidth)
-	}
+	lines = append(lines, "",
+		" "+dimStyle.Render("Graine ")+fmt.Sprintf("%d", m.self.Seed),
+	)
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) chatPanel() string {
-	w := m.width
+// chatPanel dessine la discussion: chatLines lignes dans un cadre, la saisie
+// remplaçant la dernière ligne pendant qu'on écrit.
+func (m Model) chatPanel(w int) string {
 	scroll := min(m.chatScroll, m.maxScroll())
 	end := len(m.chat) - scroll
 	start := max(0, end-chatLines)
 	visible := m.chat[start:end]
 
-	out := make([]string, 0, chatLines+1)
+	out := make([]string, 0, chatLines)
+	for len(out)+len(visible) < chatLines {
+		out = append(out, "")
+	}
 	for _, l := range visible {
-		out = append(out, padRight(m.formatChat(l), w))
+		out = append(out, " "+m.formatChat(l))
 	}
-	for len(out) < chatLines {
-		out = append([]string{padRight("", w)}, out...)
+	if m.chatting {
+		out[len(out)-1] = " " + m.chatInput.View()
 	}
+	return ui.Panel("Discussion", strings.Join(out, "\n"), w, chatLines+2)
+}
 
+// helpLine est la barre de raccourcis, adaptée au contexte.
+func (m Model) helpLine() string {
+	scroll := min(m.chatScroll, m.maxScroll())
 	switch {
+	case m.inventory:
+		return ui.KeyBar([2]string{"esc", "fermer"})
 	case m.chatting:
-		out = append(out, padRight(m.chatInput.View(), w))
+		return ui.KeyBar([2]string{"↵", "envoyer"}, [2]string{"esc", "annuler"})
 	case scroll > 0:
-		out = append(out, padRight(dimStyle.Render(fmt.Sprintf("↑ historique (-%d) · PgBas: revenir en bas", scroll)), w))
+		return dimStyle.Render(fmt.Sprintf("↑ historique (-%d) · PgBas: revenir en bas", scroll))
 	case m.npc != nil:
-		out = append(out, padRight(dimStyle.Render("Dialogue: touches entre crochets · Échap ou Entrée: quitter"), w))
+		return ui.KeyBar([2]string{"a v s", "choisir"}, [2]string{"esc", "quitter"})
 	case m.combat != nil && !m.combat.Over:
-		out = append(out, padRight(dimStyle.Render("Combat: A attaquer · D défendre · I potion · F fuir (ou 1 à 4)"), w))
+		return ui.KeyBar([2]string{"↑↓", "choisir"}, [2]string{"↵", "valider"}, [2]string{"a d i f", "raccourcis"})
 	case m.combat != nil:
-		out = append(out, padRight(dimStyle.Render("Combat terminé: Entrée pour continuer"), w))
-	default:
-		out = append(out, padRight(dimStyle.Render("Entrée: chat (/help) · flèches/ZQSD/hjkl: bouger · PgHaut: historique · Ctrl+C: quitter"), w))
+		return ui.KeyBar([2]string{"↵", "continuer"})
 	}
-	return strings.Join(out, "\n")
+	return ui.KeyBar([2]string{"↑↓←→", "marcher"}, [2]string{"i", "sac"}, [2]string{"↵", "discuter"}, [2]string{"PgHaut", "historique"}, [2]string{"ctrl+c", "quitter"})
 }
 
 func abs(a int) int {
@@ -708,79 +850,107 @@ func abs(a int) int {
 	return a
 }
 
-// centerPad centre s dans une largeur de w colonnes.
-func centerPad(s string, w int) string {
-	left := max(0, (w-ansi.StringWidth(s))/2)
-	return padRight(strings.Repeat(" ", left)+s, w)
+// inventoryView dessine le sac (potions et or, seuls objets du jeu) et le
+// détail de la potion, dans exactement w x h cellules.
+func (m Model) inventoryView(w, h int) string {
+	st := m.snap.Stats
+	detailW := min(40, w/2)
+	bag := []string{
+		"",
+		ui.Select.Render(ui.Fit(fmt.Sprintf(" › Potion de soin ×%d", st.Potions), w-detailW-2)),
+		"",
+		" " + dimStyle.Render("Or     ") + goldStyle.Render(fmt.Sprintf("%d po", st.Gold)),
+	}
+	detail := []string{
+		"",
+		" " + titleStyle.Render("Potion de soin"),
+		" " + dimStyle.Render("Consommable"),
+		"",
+		" Rend des PV pendant un combat",
+		" (touche I ou 3 en combat).",
+		"",
+		" " + dimStyle.Render("S'achète chez les marchands,"),
+		" " + dimStyle.Render("les soigneurs sont gratuits."),
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		ui.Panel("Sac à dos · "+m.snap.Self.Name, strings.Join(bag, "\n"), w-detailW, h),
+		ui.Panel("Détail", strings.Join(detail, "\n"), detailW, h),
+	)
 }
 
-// combatPanel dessine l'écran de combat dans exactement w x h cellules.
-func (m Model) combatPanel(w, h int) string {
+// journalPanel dessine les dernières lignes d'un journal dans un cadre de w x h.
+func journalPanel(title string, log []string, w, h int) string {
+	n := max(0, h-2)
+	if len(log) > n {
+		log = log[len(log)-n:]
+	}
+	lines := make([]string, len(log))
+	for i, l := range log {
+		lines[i] = " " + l
+	}
+	return ui.Panel(title, strings.Join(lines, "\n"), w, h)
+}
+
+// combatView dessine l'écran de combat dans exactement w x h cellules: le
+// champ de bataille et le menu d'actions côte à côte, le journal dessous.
+func (m Model) combatView(w, h int) string {
 	c := m.combat
 	name := render.MonsterName(c.Monster)
-	barW := max(8, min(30, w-30))
 
-	header := titleStyle.Render("COMBAT") + " — " + name
-	// Colonne des noms assez large pour « Seigneur de guerre » (les deux jauges restent alignées).
-	nameW := max(8, ansi.StringWidth(name))
-	barW = max(8, min(barW, w-nameW-24))
-	monsterBar := fmt.Sprintf("%-*s %s %3d/%d", nameW, name, render.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP)
-	playerBar := fmt.Sprintf("%-*s %s %3d/%d   Potions: %d", nameW, "Vous", render.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP, c.Potions)
+	actionW := min(30, w/2)
+	leftW := w - actionW
+	logH := min(8, h-6)
+	midH := h - logH
+	iw, ih := leftW-2, midH-2
 
-	var actions string
+	barW := max(4, min(30, iw-12))
+	monsterLines := []string{" " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr)).Render(name),
+		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP)}
+	playerLines := []string{" Vous",
+		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)}
+
+	field := slices.Clone(monsterLines)
+	if art := render.MonsterArt(c.Monster); ih >= len(art)+len(monsterLines)+len(playerLines)+2 {
+		style := render.ArtStyle(c.Monster)
+		field = append(field, "")
+		for _, l := range art {
+			field = append(field, ui.Center(style.Render(l), iw))
+		}
+		field = append(field, "")
+	}
+	field = append(field, playerLines...)
+
+	var actions []string
 	if c.Over {
 		switch c.Result {
 		case protocol.ResultWon:
-			actions = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#4ade80")).Render("VICTOIRE !")
+			actions = append(actions, " "+ui.OK.Bold(true).Render("VICTOIRE !"))
 		case protocol.ResultLost:
-			actions = errStyle.Bold(true).Render("DÉFAITE…")
+			actions = append(actions, " "+errStyle.Bold(true).Render("DÉFAITE…"))
 		default:
-			actions = dimStyle.Render("Vous avez fui.")
+			actions = append(actions, " "+dimStyle.Render("Vous avez fui."))
 		}
-		actions += dimStyle.Render("   Entrée: continuer")
+		actions = append(actions, " "+dimStyle.Render("Entrée: continuer"))
 	} else {
-		actions = fmt.Sprintf("[A] Attaquer  [D] Défendre  [I] Potion (%d)  [F] Fuir", c.Potions)
-	}
-
-	// Lignes fixes: titre, 2 jauges, actions + 3 séparateurs. Le reste se
-	// partage entre le sprite (s'il tient) et le journal.
-	art := render.MonsterArt(c.Monster)
-	room := h - 7
-	spriteLines := 0
-	if room-4 >= len(art)+1 {
-		spriteLines = len(art) + 1
-	}
-	logLines := min(room-spriteLines, 8)
-
-	lines := []string{centerPad(header, w), ""}
-	if spriteLines > 0 {
-		style := render.ArtStyle(c.Monster)
-		for _, l := range art {
-			lines = append(lines, centerPad(style.Render(l), w))
-		}
-		lines = append(lines, "")
-	}
-	lines = append(lines, centerPad(monsterBar, w), centerPad(playerBar, w), "")
-
-	if logLines > 0 {
-		visible := m.combatLog
-		if len(visible) > logLines {
-			visible = visible[len(visible)-logLines:]
-		}
-		for _, l := range visible {
-			lines = append(lines, "  "+l)
+		for i, it := range combatMenu {
+			label := it.label
+			if it.action == "item" {
+				label = fmt.Sprintf("%s (%d)", label, c.Potions)
+			}
+			if i == m.combatSel {
+				actions = append(actions, ui.Select.Render(ui.Fit(" › ["+it.key+"] "+label, actionW-2)))
+			} else {
+				actions = append(actions, "   ["+it.key+"] "+label)
+			}
 		}
 	}
-	for len(lines) < h-2 { // remplissage jusqu'à la zone d'actions
-		lines = append(lines, "")
-	}
-	lines = lines[:min(len(lines), h-2)]
-	lines = append(lines, "", centerPad(actions, w))
 
-	for i := range lines {
-		lines[i] = padRight(lines[i], w)
-	}
-	return strings.Join(lines, "\n")
+	title := "COMBAT · " + name
+	mid := lipgloss.JoinHorizontal(lipgloss.Top,
+		ui.Panel(title, strings.Join(field, "\n"), leftW, midH),
+		ui.Panel("Actions", strings.Join(actions, "\n"), actionW, midH),
+	)
+	return mid + "\n" + journalPanel("Journal", m.combatLog, w, logH)
 }
 
 // npcKeyLabel est la lettre affichée pour chaque action de dialogue.
@@ -790,17 +960,34 @@ var npcKeyLabel = map[string]string{
 	protocol.NPCHeal: "S",
 }
 
-// npcPanel dessine l'écran de dialogue dans exactement w x h cellules.
-func (m Model) npcPanel(w, h int) string {
+// npcView dessine le dialogue avec un PNJ dans exactement w x h cellules:
+// portrait et état à gauche, offres à droite, journal dessous.
+func (m Model) npcView(w, h int) string {
 	d := m.npc
 	kind := world.NPCKind(d.Kind)
-	title := titleStyle.Render(strings.ToUpper(render.NPCName(kind))) + dimStyle.Render(" — dialogue")
-	status := fmt.Sprintf("%s   Potions: %d   PV: %d/%d",
-		goldStyle.Render(fmt.Sprintf("Or: %d", d.Gold)), d.Potions, d.HP, d.MaxHP)
 
-	// Lignes fixes: titre, état, hint + séparateurs; offres et journal se partagent le reste.
-	art := render.NPCArt(kind)
-	offerLines := make([]string, 0, len(d.Offers))
+	rightW := min(40, w/2)
+	leftW := w - rightW
+	logH := max(3, min(6, h-8))
+	midH := h - logH
+	iw, ih := leftW-2, midH-2
+
+	status := []string{
+		" " + goldStyle.Render(fmt.Sprintf("Or: %d", d.Gold)),
+		fmt.Sprintf(" Potions: %d", d.Potions),
+		fmt.Sprintf(" PV: %d/%d", d.HP, d.MaxHP),
+	}
+	var left []string
+	if art := render.NPCArt(kind); ih >= len(art)+1+len(status) {
+		style := render.NPCArtStyle(kind)
+		for _, l := range art {
+			left = append(left, ui.Center(style.Render(l), iw))
+		}
+		left = append(left, "")
+	}
+	left = append(left, status...)
+
+	var offers []string
 	for _, o := range d.Offers {
 		var price string
 		switch {
@@ -811,50 +998,17 @@ func (m Model) npcPanel(w, h int) string {
 		default:
 			price = fmt.Sprintf("%d or", o.Price)
 		}
-		line := fmt.Sprintf("[%s] %-22s %s", npcKeyLabel[o.Action], o.Label, price)
+		line := fmt.Sprintf(" [%s] %-22s %s", npcKeyLabel[o.Action], o.Label, price)
 		if !o.Available {
 			line = dimStyle.Render(line)
 		}
-		offerLines = append(offerLines, line)
+		offers = append(offers, line)
 	}
+	offers = append(offers, "", " "+dimStyle.Render("[Échap] Quitter"))
 
-	room := h - 8 - len(offerLines)
-	spriteLines := 0
-	if room-3 >= len(art)+1 {
-		spriteLines = len(art) + 1
-	}
-	logLines := max(0, min(room-spriteLines, 6))
-
-	lines := []string{centerPad(title, w), ""}
-	if spriteLines > 0 {
-		style := render.NPCArtStyle(kind)
-		for _, l := range art {
-			lines = append(lines, centerPad(style.Render(l), w))
-		}
-		lines = append(lines, "")
-	}
-	lines = append(lines, centerPad(status, w), "")
-	for _, l := range offerLines {
-		lines = append(lines, centerPad(l, w))
-	}
-	lines = append(lines, "")
-	if logLines > 0 {
-		visible := m.npcLog
-		if len(visible) > logLines {
-			visible = visible[len(visible)-logLines:]
-		}
-		for _, l := range visible {
-			lines = append(lines, "  "+l)
-		}
-	}
-	for len(lines) < h-2 {
-		lines = append(lines, "")
-	}
-	lines = lines[:min(len(lines), h-2)]
-	lines = append(lines, "", centerPad(dimStyle.Render("[Échap] Quitter"), w))
-
-	for i := range lines {
-		lines[i] = padRight(lines[i], w)
-	}
-	return strings.Join(lines, "\n")
+	mid := lipgloss.JoinHorizontal(lipgloss.Top,
+		ui.Panel(strings.ToUpper(render.NPCName(kind)), strings.Join(left, "\n"), leftW, midH),
+		ui.Panel("Offres", strings.Join(offers, "\n"), rightW, midH),
+	)
+	return mid + "\n" + journalPanel("Dialogue", m.npcLog, w, logH)
 }

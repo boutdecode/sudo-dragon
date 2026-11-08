@@ -139,34 +139,3 @@ func padArt(art []string) []string {
 
 // ArtStyle renvoie le style de couleur d'une espèce.
 func ArtStyle(kind string) lipgloss.Style { return lookOf(kind).style }
-
-var (
-	barFull = fg("#4ade80")
-	barMid  = fg("#facc15")
-	barLow  = fg("#ef4444")
-	barBack = fg("#4b5563")
-)
-
-// Bar dessine une jauge de largeur width (colonnes) pour cur/max. La couleur
-// passe du vert au rouge. Au moins une case est pleine tant que cur > 0.
-func Bar(cur, maxV, width int) string {
-	if width < 1 {
-		return ""
-	}
-	if maxV < 1 {
-		maxV = 1
-	}
-	cur = max(0, min(cur, maxV))
-	filled := cur * width / maxV
-	if cur > 0 && filled == 0 {
-		filled = 1
-	}
-	style := barFull
-	switch {
-	case cur*4 <= maxV: // 25 % ou moins
-		style = barLow
-	case cur*2 <= maxV: // 50 % ou moins
-		style = barMid
-	}
-	return style.Render(strings.Repeat("#", filled)) + barBack.Render(strings.Repeat("-", width-filled))
-}
