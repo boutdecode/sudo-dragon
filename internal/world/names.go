@@ -143,6 +143,10 @@ func (id ident) name(l i18n.Lang, kind NPCKind) string {
 		return i18n.T(l, "name.title.chief."+g) + " " + fn
 	case NPCMayor:
 		return i18n.T(l, "name.title.mayor."+g) + " " + fn
+	case NPCSmith:
+		return i18n.T(l, "name.title.smith."+g) + " " + fn
+	case NPCArmorer:
+		return i18n.T(l, "name.title.armorer."+g) + " " + fn
 	}
 	return i18n.T(l, "name.title.merchant."+g) + " " + fn
 }

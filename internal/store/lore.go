@@ -171,7 +171,11 @@ func (s *Store) ListCards(ctx context.Context, account string, limit int) ([]lor
 
 // PurgeAccount supprime les fiches, les souvenirs, les quêtes et la réputation d'un joueur.
 func (s *Store) PurgeAccount(ctx context.Context, account string) (cards, memories, quests int64, err error) {
-	return s.purge(ctx, `account = ?`, `account = ?`, `account = ?`, account)
+	cards, memories, quests, err = s.purge(ctx, `account = ?`, `account = ?`, `account = ?`, account)
+	if err == nil { // le sac d'équipement part aussi
+		_, err = s.db.ExecContext(ctx, `DELETE FROM items WHERE account = ?`, account)
+	}
+	return
 }
 
 // PurgePlace supprime les fiches, les souvenirs, les quêtes rendues et la réputation d'un lieu.

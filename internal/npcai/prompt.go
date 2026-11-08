@@ -127,6 +127,10 @@ func age(l i18n.Lang, d time.Duration) string {
 
 func jobLabel(l i18n.Lang, k world.NPCKind) string {
 	switch k {
+	case world.NPCSmith:
+		return i18n.T(l, "prompt.job.smith")
+	case world.NPCArmorer:
+		return i18n.T(l, "prompt.job.armorer")
 	case world.NPCChief:
 		return i18n.T(l, "prompt.job.chief")
 	case world.NPCMayor:

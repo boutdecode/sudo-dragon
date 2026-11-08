@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -69,6 +70,12 @@ type player struct {
 	hasOpenReach  bool // une quête « atteindre un lieu » est active
 	questNotices  []string
 	sendQuestBook func(protocol.Quests)
+
+	// Équipement (voir shop.go).
+	inv         gear.Inventory
+	gearDirty   bool
+	gearNotices []string
+	sendBagMsg  func(protocol.Bag)
 }
 
 // Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
@@ -87,6 +94,10 @@ type Saved struct {
 	Quests      []quest.Quest
 	Rep         map[world.RegionPos]int
 	QuestsDirty bool
+
+	// Sac d'équipement et objets portés (voir internal/gear). GearDirty : à réécrire en base.
+	Gear      gear.Inventory
+	GearDirty bool
 }
 
 // Game est l'état du monde vivant.
@@ -98,6 +109,11 @@ type Game struct {
 	Talker Talker
 
 	geo map[geoKey][]npcai.Landmark // lieux connus des chefs et maires (voir geography.go)
+
+	// Étalages des vendeurs d'équipement (voir shop.go).
+	shops        map[world.NPCKey]shopWares
+	stockPending map[world.NPCKey]bool
+	stockRetryAt map[world.NPCKey]uint64
 
 	// Clock donne l'heure des quêtes (création, remise, expiration). nil: time.Now.
 	// À définir avant Run (tests).
@@ -192,6 +208,7 @@ type Handlers struct {
 	Combat   func(protocol.Combat)    // optionnel
 	NPC      func(protocol.NPCDialog) // optionnel
 	Quests   func(protocol.Quests)    // optionnel: livre de quêtes
+	Bag      func(protocol.Bag)       // optionnel: sac d'équipement
 	// Joined est appelé dans la goroutine de jeu avant tout instantané, ce qui
 	// permet d'envoyer le message de bienvenue avant le premier snapshot.
 	Joined func(id, x, y int)
@@ -206,10 +223,12 @@ func (g *Game) Join(name string, h Handlers) (int, error) {
 		p.sendCombat = h.Combat
 		p.sendNPC = h.NPC
 		p.sendQuestBook = h.Quests
+		p.sendBagMsg = h.Bag
 		if h.Joined != nil {
 			h.Joined(p.id, p.pos.X, p.pos.Y)
 		}
 		g.sendQuests(p) // après le message de bienvenue
+		g.sendBag(p)
 		reply <- p.id
 	}) {
 		return 0, ErrStopped
@@ -297,6 +316,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 			WithRecord(saved.Stats.Kills, saved.Stats.BossKills, saved.Stats.Deaths)
 		p.consent = saved.LLMConsent
 		g.loadQuests(p, saved)
+		p.inv = gear.SanitizeInventory(saved.Gear)
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		start = saved.Pos
 	}
@@ -315,8 +335,9 @@ func (g *Game) save(p *player) {
 		g.Persist(p.name, Saved{
 			Stats: p.stats, HP: p.hp, Pos: p.pos, LLMConsent: p.consent,
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
+			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 		})
-		p.questsDirty = false
+		p.questsDirty, p.gearDirty = false, false
 	}
 }
 

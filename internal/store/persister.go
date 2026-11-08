@@ -77,8 +77,10 @@ func (p *Persister) flush() error {
 		for account, c := range batch {
 			if newer, ok := p.pending[account]; !ok {
 				p.pending[account] = c
-			} else if c.QuestsDirty && !newer.QuestsDirty {
-				newer.QuestsDirty = true // l'écriture a échoué : la version plus récente doit réécrire les quêtes
+			} else if (c.QuestsDirty && !newer.QuestsDirty) || (c.GearDirty && !newer.GearDirty) {
+				// L'écriture a échoué : la version plus récente doit réécrire ce qui n'a pas été écrit.
+				newer.QuestsDirty = newer.QuestsDirty || c.QuestsDirty
+				newer.GearDirty = newer.GearDirty || c.GearDirty
 				p.pending[account] = newer
 			}
 		}
@@ -94,8 +96,9 @@ func (p *Persister) Save(account string, c Character) {
 		p.log.Warn("sauvegarde ignorée: écrivain fermé", "account", account)
 		return
 	}
-	if old, ok := p.pending[account]; ok && old.QuestsDirty {
-		c.QuestsDirty = true // la version précédente n'a pas encore été écrite : ses quêtes non plus
+	if old, ok := p.pending[account]; ok {
+		c.QuestsDirty = c.QuestsDirty || old.QuestsDirty // la version précédente n'a pas encore été écrite
+		c.GearDirty = c.GearDirty || old.GearDirty
 	}
 	p.pending[account] = c
 }

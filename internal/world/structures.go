@@ -63,11 +63,15 @@ const (
 	NPCVillager NPCKind = "villager" // sans métier : on ne peut que discuter avec lui
 	NPCChief    NPCKind = "chief"    // chef d'un village : connaît les lieux voisins
 	NPCMayor    NPCKind = "mayor"    // maire d'une ville : connaît les lieux voisins
+	NPCSmith    NPCKind = "smith"    // forgeron : vend des armes
+	NPCArmorer  NPCKind = "armorer"  // armurier : vend armures, boucliers et casques
 )
 
 // NPCKinds liste les types de PNJ que le générateur peut placer (pour vérifier
 // que le client sait tous les dessiner).
-func NPCKinds() []NPCKind { return []NPCKind{NPCMerchant, NPCHealer, NPCVillager, NPCChief, NPCMayor} }
+func NPCKinds() []NPCKind {
+	return []NPCKind{NPCMerchant, NPCHealer, NPCVillager, NPCChief, NPCMayor, NPCSmith, NPCArmorer}
+}
 
 // NPC est un personnage immobile placé par le générateur. Il est calculé à
 // l'identique par le serveur et par le client à partir de la seed.
@@ -381,7 +385,12 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	var c *canvas
 	switch kind {
 	case KindVillage:
-		c = layoutVillage(size[0], size[1], rng)
+		// Un village n'a qu'un des deux vendeurs d'équipement, choisi par le flux d'identité (pas par celui des plans).
+		vendor := NPCSmith
+		if identityRNG(w.Seed, rp, 7000).IntN(2) == 1 {
+			vendor = NPCArmorer
+		}
+		c = layoutVillage(size[0], size[1], rng, vendor)
 	case KindTown:
 		c = layoutTown(size[0], size[1], rng)
 	default:

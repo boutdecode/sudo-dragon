@@ -73,6 +73,8 @@ var npcLooks = map[world.NPCKind]monsterLook{
 	world.NPCHealer:   {'H', fg("#34d399").Bold(true)},
 	questGiverKind:    {'!', fg("#facc15").Bold(true)},
 	questTurnInKind:   {'?', fg("#facc15").Bold(true)},
+	world.NPCSmith:    {'F', fg("#f97316").Bold(true)},
+	world.NPCArmorer:  {'R', fg("#94a3b8").Bold(true)},
 	world.NPCChief:    {'C', fg("#d4a017").Bold(true)},
 	world.NPCMayor:    {'C', fg("#d4a017").Bold(true)},
 	world.NPCVillager: {'V', fg("#7dd3fc").Bold(true)},

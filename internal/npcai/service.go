@@ -30,10 +30,12 @@ var (
 )
 
 type job struct {
-	req      Request
-	done     func(Reply)
-	acct     string
-	enqueued time.Time
+	req       Request
+	stock     *StockRequest // demande d'étalage (au lieu d'une réplique)
+	stockDone func(StockReply)
+	done      func(Reply)
+	acct      string
+	enqueued  time.Time
 }
 
 // Service fait parler les PNJ. Il est sûr pour un usage concurrent.
@@ -65,8 +67,12 @@ type Service struct {
 
 	nRequests, nFailures, nBlocked, nRemembered atomic.Uint64
 	nQuestsProposed, nQuestsRejected            atomic.Uint64
-	latencyMS, latencyN                         atomic.Int64
-	active                                      atomic.Int32
+	nStockGenerated, nStockRejected             atomic.Uint64
+
+	wares               WaresRepo
+	stockInflight       map[world.NPCKey]bool
+	latencyMS, latencyN atomic.Int64
+	active              atomic.Int32
 }
 
 // Option configure un Service.
@@ -236,6 +242,10 @@ func (s *Service) sweep(now time.Time) {
 // run traite une demande sans jamais faire tomber le serveur: un plantage inattendu
 // (réponse du modèle imprévue…) devient une réplique d'échec.
 func (s *Service) run(ctx context.Context, j *job) {
+	if j.stock != nil {
+		s.runStock(ctx, j)
+		return
+	}
 	s.active.Add(1)
 	start := s.now()
 	reply := func() (r Reply) {
@@ -576,10 +586,30 @@ func (s *Service) Stats() Stats {
 		Available: s.Available(), Guardrails: s.guardrailsOK.Load(), Moderation: s.moderationOK.Load(),
 		Requests: s.nRequests.Load(), Failures: s.nFailures.Load(), Blocked: s.nBlocked.Load(), Remembered: s.nRemembered.Load(),
 		QuestsOffered: s.nQuestsProposed.Load(), QuestsRejected: s.nQuestsRejected.Load(),
+		StockGenerated: s.nStockGenerated.Load(), StockRejected: s.nStockRejected.Load(),
 		TokensToday: tokens, DailyBudget: s.cfg.DailyTokens, InFlight: int(s.active.Load()), Queued: len(s.queue),
 	}
 	if n := s.latencyN.Load(); n > 0 {
 		st.AvgLatencyMS = s.latencyMS.Load() / n
 	}
 	return st
+}
+
+// runStock traite une demande d'étalage sans jamais faire tomber le serveur.
+func (s *Service) runStock(ctx context.Context, j *job) {
+	s.active.Add(1)
+	reply := func() (r StockReply) {
+		defer func() {
+			if p := recover(); p != nil {
+				s.log.Error("plantage dans la génération d'étalage", "panic", fmt.Sprint(p))
+				r = StockReply{Failure: Unavailable}
+			}
+		}()
+		return s.processStock(ctx, *j.stock)
+	}()
+	s.active.Add(-1)
+	if reply.Failure != OK {
+		s.nFailures.Add(1)
+	}
+	j.stockDone(reply)
 }

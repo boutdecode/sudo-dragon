@@ -21,6 +21,8 @@ const (
 	TNPCAction = "npc_action"
 	// TQuestAction: voir QuestAction.
 	TQuestAction = "quest_action"
+	// TGearAction: voir GearAction.
+	TGearAction = "gear_action"
 	// TPing: mesure de latence, le serveur répond TPong (sans charge utile).
 	TPing = "ping"
 
@@ -32,6 +34,7 @@ const (
 	TCombat   = "combat"
 	TNPC      = "npc"
 	TQuests   = "quests" // livre de quêtes: voir Quests
+	TBag      = "bag"    // sac d'équipement: voir Bag
 	TPong     = "pong"
 )
 
@@ -148,6 +151,11 @@ const (
 	NPCQuestAccept = "quest_accept" // accepter la quête proposée
 	NPCQuestRefuse = "quest_refuse" // la refuser
 	NPCTurnIn      = "quest_turnin"
+
+	// Équipement. NPCBuyItem et NPCSellItem portent l'objet dans NPCAction.Text (voir NPCOffer.Arg).
+	NPCBuyItem  = "buy_item"
+	NPCSellItem = "sell_item"
+	NPCSellMenu = "sell_menu" // ouvre la liste des objets du sac à revendre
 )
 
 // MaxSayLen est la longueur maximale (en caractères) d'une réplique de joueur.
@@ -166,6 +174,7 @@ const (
 	NPCModeNotice = "notice" // avis de confidentialité à accepter avant de discuter
 	NPCModeChat   = "chat"   // conversation libre
 	NPCModeQuest  = "quest"  // proposition de quête à accepter ou refuser
+	NPCModeSell   = "sell"   // objets du sac à revendre à un vendeur d'équipement
 )
 
 // NPCLine est une ligne de la transcription d'une discussion.
@@ -182,8 +191,46 @@ type NPCOffer struct {
 	Price     int    `json:"price"`          // 0 = gratuit (ou, pour une vente, sans objet)
 	Gain      bool   `json:"gain,omitempty"` // vrai si le joueur reçoit de l'or (vente) au lieu d'en payer
 	Available bool   `json:"ok"`
-	Arg       string `json:"arg,omitempty"` // à renvoyer dans NPCAction.Text (identifiant de la quête à rendre)
+	Arg       string `json:"arg,omitempty"`    // à renvoyer dans NPCAction.Text (quête à rendre, objet à acheter ou vendre)
+	Detail    string `json:"detail,omitempty"` // précision affichée à côté (bonus, niveau requis…)
 }
+
+// ItemInfo est un objet d'équipement tel que le joueur le voit.
+type ItemInfo struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Desc     string `json:"desc,omitempty"`
+	Slot     string `json:"slot"` // weapon, armor, shield, helm
+	Tier     int    `json:"tier"`
+	Atk      int    `json:"atk,omitempty"`
+	Def      int    `json:"def,omitempty"`
+	MinLevel int    `json:"lvl"`
+	Sell     int    `json:"sell"` // prix de revente
+	Worn     bool   `json:"worn,omitempty"`
+	Origin   string `json:"origin,omitempty"` // nom du vendeur d'origine
+}
+
+// Bag est le sac d'équipement, envoyé à la connexion et à chaque changement.
+type Bag struct {
+	Notice   []string   `json:"notice,omitempty"` // lignes à ajouter au journal
+	Items    []ItemInfo `json:"items"`            // tout le sac, objets portés compris (Worn)
+	Capacity int        `json:"cap"`
+	AtkBonus int        `json:"atk"` // bonus total de l'équipement porté
+	DefBonus int        `json:"def"`
+}
+
+// GearAction est une action sur le sac : équiper un objet (ID) ou retirer l'objet d'un emplacement (Slot).
+type GearAction struct {
+	Action string `json:"action"` // "equip" ou "unequip"
+	ID     int64  `json:"id,omitempty"`
+	Slot   string `json:"slot,omitempty"`
+}
+
+// Actions du sac.
+const (
+	GearEquip   = "equip"
+	GearUnequip = "unequip"
+)
 
 // QuestInfo est une quête telle que le joueur la voit. Tout est calculé par le serveur.
 type QuestInfo struct {
@@ -255,6 +302,8 @@ type NPCDialog struct {
 	Lines    []NPCLine `json:"lines,omitempty"`    // transcription (mode chat)
 
 	Proposal *QuestInfo `json:"proposal,omitempty"` // quête proposée (mode quest)
+
+	Specialty string `json:"specialty,omitempty"` // spécialité d'un vendeur d'équipement
 }
 
 // Envelope est l'enveloppe commune à tous les messages.

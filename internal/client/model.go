@@ -150,6 +150,10 @@ type Model struct {
 	questSel     int
 	questConfirm bool // un premier "x" attend sa confirmation
 
+	// Sac d'équipement (voir bag.go).
+	bag    protocol.Bag
+	bagSel int
+
 	// Dernier endroit annoncé dans le journal (contrée, lieu) : voir location.go.
 	locSeen      bool
 	locTerritory world.TerritoryID
@@ -312,6 +316,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.npc, m.npcLog = nil, nil
 		m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
 		m.locSeen, m.locInPlace = false, false
+		m.bag, m.bagSel = protocol.Bag{}, 0
 		m.hasPing = false
 		m.walkGen++
 		m.walking, m.walkPath = false, nil
@@ -500,10 +505,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateQuestKey(msg)
 	}
 	if m.inventory {
-		if k := msg.String(); k == "esc" || k == "i" {
-			m.inventory = false
-		}
-		return m, nil
+		return m.updateBagKey(msg)
 	}
 	if msg.String() == "q" {
 		m.questBook, m.questTab = true, 0
@@ -565,6 +567,11 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 	case protocol.TPong:
 		if !m.pingSent.IsZero() {
 			m.pingMS, m.hasPing = int(time.Since(m.pingSent).Milliseconds()), true
+		}
+	case protocol.TBag:
+		var b protocol.Bag
+		if err := ev.Env.Payload(&b); err == nil {
+			m.applyBag(b)
 		}
 	case protocol.TQuests:
 		var b protocol.Quests
@@ -659,13 +666,18 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "esc" || key == "enter" {
 		if m.conn != nil {
-			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: protocol.NPCLeave})
+			// Dans la liste de revente, Échap revient à la boutique ; sinon il quitte le dialogue.
+			action := protocol.NPCLeave
+			if m.npc.Mode == protocol.NPCModeSell {
+				action = protocol.NPCBack
+			}
+			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: action})
 		}
 		return m, nil
 	}
 	if n, err := strconv.Atoi(key); err == nil && n >= 1 && m.conn != nil {
-		if offers := m.turnInOffers(); n <= len(offers) { // remise de la n-ième quête prête
-			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: protocol.NPCTurnIn, Text: offers[n-1].Arg})
+		if offers := m.numberedOffers(); n <= len(offers) { // n-ième offre numérotée : quête à rendre, objet à acheter ou revendre
+			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: offers[n-1].Action, Text: offers[n-1].Arg})
 		}
 		return m, nil
 	}
@@ -673,11 +685,19 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if !ok || m.conn == nil {
 		return m, nil
 	}
-	for _, o := range m.npc.Offers {
-		if o.Action == action {
-			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: action})
-			break
+	offered := func(a string) bool {
+		for _, o := range m.npc.Offers {
+			if o.Action == a {
+				return true
+			}
 		}
+		return false
+	}
+	if action == protocol.NPCSell && !offered(action) && offered(protocol.NPCSellMenu) {
+		action = protocol.NPCSellMenu // chez un forgeron, la même touche ouvre la revente d'équipement
+	}
+	if offered(action) {
+		m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: action})
 	}
 	return m, nil
 }
@@ -994,7 +1014,7 @@ func (m Model) helpLine() string {
 	case m.questBook:
 		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"tab", m.t("key.tab")}, [2]string{"x", m.t("key.abandon")}, [2]string{"esc", m.t("key.close")})
 	case m.inventory:
-		return ui.KeyBar([2]string{"esc", m.t("key.close")})
+		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"e", m.t("key.equip")}, [2]string{"esc", m.t("key.close")})
 	case m.chatting:
 		return ui.KeyBar([2]string{"↵", m.t("key.send")}, [2]string{"esc", m.t("key.cancel")})
 	case scroll > 0:
@@ -1014,34 +1034,6 @@ func abs(a int) int {
 		return -a
 	}
 	return a
-}
-
-// inventoryView dessine le sac (potions et or, seuls objets du jeu) et le
-// détail de la potion, dans exactement w x h cellules.
-func (m Model) inventoryView(w, h int) string {
-	st := m.snap.Stats
-	detailW := min(40, w/2)
-	bag := []string{
-		"",
-		ui.Select.Render(ui.Fit(m.t("bag.potion", st.Potions), w-detailW-2)),
-		"",
-		" " + dimStyle.Render(m.t("bag.gold_label")) + goldStyle.Render(m.t("bag.gold", st.Gold)),
-	}
-	detail := []string{
-		"",
-		" " + titleStyle.Render(m.t("bag.potion_name")),
-		" " + dimStyle.Render(m.t("bag.consumable")),
-		"",
-		m.t("bag.potion_line1"),
-		m.t("bag.potion_line2"),
-		"",
-		" " + dimStyle.Render(m.t("bag.potion_line3")),
-		" " + dimStyle.Render(m.t("bag.potion_line4")),
-	}
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		ui.Panel(m.t("bag.title", m.snap.Self.Name), strings.Join(bag, "\n"), w-detailW, h),
-		ui.Panel(m.t("bag.detail"), strings.Join(detail, "\n"), detailW, h),
-	)
 }
 
 // journalPanel dessine les dernières lignes d'un journal dans un cadre de w x h.
@@ -1130,6 +1122,10 @@ func (m Model) npcKeyLabel(action string) string {
 		return m.t("npc.key.heal")
 	case protocol.NPCTalk:
 		return m.t("npc.key.talk")
+	case protocol.NPCSellMenu:
+		return m.t("npc.key.sell")
+	case protocol.NPCBack:
+		return "Esc"
 	case protocol.NPCConsent:
 		return m.t("npc.key.consent")
 	case protocol.NPCDecline:
@@ -1153,6 +1149,9 @@ func (m Model) npcView(w, h int) string {
 	}
 
 	rightW := min(40, w/2)
+	if len(m.numberedOffers()) > 0 && m.npc.Specialty != "" || m.npc.Mode == protocol.NPCModeSell {
+		rightW = min(70, w*3/5) // étalage d'équipement : une ligne par objet avec ses bonus
+	}
 	leftW := w - rightW
 	logH := max(3, min(6, h-8))
 	midH := h - logH
@@ -1172,6 +1171,12 @@ func (m Model) npcView(w, h int) string {
 		left = append(left, "")
 	}
 	left = append(left, status...)
+	if d.Specialty != "" {
+		left = append(left, "")
+		for _, l := range wrap(m.t("shop.specialty", d.Specialty), max(8, iw-2)) {
+			left = append(left, " "+dimStyle.Render(l))
+		}
+	}
 
 	var offers []string
 	turnIn := 0
@@ -1188,8 +1193,13 @@ func (m Model) npcView(w, h int) string {
 		if o.Action == protocol.NPCTurnIn {
 			price = ""
 		}
-		line := fmt.Sprintf(" [%s] %-22s %s", m.npcOfferKey(o, turnIn), o.Label, price)
-		if o.Action == protocol.NPCTurnIn {
+		var line string
+		if o.Detail != "" { // équipement : nom, bonus et niveau, prix
+			line = fmt.Sprintf(" [%s] %s %s %s", m.npcOfferKey(o, turnIn), ui.Fit(o.Label, 26), ui.Fit(o.Detail, 24), price)
+		} else {
+			line = fmt.Sprintf(" [%s] %-22s %s", m.npcOfferKey(o, turnIn), o.Label, price)
+		}
+		if isNumbered(o.Action) {
 			turnIn++
 		}
 		if !o.Available {

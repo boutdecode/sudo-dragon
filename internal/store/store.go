@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite" // pilote SQLite en Go pur (pas de CGO)
 
+	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -51,6 +52,10 @@ type Character struct {
 	Quests      []quest.Quest
 	Rep         map[world.RegionPos]int
 	QuestsDirty bool
+
+	// Sac d'équipement et objets portés (voir internal/gear). GearDirty : à réécrire.
+	Gear      gear.Inventory
+	GearDirty bool
 }
 
 // Store est la base de données.
@@ -205,6 +210,33 @@ var migrations = []string{
 		points   INTEGER NOT NULL,
 		PRIMARY KEY (account, region_x, region_y)
 	)`,
+	// 13: sac d'équipement des joueurs et assortiments générés des vendeurs.
+	`CREATE TABLE items (
+		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
+		id         INTEGER NOT NULL,
+		slot       TEXT    NOT NULL,
+		name       TEXT    NOT NULL,
+		descr      TEXT    NOT NULL,
+		tier       INTEGER NOT NULL,
+		atk        INTEGER NOT NULL,
+		def        INTEGER NOT NULL,
+		price      INTEGER NOT NULL,
+		origin_rx  INTEGER NOT NULL,
+		origin_ry  INTEGER NOT NULL,
+		origin_idx INTEGER NOT NULL,
+		worn       INTEGER NOT NULL,
+		PRIMARY KEY (account, id)
+	)`,
+	`CREATE TABLE npc_wares (
+		region_x    INTEGER NOT NULL,
+		region_y    INTEGER NOT NULL,
+		npc_index   INTEGER NOT NULL,
+		specialty   TEXT    NOT NULL,
+		items       TEXT    NOT NULL,
+		version     INTEGER NOT NULL,
+		created_at  INTEGER NOT NULL,
+		PRIMARY KEY (region_x, region_y, npc_index)
+	)`,
 }
 
 // migrate applique les migrations manquantes, chacune dans sa transaction.
@@ -340,6 +372,9 @@ func (s *Store) LoadCharacter(account string) (*Character, error) {
 	if c.Quests, c.Rep, err = s.loadQuests(account); err != nil {
 		return nil, err
 	}
+	if c.Gear, err = s.loadGear(account); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 
@@ -378,6 +413,11 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 		if c.QuestsDirty {
 			if err := saveQuests(tx, account, c); err != nil {
 				return fmt.Errorf("quêtes de %s: %w", account, err)
+			}
+		}
+		if c.GearDirty {
+			if err := saveGear(tx, account, c.Gear); err != nil {
+				return fmt.Errorf("équipement de %s: %w", account, err)
 			}
 		}
 	}

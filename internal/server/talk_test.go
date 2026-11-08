@@ -55,6 +55,7 @@ func startTalkServer(t *testing.T) *talkEnv {
 	cfg.MinInterval = -1
 	svc := npcai.New(fake, book, cfg,
 		npcai.WithProvider("Mistral AI"),
+		npcai.WithWares(be.Store),
 		npcai.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 	)
 	ctx, cancel := context.WithCancel(context.Background())

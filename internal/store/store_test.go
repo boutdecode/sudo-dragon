@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -599,5 +600,69 @@ func TestQuestsAndReputationRoundTrip(t *testing.T) {
 	}
 	if after, _ := st.LoadCharacter("aldric"); len(after.Quests) != 0 || len(after.Rep) != 0 {
 		t.Fatalf("après purge: %+v", after)
+	}
+}
+
+func TestGearRoundTripAndWares(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	origin := world.NPCKey{Region: world.RegionPos{X: 2, Y: -1}, Index: 6}
+	inv := gear.Inventory{
+		Items: []gear.Item{
+			{ID: 1, Name: "Épée longue", Desc: "Bien équilibrée.", Slot: gear.Weapon, Tier: 2, Atk: 4, Price: 130, Origin: origin},
+			{ID: 2, Name: "Casque de fer", Slot: gear.Helm, Tier: 1, Def: 1, Price: 30, Origin: origin},
+		},
+		Worn: map[gear.Slot]int64{gear.Weapon: 1},
+	}
+	c := Character{Level: 5, HP: 10, Gear: inv, GearDirty: true}
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	if !reflect.DeepEqual(got.Gear, inv) {
+		t.Fatalf("sac relu:\n got %+v\nwant %+v", got.Gear, inv)
+	}
+	// Une sauvegarde sans changement de sac ne le réécrit pas.
+	c.Gear, c.GearDirty = gear.Inventory{}, false
+	_ = st.SaveCharacters(map[string]Character{"aldric": c})
+	if again, _ := st.LoadCharacter("aldric"); len(again.Gear.Items) != 2 {
+		t.Fatalf("sac perdu: %+v", again.Gear)
+	}
+	// Purger le compte emporte le sac.
+	if _, _, _, err := st.PurgeAccount(context.Background(), "aldric"); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := st.LoadCharacter("aldric"); len(after.Gear.Items) != 0 {
+		t.Fatalf("sac après purge: %+v", after.Gear)
+	}
+
+	// Assortiments.
+	ctx := context.Background()
+	w := gear.Wares{NPC: origin, Specialty: "lames courtes", Items: inv.Items, Version: 1, CreatedAt: time.Unix(1_700_000_000, 0)}
+	if _, ok, _ := st.GetWares(ctx, origin); ok {
+		t.Fatal("assortiment fantôme")
+	}
+	if err := st.PutWares(ctx, w); err != nil {
+		t.Fatal(err)
+	}
+	back, ok, err := st.GetWares(ctx, origin)
+	if err != nil || !ok || back.Specialty != "lames courtes" || len(back.Items) != 2 || back.Items[0].Name != "Épée longue" {
+		t.Fatalf("%+v %v %v", back, ok, err)
+	}
+	w.Specialty = "haches"
+	_ = st.PutWares(ctx, w)
+	if list, _ := st.ListWares(ctx); len(list) != 1 || list[0].Specialty != "haches" {
+		t.Fatalf("liste: %+v", list)
+	}
+	if ok, _ := st.DeleteWares(ctx, origin); !ok {
+		t.Fatal("suppression")
+	}
+	if ok, _ := st.DeleteWares(ctx, origin); ok {
+		t.Fatal("double suppression")
 	}
 }

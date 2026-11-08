@@ -125,11 +125,11 @@ Un village se trouve toujours à quelques dizaines de cases du point de départ.
 
 | Lieu | Taille | Contenu |
 |---|---|---|
-| Village | ~32 × 26 | 4 à 8 maisons reliées à une place par des chemins, un **soigneur**, 3 **villageois** et un **chef** |
-| Ville | ~58 × 46 | muraille à quatre portes, deux avenues, une place, une vingtaine de bâtiments, un **marchand**, un **soigneur**, 5 **villageois** et un **maire** |
+| Village | ~32 × 26 | 4 à 8 maisons reliées à une place par des chemins, un **soigneur**, 3 **villageois** un **chef** et un forgeron ou un armurier |
+| Ville | ~58 × 46 | muraille à quatre portes, deux avenues, une place, une vingtaine de bâtiments, un **marchand**, un **soigneur**, 5 **villageois**, un **maire**, un **forgeron** et un **armurier** |
 | Forteresse | 48 × 40 | enceinte épaisse à tours d'angle et un portail, cour, deux casernes, donjon cloisonné ; **8 soldats et le seigneur de guerre** |
 
-Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `C` chef de village ou maire (il connaît les lieux à 3 régions alentour, direction et distance, et renseigne même sans clé Mistral), `V` villageois, `!` villageois qui confie des quêtes (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance).
+Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `F` forgeron, `R` armurier, `C` chef de village ou maire (il connaît les lieux à 3 régions alentour, direction et distance, et renseigne même sans clé Mistral), `V` villageois, `!` villageois qui confie des quêtes (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance).
 
 **Zones sûres.** Un village ou une ville, avec trois cases de marge, est une zone sûre : aucun monstre n'y apparaît ni n'y entre,
 un joueur qui s'y trouve n'est ni poursuivi ni attaqué, et il y regagne 1 PV par seconde (au lieu d'un toutes les 3 secondes).
@@ -176,6 +176,22 @@ un résumé **privé** de ses conversations avec chaque joueur, jamais montré a
 `server -lore-list [-lore-account NOM]` et `server -lore-purge account:NOM` ou `place:RX,RY`.
 
 `make llm-smoke` fait un essai réel de l'API (ignoré sans clé).
+
+## Équipement et forges
+
+Quatre emplacements : **arme** (bonus d'attaque), **armure**, **bouclier** et **casque** (bonus de défense). Les objets ont un palier de 1 à 5 qui fixe leurs plafonds de bonus et le **niveau requis**
+(1, 4, 8, 13, 19). Le **sac** (touche `I`, 24 objets) garde tout ce qu'on achète : `E` équipe ou retire l'objet choisi, un objet par emplacement, impossible en plein combat. Le panneau latéral et le
+combat utilisent les caractéristiques effectives. Un objet porté ne se revend pas ; la revente rapporte 40 % du prix.
+
+**Vendeurs** : chaque ville a un **forgeron** (armes, `F`) et un **armurier** (armures, boucliers, casques, `R`) ; chaque village n'a que l'un des deux ; les forteresses aucun. Achat par les chiffres `1`-`9`,
+revente par `V`. La réputation du lieu réduit aussi les prix de l'équipement.
+
+**Spécialité et étalage générés** : à la première visite, le modèle de langage invente en JSON la spécialité du vendeur et 6 à 8 objets (noms, descriptions, palier, bonus, prix). **Le serveur décide** : emplacement
+vendu, palier au plus 3 en village et 5 en ville, bonus et prix ramenés dans des bornes calculées d'après le palier, textes nettoyés et modérés, au moins 4 objets valides sinon l'étalage est écarté. L'étalage
+est enregistré (`npc_wares`) et identique pour tous les joueurs ; aucun texte de joueur n'entre dans cette demande. Sans clé Mistral, ou tant que l'étalage n'est pas prêt, un **assortiment de repli**
+déterministe est proposé : le jeu est complet sans IA. Un objet acheté est copié en entier dans le sac et ne change plus.
+
+Côté opérateur : `server -wares-list` affiche les étalages générés, `server -wares-reset RX,RY,RANG` efface celui d'un vendeur pour qu'il soit régénéré. `/stats` compte étalages générés et rejetés.
 
 ## Quêtes et réputation
 

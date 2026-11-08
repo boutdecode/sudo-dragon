@@ -61,7 +61,8 @@ func ValidNPCAction(action string) bool {
 	switch action {
 	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
 		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack,
-		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn:
+		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn,
+		protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCSellMenu:
 		return true
 	}
 	return false
@@ -92,6 +93,8 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	switch npc.Kind {
 	case world.NPCHealer:
 		greeting = i18n.T(p.lang, "npc.greet.healer")
+	case world.NPCSmith, world.NPCArmorer:
+		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
 	case world.NPCChief, world.NPCMayor:
 		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
 		if !g.talkerReady() {
@@ -144,6 +147,14 @@ func (g *Game) talkAct(p *player, action, text string) {
 		g.sendTalk(p, t.npc.Kind, nil, false)
 		return
 	}
+	if t.mode == protocol.NPCModeSell && action == protocol.NPCSellItem && isVendor(t.npc.Kind) {
+		log := g.sellItem(p, text)
+		if len(g.sellable(p)) == 0 {
+			t.mode = protocol.NPCModeMenu
+		}
+		g.sendTalk(p, t.npc.Kind, log, false)
+		return
+	}
 	if t.mode != protocol.NPCModeMenu {
 		return // le commerce et les soins ne se font que depuis le menu
 	}
@@ -155,6 +166,23 @@ func (g *Game) talkAct(p *player, action, text string) {
 
 	case protocol.NPCTurnIn:
 		log = g.questAct(p, action, text) // la remise enregistre elle-même
+
+	case protocol.NPCBuyItem:
+		if !isVendor(t.npc.Kind) {
+			log = notOffered(p.lang)
+		} else {
+			log = g.buyItem(p, t.npc, text) // l'achat enregistre lui-même
+		}
+
+	case protocol.NPCSellMenu:
+		if !isVendor(t.npc.Kind) || len(g.sellable(p)) == 0 {
+			log = notOffered(p.lang)
+		} else {
+			t.mode = protocol.NPCModeSell
+		}
+
+	case protocol.NPCSellItem:
+		log = notOffered(p.lang) // la revente se fait depuis la liste de revente
 
 	case protocol.NPCBuy:
 		switch {
@@ -235,6 +263,8 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 			{Action: protocol.NPCSell, Label: i18n.T(p.lang, "npc.offer.sell"), Price: potionSellPrice, Gain: true,
 				Available: p.stats.Potions > 0 && p.stats.Gold <= combat.MaxGold-potionSellPrice},
 		}
+	case world.NPCSmith, world.NPCArmorer:
+		offers = g.shopOffers(p, npc)
 	case world.NPCHealer:
 		price := g.healCost(p, npc)
 		offers = []protocol.NPCOffer{
@@ -285,6 +315,8 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 		}
 	case protocol.NPCModeChat:
 		d.Lines = append([]protocol.NPCLine(nil), t.lines...)
+	case protocol.NPCModeSell:
+		d.Offers = g.sellOffers(p)
 	case protocol.NPCModeQuest:
 		if t.proposal != nil {
 			info := g.questInfo(p.lang, *t.proposal)
@@ -297,6 +329,10 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 		}
 	default:
 		d.Offers = g.offers(p, t.npc)
+		if isVendor(t.npc.Kind) {
+			w, _ := g.waresFor(p, t.npc)
+			d.Specialty = w.Specialty
+		}
 	}
 	p.sendNPC(d)
 }

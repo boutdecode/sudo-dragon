@@ -44,7 +44,7 @@ func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	}
 	f := &fight{p: p, m: m, lastAct: g.tick}
 	f.b = combat.New(
-		p.stats.Fighter(p.hp), p.stats.Potions,
+		p.fighter(), p.stats.Potions,
 		combat.Fighter{HP: m.sp.HP, MaxHP: m.sp.HP, Atk: m.sp.Atk, Def: m.sp.Def},
 		m.sp.name(p.lang), g.rng,
 	)
@@ -196,9 +196,19 @@ func (g *Game) sendFight(f *fight, log []string) {
 
 // statsOf construit la fiche réseau d'un joueur.
 func statsOf(p *player) protocol.Stats {
+	atkBonus, defBonus := p.gearBonus()
 	return protocol.Stats{
 		Level: p.stats.Level, XP: p.stats.XP, XPNext: p.stats.XPToNext(),
-		HP: p.hp, MaxHP: p.stats.MaxHP, Atk: p.stats.Atk, Def: p.stats.Def,
+		HP: p.hp, MaxHP: p.stats.MaxHP, Atk: p.stats.Atk + atkBonus, Def: p.stats.Def + defBonus,
 		Potions: p.stats.Potions, Gold: p.stats.Gold,
 	}
+}
+
+// fighter convertit le joueur en combattant, équipement porté compris.
+func (p *player) fighter() combat.Fighter {
+	f := p.stats.Fighter(p.hp)
+	atk, def := p.gearBonus()
+	f.Atk += atk
+	f.Def += def
+	return f
 }

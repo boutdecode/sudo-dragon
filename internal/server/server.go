@@ -103,6 +103,7 @@ func fromSaved(sv game.Saved) store.Character {
 		HP: sv.HP, X: sv.Pos.X, Y: sv.Pos.Y,
 		LLMConsent: sv.LLMConsent, Kills: sv.Stats.Kills, BossKills: sv.Stats.BossKills, Deaths: sv.Stats.Deaths,
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
+		Gear: sv.Gear, GearDirty: sv.GearDirty,
 	}
 }
 
@@ -112,7 +113,7 @@ func toSaved(c store.Character) *game.Saved {
 		HP:         c.HP,
 		Pos:        world.Pos{X: c.X, Y: c.Y},
 		LLMConsent: c.LLMConsent,
-		Quests:     c.Quests, Rep: c.Rep,
+		Quests:     c.Quests, Rep: c.Rep, Gear: c.Gear,
 	}
 }
 
@@ -338,6 +339,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		Combat:   func(c protocol.Combat) { sess.sendMsg(protocol.TCombat, c) },
 		NPC:      func(d protocol.NPCDialog) { sess.sendMsg(protocol.TNPC, d) },
 		Quests:   func(q protocol.Quests) { sess.sendMsg(protocol.TQuests, q) },
+		Bag:      func(b protocol.Bag) { sess.sendMsg(protocol.TBag, b) },
 		Joined: func(id, x, y int) {
 			sess.sendMsg(protocol.TWelcome, protocol.Welcome{
 				ID: id, Name: name, X: x, Y: y, Seed: s.Game.World.Seed,
@@ -579,6 +581,19 @@ func (sess *session) readLoop(ctx context.Context) {
 				continue
 			}
 			sess.srv.Game.QuestAct(sess.id, a.Action, a.ID)
+		case protocol.TGearAction:
+			var a protocol.GearAction
+			if err := env.Payload(&a); err != nil {
+				continue
+			}
+			if a.Action != protocol.GearEquip && a.Action != protocol.GearUnequip {
+				continue
+			}
+			if !sess.allowSay() {
+				sess.sendErr("srv.err.slow_down_npc")
+				continue
+			}
+			sess.srv.Game.GearAct(sess.id, a.Action, a.ID, a.Slot)
 		case protocol.TPing:
 			sess.sendMsg(protocol.TPong, nil)
 		case protocol.TChatSend:

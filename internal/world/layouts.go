@@ -285,7 +285,7 @@ func closestTo(bs []building, x, y int) []int {
 }
 
 // layoutVillage: une place centrale, 5 à 9 maisons reliées par des chemins, un soigneur.
-func layoutVillage(w, h int, rng *rand.Rand) *canvas {
+func layoutVillage(w, h int, rng *rand.Rand, vendor NPCKind) *canvas {
 	c := newCanvas(w, h, rng)
 	square := rect{w/2 - 3, h/2 - 2, 6, 4}
 	c.fill(square, Road)
@@ -304,6 +304,8 @@ func layoutVillage(w, h int, rng *rand.Rand) *canvas {
 	c.addNPCs(NPCVillager, 3, 1, plaza, houses, order[1:])
 	// Le chef, en dernier (les indices des PNJ précédents ne bougent pas) : au fond d'une maison libre.
 	c.addNPCs(NPCChief, 1, 0, plaza, houses, order[1:])
+	// Puis le vendeur d'équipement du village (forgeron ou armurier), lui aussi en dernier.
+	c.addNPCs(vendor, 1, 0, plaza, houses, order[1:])
 	return c
 }
 
@@ -388,6 +390,9 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	c.addNPCs(NPCVillager, 5, 2, plaza, bs, rest)
 	// Le maire, en dernier : au fond d'un bâtiment libre.
 	c.addNPCs(NPCMayor, 1, 0, plaza, bs, rest)
+	// Puis forgeron et armurier.
+	c.addNPCs(NPCSmith, 1, 0, plaza, bs, rest)
+	c.addNPCs(NPCArmorer, 1, 0, plaza, bs, rest)
 	return c
 }
 

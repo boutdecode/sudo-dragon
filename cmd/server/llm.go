@@ -80,6 +80,7 @@ func setupTalker(ctx context.Context, o llmOptions, st *store.Store, w *world.Wo
 		cfg.Workers = o.Workers
 	}
 	svc := npcai.New(client, &lore.Book{Repo: st, Deeds: st}, cfg,
+		npcai.WithWares(st),
 		npcai.WithLogger(log),
 		npcai.WithProvider("Mistral AI"),
 		npcai.WithPlaceNames(func(l i18n.Lang, rp world.RegionPos) string {

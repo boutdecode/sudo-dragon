@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/store"
@@ -114,5 +115,43 @@ func TestParseRegion(t *testing.T) {
 		if err != nil || x != want[0] || y != want[1] {
 			t.Errorf("parseRegion(%q) = %d,%d,%v", in, x, y, err)
 		}
+	}
+}
+
+func TestWaresListAndReset(t *testing.T) {
+	st := seededStore(t)
+	ctx := context.Background()
+	var out bytes.Buffer
+	if err := runWaresList(ctx, st, &out); err != nil || !strings.Contains(out.String(), "aucun étalage") {
+		t.Fatalf("%v %q", err, out.String())
+	}
+	key := world.NPCKey{Region: world.RegionPos{X: 2, Y: -1}, Index: 7}
+	if err := st.PutWares(ctx, gear.Wares{NPC: key, Specialty: "haches", Version: 1, CreatedAt: time.Now(),
+		Items: []gear.Item{{ID: 1, Name: "Hache en fer", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 40}}}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	_ = runWaresList(ctx, st, &out)
+	for _, want := range []string{"vendeur 2,-1,7", "haches", "Hache en fer", "ATQ 2"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("liste sans %q:\n%s", want, out.String())
+		}
+	}
+	for _, bad := range []string{"", "1,2", "a,b,c", "1,2,3,4"} {
+		if err := runWaresReset(ctx, st, bad, &out); err == nil {
+			t.Errorf("%q accepté", bad)
+		}
+	}
+	out.Reset()
+	if err := runWaresReset(ctx, st, "2,-1,7", &out); err != nil || !strings.Contains(out.String(), "effacé") {
+		t.Fatalf("%v %q", err, out.String())
+	}
+	if _, ok, _ := st.GetWares(ctx, key); ok {
+		t.Fatal("étalage encore présent")
+	}
+	out.Reset()
+	_ = runWaresReset(ctx, st, "2,-1,7", &out)
+	if !strings.Contains(out.String(), "aucun étalage") {
+		t.Fatalf("%q", out.String())
 	}
 }

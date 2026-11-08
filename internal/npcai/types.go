@@ -189,6 +189,8 @@ type Stats struct {
 	Remembered     uint64 `json:"remembered"`
 	QuestsOffered  uint64 `json:"quests_proposed"`
 	QuestsRejected uint64 `json:"quests_rejected"`
+	StockGenerated uint64 `json:"stock_generated"`
+	StockRejected  uint64 `json:"stock_rejected"`
 	TokensToday    int    `json:"tokens_today"`
 	DailyBudget    int    `json:"daily_budget"`
 	InFlight       int    `json:"in_flight"`

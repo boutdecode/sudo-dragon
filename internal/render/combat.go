@@ -85,6 +85,20 @@ var npcArt = map[world.NPCKind][]string{
 		`  /|   |\  `,
 		`   |_+_|   `,
 	},
+	world.NPCSmith: {
+		`   ,---.   `,
+		`  ( o o )  `,
+		`  /\_=_/\  `,
+		`   |   |/  `,
+		`  _|___|   `,
+	},
+	world.NPCArmorer: {
+		`   .-^-.   `,
+		`  [ o o ]  `,
+		`  /[ = ]\  `,
+		`   |###|   `,
+		`   |___|   `,
+	},
 	world.NPCChief: {
 		`   _/^\_   `,
 		`  ( o o )  `,

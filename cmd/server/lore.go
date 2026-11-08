@@ -79,3 +79,48 @@ func parseRegion(s string) (int, int, error) {
 	}
 	return x, y, nil
 }
+
+// runWaresList affiche les étalages générés (un vendeur par ligne, puis ses objets).
+func runWaresList(ctx context.Context, st *store.Store, w io.Writer) error {
+	list, err := st.ListWares(ctx)
+	if err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		fmt.Fprintln(w, "aucun étalage généré")
+		return nil
+	}
+	for _, wr := range list {
+		fmt.Fprintf(w, "vendeur %d,%d,%d  « %s »  (%s)\n", wr.NPC.Region.X, wr.NPC.Region.Y, wr.NPC.Index, wr.Specialty, wr.CreatedAt.Local().Format(time.DateTime))
+		for _, it := range wr.Items {
+			fmt.Fprintf(w, "    %-8s palier %d  ATQ %d DÉF %d  %d or  %s\n", it.Slot, it.Tier, it.Atk, it.Def, it.Price, it.Name)
+		}
+	}
+	return nil
+}
+
+// runWaresReset efface l'étalage d'un vendeur ("RX,RY,RANG") : il sera régénéré à la prochaine visite.
+func runWaresReset(ctx context.Context, st *store.Store, target string, w io.Writer) error {
+	parts := strings.Split(target, ",")
+	if len(parts) != 3 {
+		return fmt.Errorf("cible invalide %q : attendu RX,RY,RANG", target)
+	}
+	var n [3]int
+	for i, p := range parts {
+		v, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
+			return fmt.Errorf("cible invalide %q : %q n'est pas un entier", target, p)
+		}
+		n[i] = v
+	}
+	ok, err := st.DeleteWares(ctx, world.NPCKey{Region: world.RegionPos{X: n[0], Y: n[1]}, Index: n[2]})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Fprintf(w, "aucun étalage enregistré pour %s\n", target)
+		return nil
+	}
+	fmt.Fprintf(w, "étalage de %s effacé : il sera régénéré à la prochaine visite\n", target)
+	return nil
+}

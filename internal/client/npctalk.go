@@ -42,6 +42,7 @@ func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 	d.Name = textsafe.Clean(d.Name, 60)
 	d.Place = textsafe.Clean(d.Place, 60)
 	d.Notice = textsafe.Clean(d.Notice, maxNPCNotice)
+	d.Specialty = textsafe.Clean(d.Specialty, 100)
 	if d.Proposal != nil {
 		q := cleanQuest(*d.Proposal)
 		d.Proposal = &q
@@ -73,6 +74,7 @@ func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 		for i, o := range d.Offers {
 			o.Label = textsafe.Clean(o.Label, 80)
 			o.Arg = textsafe.Clean(o.Arg, 20)
+			o.Detail = textsafe.Clean(o.Detail, 60)
 			offers[i] = o
 		}
 		d.Offers = offers

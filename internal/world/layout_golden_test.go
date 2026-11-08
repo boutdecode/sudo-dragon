@@ -26,7 +26,7 @@ func layoutFingerprint(seed int64) uint64 {
 			}
 			h.Write(b)
 			for _, n := range s.NPCs {
-				if n.Kind == NPCVillager || n.Kind == NPCChief || n.Kind == NPCMayor {
+				if n.Kind != NPCMerchant && n.Kind != NPCHealer {
 					continue // ajoutés après coup : ne modifient ni les plans ni les PNJ d'origine
 				}
 				fmt.Fprintf(h, "npc:%s@%d,%d;", n.Kind, n.Pos.X, n.Pos.Y)

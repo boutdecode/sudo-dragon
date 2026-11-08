@@ -52,6 +52,8 @@ func run() error {
 	loreList := flag.Bool("lore-list", false, "affiche les présentations de joueurs enregistrées, puis quitte")
 	loreAccount := flag.String("lore-account", "", "avec -lore-list : se limite à ce compte")
 	lorePurge := flag.String("lore-purge", "", "supprime présentations et souvenirs : account:NOM ou place:RX,RY, puis quitte")
+	waresList := flag.Bool("wares-list", false, "affiche les étalages générés des forgerons et armuriers, puis quitte")
+	waresReset := flag.String("wares-reset", "", "efface l'étalage d'un vendeur (RX,RY,RANG ; voir -wares-list) pour qu'il soit régénéré, puis quitte")
 	flag.Parse()
 
 	if (*tlsCert == "") != (*tlsKey == "") {
@@ -72,6 +74,12 @@ func run() error {
 	}
 	defer st.Close()
 
+	if *waresList {
+		return runWaresList(context.Background(), st, os.Stdout)
+	}
+	if *waresReset != "" {
+		return runWaresReset(context.Background(), st, *waresReset, os.Stdout)
+	}
 	if *loreList {
 		return runLoreList(context.Background(), st, *loreAccount, os.Stdout)
 	}
