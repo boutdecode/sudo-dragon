@@ -1,0 +1,10 @@
+# Binaires
+/bin/
+
+# Base de données SQLite (et ses fichiers de journalisation WAL)
+*.db
+*.db-wal
+*.db-shm
+
+# Profils
+*.prof
