@@ -283,7 +283,7 @@ func TestActionResetsIdleTimer(t *testing.T) {
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
 	r.engage()
 	r.g.tick += fightIdleTicks
-	r.g.act(r.p, combat.Defend) // le joueur agit: le chronomètre repart
+	r.g.act(r.p, combat.Attack) // le joueur agit: le chronomètre repart
 	r.g.tick += fightIdleTicks
 	r.g.expireIdleFights(r.g.sortedIDs())
 	if r.p.fight == nil {

@@ -16,7 +16,6 @@ type Action int
 
 const (
 	Attack Action = iota + 1
-	Defend
 	Item
 	Flee
 )
@@ -26,8 +25,6 @@ func ParseAction(s string) (Action, bool) {
 	switch s {
 	case "attack":
 		return Attack, true
-	case "defend":
-		return Defend, true
 	case "item":
 		return Item, true
 	case "flee":
@@ -63,8 +60,7 @@ func (r Result) String() string {
 const (
 	HealAmount   = 15  // PV rendus par une potion
 	MaxPotions   = 9   // plafond de l'inventaire
-	fleeChance   = 0.5 // chance de réussir une fuite
-	DefendBonus  = 4   // bonus de DEF de l'action Défendre, jusqu'à la riposte
+	FleeChance   = 0.5 // chance de réussir une fuite
 	critRoll     = 20  // le 20 naturel touche toujours et double les dés
 	fumbleRoll   = 1   // le 1 naturel rate toujours
 	minimumDamge = 1   // un coup qui touche inflige au moins ceci, réduction comprise
@@ -157,7 +153,6 @@ func (b *Battle) Act(a Action) []string {
 		return nil
 	}
 	var log []string
-	defending := false
 
 	switch a {
 	case Attack:
@@ -191,9 +186,6 @@ func (b *Battle) Act(a Action) []string {
 			}
 			log = append(log, bl.rollText+" "+msg+b.reducedNote(bl))
 		}
-	case Defend:
-		defending = true
-		log = append(log, b.t("combat.defend", DefendBonus))
 	case Item:
 		if b.Potions <= 0 {
 			return []string{b.t("combat.no_potion")}
@@ -203,7 +195,7 @@ func (b *Battle) Act(a Action) []string {
 		b.Player.HP += healed
 		log = append(log, b.t("combat.drink", healed))
 	case Flee:
-		if b.rng.Float64() < fleeChance {
+		if b.rng.Float64() < FleeChance {
 			b.Result = Fled
 			return append(log, b.t("combat.flee_ok"))
 		}
@@ -218,11 +210,7 @@ func (b *Battle) Act(a Action) []string {
 	}
 
 	// Riposte du monstre.
-	def := b.Player.Def
-	if defending {
-		def += DefendBonus
-	}
-	bl := b.strike(b.Monster, def, b.Player.Reduction)
+	bl := b.strike(b.Monster, b.Player.Def, b.Player.Reduction)
 	switch {
 	case !bl.hit:
 		log = append(log, bl.rollText+" "+b.t("combat.monster_miss", b.MonsterName))

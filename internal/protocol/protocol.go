@@ -112,7 +112,7 @@ type Snapshot struct {
 }
 
 // CombatAction est le choix du joueur pour son tour de combat:
-// "attack", "defend", "item" ou "flee".
+// "attack", "item" ou "flee".
 type CombatAction struct {
 	Action string `json:"action"`
 }
@@ -136,6 +136,9 @@ type Combat struct {
 	PlayerMaxHP  int      `json:"pmhp"`
 	PlayerDef    int      `json:"pdef"`
 	MonsterDef   int      `json:"mdef"`
+	MonsterHit   int      `json:"mhit"`           // bonus de toucher de l'ennemi
+	MonsterDmg   string   `json:"mdmg,omitempty"` // dés de dégâts de l'ennemi
+	MonsterRed   string   `json:"mred,omitempty"` // dés de réduction de l'ennemi
 	PlayerMana   int      `json:"pmp"`
 	PlayerMaxMP  int      `json:"pmmp"`
 	Style        string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic

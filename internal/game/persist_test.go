@@ -152,7 +152,7 @@ func TestPersistNotCalledDuringFightTurns(t *testing.T) {
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
 	r.engage()
 	for i := 0; i < 3; i++ {
-		r.g.act(r.p, combat.Defend)
+		r.g.act(r.p, combat.Attack)
 	}
 	if len(sv.calls) != 0 {
 		t.Fatalf("%d sauvegardes pendant un combat en cours, attendu 0", len(sv.calls))

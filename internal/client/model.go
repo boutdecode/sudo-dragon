@@ -14,7 +14,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
@@ -808,9 +807,8 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // combatKeys associe les touches aux actions de combat (lettres ou chiffres).
 var combatKeys = map[string]string{
 	"a": "attack", "1": "attack",
-	"d": "defend", "2": "defend",
-	"i": "item", "3": "item",
-	"f": "flee", "4": "flee",
+	"i": "item", "2": "item",
+	"f": "flee", "3": "flee",
 }
 
 func (m Model) updateCombatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -844,7 +842,6 @@ func (m Model) updateCombatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // combatMenu est le menu d'actions, dans l'ordre d'affichage.
 var combatMenu = []struct{ key, action, label string }{
 	{"A", "attack", "fight.act.attack"},
-	{"D", "defend", "fight.act.defend"},
 	{"I", "item", "fight.act.item"},
 	{"F", "flee", "fight.act.flee"},
 }
@@ -1150,7 +1147,7 @@ func (m Model) helpLine() string {
 	case m.npc != nil:
 		return m.npcHelp()
 	case m.combat != nil && !m.combat.Over:
-		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"↵", m.t("key.confirm")}, [2]string{"a d i f", m.t("key.shortcuts")})
+		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"↵", m.t("key.confirm")}, [2]string{"a i f", m.t("key.shortcuts")})
 	case m.combat != nil:
 		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}
@@ -1175,74 +1172,6 @@ func journalPanel(title string, log []string, w, h int) string {
 		lines[i] = " " + l
 	}
 	return ui.Panel(title, strings.Join(lines, "\n"), w, h)
-}
-
-// combatView dessine l'écran de combat dans exactement w x h cellules: le
-// champ de bataille et le menu d'actions côte à côte, le journal dessous.
-func (m Model) combatView(w, h int) string {
-	c := m.combat
-	name := render.MonsterName(m.lang, c.Monster)
-
-	actionW := min(30, w/2)
-	leftW := w - actionW
-	logH := min(8, h-6)
-	midH := h - logH
-	iw, ih := leftW-2, midH-2
-
-	barW := max(4, min(30, iw-12))
-	monsterLines := []string{" " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr)).Render(name) + " " + dimStyle.Render(m.t("fight.def", c.MonsterDef)),
-		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP)}
-	playerLines := []string{m.t("fight.you") + " " + dimStyle.Render(m.t("fight.def", c.PlayerDef)),
-		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)}
-	if c.PlayerMaxMP > 0 {
-		playerLines = append(playerLines, fmt.Sprintf(" %s %3d/%d %s", ui.Bar(c.PlayerMana, c.PlayerMaxMP, barW), c.PlayerMana, c.PlayerMaxMP, dimStyle.Render(m.t("hud.mana_short"))))
-	}
-
-	field := slices.Clone(monsterLines)
-	if art := render.MonsterArt(c.Monster); ih >= len(art)+len(monsterLines)+len(playerLines)+2 {
-		style := render.ArtStyle(c.Monster)
-		field = append(field, "")
-		for _, l := range art {
-			field = append(field, ui.Center(style.Render(l), iw))
-		}
-		field = append(field, "")
-	}
-	field = append(field, playerLines...)
-
-	var actions []string
-	if c.Over {
-		switch c.Result {
-		case protocol.ResultWon:
-			actions = append(actions, " "+ui.OK.Bold(true).Render(m.t("fight.victory")))
-		case protocol.ResultLost:
-			actions = append(actions, " "+errStyle.Bold(true).Render(m.t("fight.defeat")))
-		default:
-			actions = append(actions, " "+dimStyle.Render(m.t("fight.fled")))
-		}
-		actions = append(actions, " "+dimStyle.Render(m.t("fight.enter_continue")))
-	} else {
-		for i, it := range combatMenu {
-			label := m.t(it.label)
-			if it.action == "attack" {
-				label = m.t("fight.act.attack." + string(hero.Kind(c.Style).OrMelee()))
-			}
-			if it.action == "item" {
-				label = fmt.Sprintf("%s (%d)", label, c.Potions)
-			}
-			if i == m.combatSel {
-				actions = append(actions, ui.Select.Render(ui.Fit(" › ["+it.key+"] "+label, actionW-2)))
-			} else {
-				actions = append(actions, "   ["+it.key+"] "+label)
-			}
-		}
-	}
-
-	title := m.t("fight.title", name)
-	mid := lipgloss.JoinHorizontal(lipgloss.Top,
-		ui.Panel(title, strings.Join(field, "\n"), leftW, midH),
-		ui.Panel(m.t("fight.actions"), strings.Join(actions, "\n"), actionW, midH),
-	)
-	return mid + "\n" + journalPanel(m.t("fight.journal"), m.combatLog, w, logH)
 }
 
 // npcKeyLabel est la lettre affichée pour chaque action de dialogue.

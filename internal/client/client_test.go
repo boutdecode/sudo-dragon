@@ -372,8 +372,8 @@ func TestCombatKeysSendActions(t *testing.T) {
 	m = startCombat(t, m, "Un Loup vous attaque !")
 
 	for key, want := range map[string]string{
-		"a": "attack", "1": "attack", "d": "defend", "2": "defend",
-		"i": "item", "3": "item", "f": "flee", "4": "flee",
+		"a": "attack", "1": "attack",
+		"i": "item", "2": "item", "f": "flee", "3": "flee",
 	} {
 		m = press(m, key)
 		got, _ := sentActions(out)
@@ -403,8 +403,7 @@ func TestCombatMenuNavigation(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
 	m = startCombat(t, m)
 	m = press(m, "down")
-	m = press(m, "down")
-	if m.combatSel != 2 {
+	if m.combatSel != 1 {
 		t.Fatalf("combatSel=%d", m.combatSel)
 	}
 	m = press(m, "enter")
@@ -412,10 +411,9 @@ func TestCombatMenuNavigation(t *testing.T) {
 		t.Fatalf("Entrée devait envoyer l'entrée choisie: %v", got)
 	}
 	m = press(m, "up")
-	m = press(m, "up")
-	m = press(m, "up") // 2 -> 1 -> 0 -> 3 (boucle)
-	if m.combatSel != 3 {
-		t.Fatalf("combatSel=%d, attendu 3", m.combatSel)
+	m = press(m, "up") // 1 -> 0 -> 2 (boucle)
+	if m.combatSel != 2 {
+		t.Fatalf("combatSel=%d, attendu 2", m.combatSel)
 	}
 }
 
@@ -518,8 +516,16 @@ func TestCombatViewFitsAndShowsEssentials(t *testing.T) {
 				t.Errorf("%v: %q absent de l'écran de combat", sz, want)
 			}
 		}
-		// Le sprite n'apparaît que s'il y a la place; il a un oeil ('o.o') pour le loup.
-		hasSprite := strings.Contains(out, "o.o")
+		if sz[1] >= 34 {
+			if !strings.Contains(out, "Détail") {
+				t.Errorf("%v: panneau Détail attendu", sz)
+			}
+			if strings.Contains(out, "Défendre") {
+				t.Errorf("%v: l'action Défendre n'existe plus", sz)
+			}
+		}
+		// Le sprite n'apparaît que s'il y a la place; pour le loup c'est l'illustration (demi-blocs).
+		hasSprite := strings.Contains(out, "▀")
 		if sz[1] >= 34 && !hasSprite {
 			t.Errorf("%v: sprite attendu sur un grand terminal", sz)
 		}

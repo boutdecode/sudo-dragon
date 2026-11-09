@@ -33,7 +33,7 @@ func finish(t *testing.T, b *Battle) {
 }
 
 func TestParseAction(t *testing.T) {
-	for s, want := range map[string]Action{"attack": Attack, "defend": Defend, "item": Item, "flee": Flee} {
+	for s, want := range map[string]Action{"attack": Attack, "item": Item, "flee": Flee} {
 		if got, ok := ParseAction(s); !ok || got != want {
 			t.Errorf("ParseAction(%q) = %v,%v", s, got, ok)
 		}
@@ -181,32 +181,9 @@ func TestDeadMonsterDoesNotStrikeBack(t *testing.T) {
 func TestRoundCountsOnlyCompletedRounds(t *testing.T) {
 	b := newBattle(player, Fighter{HP: 1000, MaxHP: 1000, Def: 10, Dmg: dice.D(1, 1, 0)}, 0, 3)
 	b.Act(Attack)
-	b.Act(Defend)
+	b.Act(Attack)
 	if b.Round != 2 {
 		t.Fatalf("Round=%d, attendu 2", b.Round)
-	}
-}
-
-// monsterHitRate mesure la fréquence à laquelle un monstre (bonus 0) touche le joueur après l'action a.
-func monsterHitRate(a Action, def int) float64 {
-	hits := 0
-	const n = 6000
-	for seed := uint64(0); seed < n; seed++ {
-		// PV pleins: une potion consomme le tour sans soigner ni parer.
-		b := newBattle(Fighter{HP: 1000, MaxHP: 1000, Def: def}, Fighter{HP: 1000, MaxHP: 1000, Def: 10, Dmg: dice.D(1, 1, 0)}, 1, seed)
-		b.Act(a)
-		if b.Player.HP < 1000 {
-			hits++
-		}
-	}
-	return float64(hits) / n
-}
-
-func TestDefendRaisesTheDefenseUntilTheRiposte(t *testing.T) {
-	plain, guarded := monsterHitRate(Item, 10), monsterHitRate(Defend, 10)
-	// DEF 10 : 11 à 20 = 50 % ; DEF 14 : 15 à 20 = 30 %.
-	if plain < 0.46 || plain > 0.54 || guarded < 0.26 || guarded > 0.34 {
-		t.Fatalf("touche du monstre: %.2f sans parade, %.2f en garde (attendu 0,50 et 0,30)", plain, guarded)
 	}
 }
 

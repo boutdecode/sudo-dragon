@@ -24,7 +24,7 @@ type fight struct {
 	lastAct uint64 // tick de la dernière action du joueur
 }
 
-// Act applique l'action de combat d'un joueur ("attack", "defend", "item", "flee").
+// Act applique l'action de combat d'un joueur ("attack", "item", "flee").
 // Sans effet si le joueur n'est pas en combat ou si l'action est inconnue.
 func (g *Game) Act(id int, action string) {
 	a, ok := combat.ParseAction(action)
@@ -197,6 +197,9 @@ func (g *Game) sendFight(f *fight, log []string) {
 		PlayerMaxHP:  b.Player.MaxHP,
 		PlayerDef:    b.Player.Def,
 		MonsterDef:   b.Monster.Def,
+		MonsterHit:   b.Monster.Hit,
+		MonsterDmg:   b.Monster.Dmg.String(),
+		MonsterRed:   b.Monster.Reduction.String(),
 		PlayerMana:   b.Player.Mana,
 		PlayerMaxMP:  b.Player.MaxMana,
 		Style:        string(b.Player.Kind.OrMelee()),
