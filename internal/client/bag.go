@@ -90,6 +90,41 @@ func (m Model) bonusText(it protocol.ItemInfo) string {
 	return m.t("bag.item.def", it.Def)
 }
 
+// itemDetailLines est la fiche d'un objet (sac et boutiques). En mode compact, sans lignes vides ni description
+// au-delà de deux lignes, pour tenir dans un petit panneau.
+func (m Model) itemDetailLines(it protocol.ItemInfo, dw int, compact bool) []string {
+	gap := func() []string {
+		if compact {
+			return nil
+		}
+		return []string{""}
+	}
+	out := []string{" " + titleStyle.Render(it.Name), " " + dimStyle.Render(m.t("gear.slot."+it.Slot)+" · "+m.t("bag.item.tier", it.Tier))}
+	out = append(out, gap()...)
+	desc := wrap(it.Desc, dw)
+	if compact && len(desc) > 2 {
+		desc = desc[:2]
+	}
+	for _, l := range desc {
+		out = append(out, " "+l)
+	}
+	out = append(out, gap()...)
+	out = append(out, " "+goldStyle.Render(m.bonusText(it)), " "+m.t("bag.item.level", it.MinLevel))
+	if it.Origin != "" {
+		out = append(out, " "+dimStyle.Render(m.t("bag.item.origin", it.Origin)))
+	}
+	out = append(out, " "+dimStyle.Render(m.t("bag.item.sell", it.Sell)))
+	if cur, ok := m.wornIn(gear.Slot(it.Slot)); ok && !it.Worn {
+		diff := itemPower(it) - itemPower(cur)
+		style := ui.OK
+		if diff < 0 {
+			style = errStyle
+		}
+		out = append(out, " "+style.Render(m.t("bag.item.vs", diff)))
+	}
+	return out
+}
+
 // updateBagKey traite une touche dans l'écran du sac.
 func (m Model) updateBagKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -152,24 +187,8 @@ func (m Model) inventoryView(w, h int) string {
 	var detail []string
 	if m.bagSel < len(m.bag.Items) {
 		it := m.bag.Items[m.bagSel]
-		dw := detailW - 4
-		detail = append(detail, "", " "+titleStyle.Render(it.Name), " "+dimStyle.Render(m.t("gear.slot."+it.Slot)+" · "+m.t("bag.item.tier", it.Tier)), "")
-		for _, l := range wrap(it.Desc, dw) {
-			detail = append(detail, " "+l)
-		}
-		detail = append(detail, "", " "+goldStyle.Render(m.bonusText(it)), " "+m.t("bag.item.level", it.MinLevel))
-		if it.Origin != "" {
-			detail = append(detail, " "+dimStyle.Render(m.t("bag.item.origin", it.Origin)))
-		}
-		detail = append(detail, " "+dimStyle.Render(m.t("bag.item.sell", it.Sell)))
-		if cur, ok := m.wornIn(gear.Slot(it.Slot)); ok && !it.Worn {
-			diff := itemPower(it) - itemPower(cur)
-			style := ui.OK
-			if diff < 0 {
-				style = errStyle
-			}
-			detail = append(detail, " "+style.Render(m.t("bag.item.vs", diff)))
-		}
+		detail = append(detail, "")
+		detail = append(detail, m.itemDetailLines(it, detailW-4, false)...)
 		if it.Worn {
 			detail = append(detail, "", " "+ui.OK.Render(m.t("bag.item.worn")))
 		}

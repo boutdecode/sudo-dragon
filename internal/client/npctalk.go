@@ -75,6 +75,10 @@ func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 			o.Label = textsafe.Clean(o.Label, 80)
 			o.Arg = textsafe.Clean(o.Arg, 20)
 			o.Detail = textsafe.Clean(o.Detail, 60)
+			if o.Info != nil {
+				it := cleanItem(*o.Info)
+				o.Info = &it
+			}
 			offers[i] = o
 		}
 		d.Offers = offers
@@ -143,6 +147,9 @@ func (m Model) npcHelp() string {
 		return ui.KeyBar([2]string{strings.ToLower(m.t("npc.key.consent")), m.t("key.accept")}, [2]string{strings.ToLower(m.t("npc.key.decline")), m.t("key.refuse")}, [2]string{"esc", m.t("key.refuse")})
 	}
 	keys := strings.ToLower(strings.Join([]string{m.t("npc.key.buy"), m.t("npc.key.sell"), m.t("npc.key.heal"), m.t("npc.key.talk")}, " "))
+	if len(m.itemOffers()) > 0 {
+		return ui.KeyBar([2]string{"tab", m.t("key.inspect")}, [2]string{"↵", m.t("key.choose")}, [2]string{keys, m.t("key.choose")}, [2]string{"esc", m.t("key.quit")})
+	}
 	return ui.KeyBar([2]string{keys, m.t("key.choose")}, [2]string{"esc", m.t("key.quit")})
 }
 

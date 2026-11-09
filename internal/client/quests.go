@@ -292,6 +292,17 @@ func isNumbered(action string) bool {
 	return action == protocol.NPCTurnIn || action == protocol.NPCBuyItem || action == protocol.NPCSellItem
 }
 
+// itemOffers renvoie les offres d'équipement (celles qui portent une fiche d'objet), dans l'ordre.
+func (m Model) itemOffers() []protocol.NPCOffer {
+	var out []protocol.NPCOffer
+	for _, o := range m.npc.Offers {
+		if o.Info != nil {
+			out = append(out, o)
+		}
+	}
+	return out
+}
+
 // numberedOffers renvoie, dans l'ordre, les offres choisies par un chiffre.
 func (m Model) numberedOffers() []protocol.NPCOffer {
 	var out []protocol.NPCOffer

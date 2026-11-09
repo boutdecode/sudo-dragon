@@ -198,13 +198,14 @@ type NPCLine struct {
 // NPCOffer est une action proposée par un PNJ. Le serveur décide du prix et de
 // la disponibilité (or insuffisant, sac plein…): le client se contente de l'afficher.
 type NPCOffer struct {
-	Action    string `json:"action"`
-	Label     string `json:"label"`
-	Price     int    `json:"price"`          // 0 = gratuit (ou, pour une vente, sans objet)
-	Gain      bool   `json:"gain,omitempty"` // vrai si le joueur reçoit de l'or (vente) au lieu d'en payer
-	Available bool   `json:"ok"`
-	Arg       string `json:"arg,omitempty"`    // à renvoyer dans NPCAction.Text (quête à rendre, objet à acheter ou vendre)
-	Detail    string `json:"detail,omitempty"` // précision affichée à côté (bonus, niveau requis…)
+	Action    string    `json:"action"`
+	Label     string    `json:"label"`
+	Price     int       `json:"price"`          // 0 = gratuit (ou, pour une vente, sans objet)
+	Gain      bool      `json:"gain,omitempty"` // vrai si le joueur reçoit de l'or (vente) au lieu d'en payer
+	Available bool      `json:"ok"`
+	Arg       string    `json:"arg,omitempty"`    // à renvoyer dans NPCAction.Text (quête à rendre, objet à acheter ou vendre)
+	Detail    string    `json:"detail,omitempty"` // précision affichée à côté (bonus, niveau requis…)
+	Info      *ItemInfo `json:"info,omitempty"`   // fiche complète de l'objet (offres d'équipement), pour le panneau de détails
 }
 
 // ItemInfo est un objet d'équipement tel que le joueur le voit.

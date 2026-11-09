@@ -149,6 +149,7 @@ type Model struct {
 	// le joueur le quitte avec Échap.
 	npc      *protocol.NPCDialog
 	npcLog   []string
+	npcSel   int             // offre d'équipement examinée (index dans itemOffers), -1 = aucune
 	npcInput textinput.Model // saisie de la discussion libre (voir npctalk.go)
 
 	// Livre de quêtes (voir quests.go).
@@ -659,7 +660,8 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 	if m.npc != nil {
 		prevMode = m.npc.Mode
 	}
-	if m.npc == nil { // nouveau dialogue
+	fresh := m.npc == nil
+	if fresh { // nouveau dialogue
 		m.npcLog = nil
 	}
 	m.chatting, m.inventory, m.sheet = false, false, false
@@ -673,6 +675,12 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 	}
 	m.npcLog = log
 	m.npc = &d
+	switch n := len(m.itemOffers()); {
+	case n == 0 || fresh || prevMode != d.Mode:
+		m.npcSel = -1
+	case m.npcSel >= n: // objet vendu ou acheté en fin de liste
+		m.npcSel = n - 1
+	}
 	m.syncNPCInput(prevMode)
 }
 
@@ -697,6 +705,28 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateNPCQuestKey(msg)
 	}
 	key := msg.String()
+	if items := m.itemOffers(); len(items) > 0 {
+		switch key {
+		case "tab", "down", "j":
+			m.npcSel = (m.npcSel + 1) % len(items)
+			return m, nil
+		case "shift+tab", "up", "k":
+			if m.npcSel <= 0 {
+				m.npcSel = len(items) - 1
+			} else {
+				m.npcSel--
+			}
+			return m, nil
+		case "enter":
+			if m.npcSel >= 0 && m.npcSel < len(items) {
+				if m.conn != nil {
+					o := items[m.npcSel]
+					m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: o.Action, Text: o.Arg})
+				}
+				return m, nil
+			}
+		}
+	}
 	if key == "esc" || key == "enter" {
 		if m.conn != nil {
 			// Dans la liste de revente, Échap revient à la boutique ; sinon il quitte le dialogue.
@@ -1205,6 +1235,9 @@ func (m Model) npcView(w, h int) string {
 	}
 	leftW := w - rightW
 	logH := max(3, min(6, h-8))
+	if len(m.itemOffers()) > 0 {
+		logH = 3 // l'étalage a besoin de la place : liste + fiche de l'objet
+	}
 	midH := h - logH
 	iw, ih := leftW-2, midH-2
 
@@ -1230,7 +1263,7 @@ func (m Model) npcView(w, h int) string {
 	}
 
 	var offers []string
-	turnIn := 0
+	turnIn, itemIdx := 0, 0
 	for _, o := range d.Offers {
 		var price string
 		switch {
@@ -1256,13 +1289,43 @@ func (m Model) npcView(w, h int) string {
 		if !o.Available {
 			line = dimStyle.Render(line)
 		}
+		if o.Info != nil {
+			if itemIdx == m.npcSel {
+				line = ui.Select.Render(ansi.Strip(line))
+			}
+			itemIdx++
+		}
 		offers = append(offers, line)
 	}
 	offers = append(offers, "", " "+dimStyle.Render(m.t("npc.leave")))
 
-	mid := lipgloss.JoinHorizontal(lipgloss.Top,
-		ui.Panel(m.npcTitle(), strings.Join(left, "\n"), leftW, midH),
-		ui.Panel(m.t("npc.offers"), strings.Join(offers, "\n"), rightW, midH),
-	)
+	leftPanel := ui.Panel(m.npcTitle(), strings.Join(left, "\n"), leftW, midH)
+	right := ui.Panel(m.t("npc.offers"), strings.Join(offers, "\n"), rightW, midH)
+	if items := m.itemOffers(); len(items) > 0 { // étalage d'équipement : fiche de l'objet examiné sous la liste
+		listH := len(offers) + 2
+		detailW := rightW
+		if midH-listH < 8 { // écran bas : la fiche remplace le portrait, à gauche, et la liste garde toute la colonne
+			detailW = leftW
+		}
+		var detail []string
+		if m.npcSel >= 0 && m.npcSel < len(items) {
+			detail = m.itemDetailLines(*items[m.npcSel].Info, detailW-4, true)
+		} else {
+			for _, l := range wrap(m.t("npc.details.hint"), max(8, detailW-4)) {
+				detail = append(detail, " "+dimStyle.Render(l))
+			}
+		}
+		if detailW == rightW {
+			detailH := min(12, midH-listH)
+			right = lipgloss.JoinVertical(lipgloss.Left,
+				ui.Panel(m.t("npc.offers"), strings.Join(offers, "\n"), rightW, midH-detailH),
+				ui.Panel(m.t("npc.details"), strings.Join(detail, "\n"), rightW, detailH),
+			)
+		} else {
+			leftPanel = ui.Panel(m.t("npc.details"), strings.Join(detail, "\n"), leftW, midH)
+		}
+	}
+
+	mid := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, right)
 	return mid + "\n" + journalPanel(m.t("npc.dialogue"), m.npcLog, w, logH)
 }

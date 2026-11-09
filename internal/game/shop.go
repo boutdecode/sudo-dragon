@@ -189,8 +189,9 @@ func (g *Game) shopOffers(p *player, npc world.NPC) []protocol.NPCOffer {
 			break
 		}
 		price := g.priceFor(p, npc, it.Price)
+		info := g.itemInfo(p.lang, p, it)
 		offers = append(offers, protocol.NPCOffer{
-			Action: protocol.NPCBuyItem, Label: it.Name, Detail: g.itemDetail(p.lang, p, it), Price: price,
+			Action: protocol.NPCBuyItem, Label: it.Name, Detail: g.itemDetail(p.lang, p, it), Price: price, Info: &info,
 			Arg:       fmt.Sprintf("%d.%d", rev, it.ID),
 			Available: p.stats.Gold >= price && len(p.inv.Items) < gear.BagCapacity,
 		})
@@ -219,8 +220,9 @@ func (g *Game) sellable(p *player) []gear.Item {
 func (g *Game) sellOffers(p *player) []protocol.NPCOffer {
 	var offers []protocol.NPCOffer
 	for _, it := range g.sellable(p) {
+		info := g.itemInfo(p.lang, p, it)
 		offers = append(offers, protocol.NPCOffer{
-			Action: protocol.NPCSellItem, Label: it.Name, Detail: g.itemDetail(p.lang, p, it), Price: it.SellPrice(), Gain: true,
+			Action: protocol.NPCSellItem, Label: it.Name, Detail: g.itemDetail(p.lang, p, it), Price: it.SellPrice(), Gain: true, Info: &info,
 			Arg: strconv.FormatInt(it.ID, 10), Available: p.stats.Gold <= combat.MaxGold-it.SellPrice(),
 		})
 	}

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -123,8 +124,10 @@ func shopDialog() protocol.NPCDialog {
 	return protocol.NPCDialog{
 		Kind: "smith", Name: "Forgeron Hubert", Place: "Brumeford", Mode: protocol.NPCModeMenu, Gold: 500, Specialty: "lames courtes et dagues",
 		Offers: []protocol.NPCOffer{
-			{Action: protocol.NPCBuyItem, Label: "Dague en fer", Detail: "ATQ 2 (+2) · niv 1", Price: 40, Arg: "1.1", Available: true},
-			{Action: protocol.NPCBuyItem, Label: "Épée en acier", Detail: "ATQ 4 (+4) · niv 4", Price: 120, Arg: "1.2", Available: true},
+			{Action: protocol.NPCBuyItem, Label: "Dague en fer", Detail: "ATQ 2 (+2) · niv 1", Price: 40, Arg: "1.1", Available: true,
+				Info: &protocol.ItemInfo{Name: "Dague en fer", Desc: "Une lame courte et fiable.", Slot: "weapon", Tier: 1, Dice: "1d4", Family: "dagger", MinLevel: 1, Sell: 20}},
+			{Action: protocol.NPCBuyItem, Label: "Épée en acier", Detail: "ATQ 4 (+4) · niv 4", Price: 120, Arg: "1.2", Available: true,
+				Info: &protocol.ItemInfo{Name: "Épée en acier", Desc: "Une épée lourde forgée à Brumeford.", Slot: "weapon", Tier: 2, Dice: "1d8", Family: "sword", MinLevel: 4, Sell: 60}},
 			{Action: protocol.NPCSellMenu, Label: "Revendre un objet", Available: true},
 		},
 	}
@@ -192,5 +195,35 @@ func TestShopFitsAllSizes(t *testing.T) {
 				t.Errorf("%v ligne %d : largeur %d > %d", sz, i, w, sz[0])
 			}
 		}
+	}
+}
+
+func TestShopTabInspectsAndEnterBuys(t *testing.T) {
+	m, out := withConn(playingModel(t, 120, 36))
+	m = openNPC(t, m, shopDialog())
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Détails") || !strings.Contains(view, "Tab") {
+		t.Fatalf("panneau de détails absent:\n%s", view)
+	}
+	tab := func(m Model, k tea.KeyPressMsg) Model { tm, _ := m.Update(k); return tm.(Model) }
+	m = tab(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Une lame courte et fiable.") || strings.Contains(view, "Une épée lourde") {
+		t.Fatalf("détails du 1er objet:\n%s", view)
+	}
+	m = tab(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Une épée lourde forgée") {
+		t.Fatalf("détails du 2e objet:\n%s", view)
+	}
+	m = tab(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if m.npcSel != 0 {
+		t.Fatalf("shift+tab: sel=%d", m.npcSel)
+	}
+	m = tab(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = press(m, "enter")
+	env, _ := protocol.Decode(<-out)
+	var a protocol.NPCAction
+	_ = env.Payload(&a)
+	if a.Action != protocol.NPCBuyItem || a.Text != "1.2" {
+		t.Fatalf("Entrée devrait acheter l'objet examiné: %+v", a)
 	}
 }
