@@ -3,10 +3,12 @@ package client
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 func questsMsg(t *testing.T, b protocol.Quests) eventMsg {
@@ -205,5 +207,32 @@ func TestQuestsResetOnReconnect(t *testing.T) {
 	tm, _ = tm.Update(connectedMsg{welcome: protocol.Welcome{ID: 1, Name: "bob", Seed: 1}})
 	if got := tm.(Model); len(got.quests.Open) != 0 || got.questBook {
 		t.Fatalf("le livre d'une session précédente est resté: %+v", got.quests)
+	}
+}
+
+func TestGiverIdleFollowsOpenQuestsPausesAndTheCap(t *testing.T) {
+	a := world.NPCKey{Region: world.RegionPos{X: 1, Y: 2}, Index: 3}
+	b := world.NPCKey{Region: world.RegionPos{X: 4, Y: 5}, Index: 0}
+	var m Model
+	m.questsAt = time.Now()
+	if m.giverIdle(a) {
+		t.Fatal("sans quête, personne n'est sans travail")
+	}
+	m.quests.Open = []protocol.QuestInfo{{GiverRX: 1, GiverRY: 2, GiverIdx: 3}}
+	if !m.giverIdle(a) || m.giverIdle(b) {
+		t.Fatal("seul le donneur d'une quête ouverte est sans travail")
+	}
+	m.quests.Open = nil
+	m.quests.Pauses = []protocol.GiverPause{{RX: 4, RY: 5, Idx: 0, Secs: 60}}
+	if !m.giverIdle(b) {
+		t.Fatal("donneur en pause")
+	}
+	m.questsAt = time.Now().Add(-2 * time.Minute)
+	if m.giverIdle(b) {
+		t.Fatal("la pause est écoulée: le « ! » doit revenir sans nouveau message")
+	}
+	m.quests.Full = true
+	if !m.giverIdle(a) || !m.giverIdle(b) {
+		t.Fatal("quota atteint: personne n'a de travail")
 	}
 }

@@ -189,6 +189,14 @@ func (g *Game) sendQuests(p *player) {
 			Place: g.placeName(p.lang, rp), Points: pts, Tier: tierLabel(p.lang, pts), Next: quest.NextTier(pts),
 		})
 	}
+	// De quoi griser le « ! » des donneurs qui ne peuvent rien confier (même règle que canOffer).
+	qs.Full = p.openQuests() >= quest.MaxActive
+	now := g.now()
+	for _, q := range p.quests {
+		if left := q.PauseLeft(now); left > 0 {
+			qs.Pauses = append(qs.Pauses, protocol.GiverPause{RX: q.Giver.Region.X, RY: q.Giver.Region.Y, Idx: q.Giver.Index, Secs: int(left.Seconds()) + 1})
+		}
+	}
 	qs.Notice, p.questNotices = p.questNotices, nil
 	p.sendQuestBook(qs)
 }
@@ -271,7 +279,7 @@ func (g *Game) canOffer(p *player, npc world.NPC) bool {
 		if q.Giver != npc.Key() {
 			continue
 		}
-		if q.Open() || (q.State == quest.Done && now.Sub(q.DoneAt) < quest.GiverPause) {
+		if q.Open() || q.PauseLeft(now) > 0 {
 			return false
 		}
 	}

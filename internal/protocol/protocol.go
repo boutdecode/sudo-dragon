@@ -391,7 +391,20 @@ type Quests struct {
 	Open     []QuestInfo `json:"open"`    // actives et prêtes
 	History  []QuestInfo `json:"history"` // dernières quêtes rendues
 	Standing []Standing  `json:"standing"`
-	Notice   []string    `json:"notice,omitempty"` // lignes à ajouter au journal (progression, abandon…)
+	// Full : le quota de quêtes ouvertes est atteint, aucun donneur ne peut rien confier.
+	Full bool `json:"full,omitempty"`
+	// Pauses : donneurs à qui une quête vient d'être rendue, avec le délai restant avant la suivante.
+	// Avec les donneurs des quêtes ouvertes, c'est de quoi masquer le « ! » de ceux qui n'ont rien à confier.
+	Pauses []GiverPause `json:"pauses,omitempty"`
+	Notice []string     `json:"notice,omitempty"` // lignes à ajouter au journal (progression, abandon…)
+}
+
+// GiverPause est un donneur de quêtes en pause (clé du PNJ, secondes restantes).
+type GiverPause struct {
+	RX   int `json:"rx"`
+	RY   int `json:"ry"`
+	Idx  int `json:"i"`
+	Secs int `json:"s"`
 }
 
 // QuestAction est une action sur le livre de quêtes. Aujourd'hui: abandonner.

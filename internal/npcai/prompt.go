@@ -191,6 +191,9 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	if req.Offer != nil {
 		b.WriteString(i18n.T(l, "prompt.quest_rules"))
 		b.WriteString("\n")
+	} else if n.GivesQuests {
+		b.WriteString(i18n.T(l, "prompt.no_work_rule")) // donneur de quêtes qui n'a rien à confier maintenant
+		b.WriteString("\n")
 	}
 	b.WriteString(i18n.T(l, "prompt.system_rules"))
 	b.WriteString("\n\n")

@@ -137,7 +137,7 @@ func (m Model) dungeonMapView(w, h int) string {
 		cx, cy = m.dmap.W/2, m.dmap.H/2
 	}
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
-	grid := render.ViewportReady(m.terrain(), cx, cy, cols, rows, ents, nil, self.ID, nil)
+	grid := render.ViewportReady(m.terrain(), cx, cy, cols, rows, ents, nil, self.ID, nil, nil)
 
 	left := titleStyle.Render(m.t("dungeon.map.title"))
 	right := dimStyle.Render(m.t("dungeon.map.tier", m.zone.Tier) + " · " + m.t("map.you", self.X, self.Y))

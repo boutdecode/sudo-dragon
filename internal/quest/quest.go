@@ -98,6 +98,15 @@ func (q Quest) Place() world.RegionPos { return q.Giver.Region }
 // Need est le nombre d'actions à accomplir.
 func (q Quest) Need() int { return max(1, q.Objective.Count) }
 
+// PauseLeft donne le temps restant avant que le donneur confie une nouvelle quête, quand celle-ci vient
+// d'être rendue (0 sinon).
+func (q Quest) PauseLeft(now time.Time) time.Duration {
+	if q.State != Done {
+		return 0
+	}
+	return max(0, GiverPause-now.Sub(q.DoneAt))
+}
+
 // Open indique que la quête est en cours (active ou prête).
 func (q Quest) Open() bool { return q.State == Active || q.State == Ready }
 

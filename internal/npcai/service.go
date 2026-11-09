@@ -372,6 +372,7 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 	reply := Reply{Text: out.Reply, Tokens: tokens}
 	if req.Offer != nil && out.Quest != nil && out.Structured && !req.Opening {
 		reply.Quest = s.checkQuest(ctx, *out.Quest, req.Offer.Quest)
+		reply.QuestDropped = reply.Quest == nil
 	}
 
 	// Ce qui est retenu n'est écrit que si la réponse respecte le format et que la modération fonctionne.

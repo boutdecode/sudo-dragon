@@ -104,8 +104,11 @@ type Reply struct {
 	Remembered bool // une fiche de présentation a été enregistrée
 	// Quest est une quête proposée par le modèle, déjà validée (quest.Validate) et modérée.
 	// Elle n'existe pas encore : le joueur doit l'accepter.
-	Quest  *quest.Quest
-	Tokens int // jetons consommés par l'appel
+	Quest *quest.Quest
+	// QuestDropped : le modèle a proposé une quête, mais elle a été écartée (invalide ou non modérée).
+	// Sa réplique a pu l'annoncer : le jeu prévient le joueur qu'il n'y a finalement rien.
+	QuestDropped bool
+	Tokens       int // jetons consommés par l'appel
 }
 
 // Config règle le service. Les zéros prennent les valeurs de DefaultConfig.

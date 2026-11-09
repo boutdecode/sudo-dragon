@@ -308,7 +308,7 @@ func TestReadyQuestGiverShowsQuestionMark(t *testing.T) {
 		t.Skip("pas de donneur près du départ")
 	}
 	draw := func(ready map[world.NPCKey]bool) string {
-		return ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, ready))
+		return ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, ready, nil))
 	}
 	center := func(s string) rune { return []rune(strings.Split(s, "\n")[2])[4] }
 	if got := center(draw(nil)); got != '!' {
@@ -316,6 +316,13 @@ func TestReadyQuestGiverShowsQuestionMark(t *testing.T) {
 	}
 	if got := center(draw(map[world.NPCKey]bool{giver.Key(): true})); got != '?' {
 		t.Fatalf("donneur avec quête prête : %q", got)
+	}
+	idle := func(k world.NPCKey) bool { return k == giver.Key() }
+	if got := center(ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, nil, idle))); got == '!' || got == '?' {
+		t.Fatalf("donneur sans travail : %q", got)
+	}
+	if got := center(ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, map[world.NPCKey]bool{giver.Key(): true}, idle))); got != '?' {
+		t.Fatalf("la quête prête prime sur l'absence de travail : %q", got)
 	}
 	other := map[world.NPCKey]bool{{Region: giver.Region, Index: giver.Index + 50}: true}
 	if got := center(draw(other)); got != '!' {

@@ -184,6 +184,48 @@ func TestWrongGiverCannotCollect(t *testing.T) {
 	}
 }
 
+func TestSendQuestsTellsWhichGiversAreIdle(t *testing.T) {
+	r, _ := giverRig(t)
+	var book protocol.Quests
+	r.p.sendQuestBook = func(q protocol.Quests) { book = q }
+	now := time.Unix(2_000_000, 0)
+	r.g.Clock = func() time.Time { return now }
+
+	r.g.sendQuests(r.p)
+	if book.Full || len(book.Pauses) != 0 {
+		t.Fatalf("rien à signaler au départ: %+v", book)
+	}
+	r.p.quests = append(r.p.quests, quest.Quest{ID: 7, State: quest.Done, DoneAt: now.Add(-10 * time.Minute), Giver: r.npc.Key()})
+	r.g.sendQuests(r.p)
+	want := protocol.GiverPause{RX: r.npc.Region.X, RY: r.npc.Region.Y, Idx: r.npc.Index, Secs: int((quest.GiverPause - 10*time.Minute).Seconds()) + 1}
+	if len(book.Pauses) != 1 || book.Pauses[0] != want {
+		t.Fatalf("pause attendue %+v : %+v", want, book.Pauses)
+	}
+	now = now.Add(time.Hour)
+	r.g.sendQuests(r.p)
+	if len(book.Pauses) != 0 {
+		t.Fatalf("pause écoulée: %+v", book.Pauses)
+	}
+	for i := 0; i < quest.MaxActive; i++ {
+		r.p.quests = append(r.p.quests, quest.Quest{ID: int64(100 + i), State: quest.Active, Giver: world.NPCKey{Index: 90 + i}})
+	}
+	r.g.sendQuests(r.p)
+	if !book.Full {
+		t.Fatal("quota atteint: Full attendu")
+	}
+}
+
+func TestDroppedQuestIsAnnouncedToThePlayer(t *testing.T) {
+	r, ft := giverRig(t)
+	r.act(protocol.NPCTalk)
+	ft.answer(ft.count()-1, npcai.Reply{Text: "J'ai une mission pour toi !", QuestDropped: true})
+	r.pump()
+	lines := r.last().Lines
+	if len(lines) == 0 || lines[len(lines)-1].Who != "sys" || !strings.Contains(lines[len(lines)-1].Text, "rien") {
+		t.Fatalf("le joueur doit être prévenu: %+v", lines)
+	}
+}
+
 func TestQuestLimits(t *testing.T) {
 	r, ft := giverRig(t)
 	r.propose(ft, wolfProposal())

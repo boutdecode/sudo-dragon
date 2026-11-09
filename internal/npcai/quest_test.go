@@ -87,6 +87,24 @@ func TestPromptOffersWorkOnlyToGivers(t *testing.T) {
 	}
 }
 
+// Un donneur qui n'a rien à confier maintenant (Offer nil) le sait: règle « pas de travail » dans le prompt.
+func TestPromptTellsAGiverWithoutOfferThatHasNoWork(t *testing.T) {
+	req := testReq("du travail ?")
+	req.NPC.GivesQuests = true
+	sys := BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	if !strings.Contains(sys, "TRAVAIL: d'ordinaire") || strings.Contains(sys, "travail_a_confier") {
+		t.Fatal("un donneur sans offre doit savoir qu'il n'a pas de travail")
+	}
+	req.Offer = offerCtx()
+	if sys = BuildMessages(req, nil, "", 12, placeNames)[0].Content; strings.Contains(sys, "TRAVAIL: d'ordinaire") {
+		t.Fatal("un donneur avec une offre n'est pas sans travail")
+	}
+	req.Offer, req.NPC.GivesQuests = nil, false
+	if sys = BuildMessages(req, nil, "", 12, placeNames)[0].Content; strings.Contains(sys, "TRAVAIL: d'ordinaire") {
+		t.Fatal("un PNJ qui ne donne pas de quêtes n'a pas à le dire")
+	}
+}
+
 func TestServiceReturnsValidatedModeratedQuest(t *testing.T) {
 	r := newRig(t, Config{}, "brenna")
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return questJSON(nil), nil }
@@ -138,8 +156,8 @@ func TestMaliciousQuestIsClampedOrDropped(t *testing.T) {
 		r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 			return questJSON(map[string]any{"quest": q}), nil
 		}
-		if rep := r.askReq(req); rep.Quest != nil || rep.Text == "" {
-			t.Errorf("%s : quête acceptée ou réponse perdue: %+v", name, rep)
+		if rep := r.askReq(req); rep.Quest != nil || rep.Text == "" || !rep.QuestDropped {
+			t.Errorf("%s : quête acceptée, réponse perdue ou rejet non signalé: %+v", name, rep)
 		}
 	}
 	if st := r.svc.Stats(); st.QuestsRejected != 3 {

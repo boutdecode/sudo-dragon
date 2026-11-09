@@ -180,6 +180,9 @@ func (g *Game) deliver(id int, gen uint64, text string, opening bool, rep npcai.
 			t.history = t.history[len(t.history)-maxHistory:]
 		}
 	}
+	if rep.QuestDropped && rep.Failure == npcai.OK {
+		t.lines = appendLine(t.lines, protocol.NPCLine{Who: "sys", Text: i18n.T(p.lang, "quest.none", t.npc.NameIn(p.lang))})
+	}
 	if rep.Quest != nil && rep.Failure == npcai.OK {
 		g.proposeQuest(p, rep.Quest) // passe en mode quête si la proposition est encore recevable
 	}

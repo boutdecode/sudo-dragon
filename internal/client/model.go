@@ -168,8 +168,9 @@ type Model struct {
 
 	// Livre de quêtes (voir quests.go).
 	quests       protocol.Quests
-	questBook    bool // livre ouvert (touche q)
-	questTab     int  // 0 = quêtes en cours, 1 = réputation et historique
+	questsAt     time.Time // réception du livre (les pauses des donneurs en partent)
+	questBook    bool      // livre ouvert (touche q)
+	questTab     int       // 0 = quêtes en cours, 1 = réputation et historique
 	questSel     int
 	questConfirm bool // un premier "x" attend sa confirmation
 
@@ -1063,7 +1064,7 @@ func (m Model) viewPlaying() string {
 
 	self := m.snap.Self
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
-	mapStr := render.ViewportReady(m.terrain(), self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers())
+	mapStr := render.ViewportReady(m.terrain(), self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers(), m.giverIdle)
 
 	var top string
 	switch {

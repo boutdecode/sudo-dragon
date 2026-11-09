@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -71,6 +72,7 @@ func cleanQuests(b protocol.Quests) protocol.Quests {
 func (m *Model) applyQuests(b protocol.Quests) {
 	b = cleanQuests(b)
 	m.quests = b
+	m.questsAt = time.Now()
 	m.questSel = max(0, min(m.questSel, len(b.Open)-1))
 	m.questConfirm = false
 	for _, n := range b.Notice {
@@ -101,6 +103,27 @@ func (m Model) readyGivers() map[world.NPCKey]bool {
 		out[world.NPCKey{Region: world.RegionPos{X: q.GiverRX, Y: q.GiverRY}, Index: q.GiverIdx}] = true
 	}
 	return out
+}
+
+// giverIdle dit si un donneur n'a rien à confier maintenant (quête déjà ouverte chez lui, pause après
+// une remise, ou quota atteint): son « ! » disparaît. Les pauses se décomptent en local, le « ! »
+// revient donc sans nouveau message du serveur.
+func (m Model) giverIdle(k world.NPCKey) bool {
+	if m.quests.Full {
+		return true
+	}
+	for _, q := range m.quests.Open {
+		if (world.NPCKey{Region: world.RegionPos{X: q.GiverRX, Y: q.GiverRY}, Index: q.GiverIdx}) == k {
+			return true
+		}
+	}
+	for _, p := range m.quests.Pauses {
+		if (world.NPCKey{Region: world.RegionPos{X: p.RX, Y: p.RY}, Index: p.Idx}) == k &&
+			time.Since(m.questsAt) < time.Duration(p.Secs)*time.Second {
+			return true
+		}
+	}
+	return false
 }
 
 // questSummary est la ligne du panneau latéral ("" s'il n'y a aucune quête).

@@ -325,12 +325,13 @@ func (dungeonTerrain) NPCsIn(int, int, int, int) []world.NPC { return nil }
 // les joueurs priment sur les monstres, qui priment sur les PNJ.
 // Le résultat contient exactement rows lignes de cols colonnes visibles.
 func Viewport(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int) string {
-	return ViewportReady(w, cx, cy, cols, rows, ents, monsters, selfID, nil)
+	return ViewportReady(w, cx, cy, cols, rows, ents, monsters, selfID, nil, nil)
 }
 
 // ViewportReady est Viewport pour un joueur qui a des quêtes à rendre : les PNJ de readyGivers
-// (donneurs d'une quête prête) s'affichent « ? » au lieu de « ! ».
-func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool) string {
+// (donneurs d'une quête prête) s'affichent « ? » au lieu de « ! », et ceux pour qui idle est vrai (donneurs qui
+// n'ont rien à confier maintenant) comme de simples villageois.
+func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool, idle func(world.NPCKey) bool) string {
 	type key struct{ x, y int }
 	mons := make(map[key]protocol.Monster, len(monsters))
 	for _, m := range monsters {
@@ -346,9 +347,11 @@ func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 	for _, n := range w.NPCsIn(cx-cols/2, cy-rows/2, cx-cols/2+cols-1, cy-rows/2+rows-1) {
 		kind := n.Kind
 		if n.GivesQuests {
-			kind = questGiverKind
-			if readyGivers[n.Key()] {
+			switch {
+			case readyGivers[n.Key()]:
 				kind = questTurnInKind
+			case idle == nil || !idle(n.Key()):
+				kind = questGiverKind
 			}
 		}
 		npcs[key{n.Pos.X, n.Pos.Y}] = kind
