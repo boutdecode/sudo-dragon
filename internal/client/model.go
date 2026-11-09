@@ -134,8 +134,10 @@ type Model struct {
 	// jusqu'à ce que le joueur le ferme.
 	combat       *protocol.Combat
 	combatLog    []string
-	combatSel    int // entrée choisie dans le menu d'actions
-	combatTarget int // monstre visé (indice dans Combat.Enemies)
+	combatSel    int     // entrée choisie dans le menu d'actions
+	fx           fxState // animation des coups (voir fx.go)
+	noFX         bool    // effets coupés (SUDO_DRAGON_NO_FX)
+	combatTarget int     // monstre visé (indice dans Combat.Enemies)
 
 	inventory bool // écran d'inventaire ouvert (touche i)
 	sheet     bool // fiche de personnage ouverte (touche c)
@@ -221,7 +223,7 @@ func NewLang(addr, name string, lang i18n.Lang) Model {
 	c.CharLimit = protocol.MaxChatLen
 	c.Placeholder = i18n.T(lang, "chat.placeholder")
 
-	m := Model{addr: a, name: n, pass: p, chatInput: c, markName: newMarkerInput(), width: 80, height: 24, lang: lang}
+	m := Model{addr: a, name: n, pass: p, chatInput: c, markName: newMarkerInput(), width: 80, height: 24, lang: lang, noFX: fxDisabled()}
 	m.npcInput = newNPCInput(lang)
 	return m.setFocus(focus)
 }
@@ -297,6 +299,9 @@ func waitEvent(c *Conn) tea.Cmd {
 // Update implémente tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case shakeTickMsg:
+		return m.updateShake(msg)
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
@@ -633,6 +638,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		var c protocol.Combat
 		if err := ev.Env.Payload(&c); err == nil {
 			m.applyCombat(c)
+			saveCmd = tea.Batch(saveCmd, m.startFx(c))
 		}
 	case protocol.TPong:
 		if !m.pingSent.IsZero() {

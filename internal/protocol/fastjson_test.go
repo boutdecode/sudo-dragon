@@ -166,3 +166,22 @@ func BenchmarkEncodeSnapshot250(b *testing.B) {
 		}
 	})
 }
+
+func TestCombatStrikesRoundTrip(t *testing.T) {
+	in := Combat{Enemies: []Enemy{{Kind: "rat", Name: "Rat", HP: 3, MaxHP: 8}}, Strikes: []Strike{{ByPlayer: true, Foe: 0, Dmg: 5, Hit: true, Crit: true}, {Foe: 0}}}
+	data, err := Encode(TCombat, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Combat
+	if err := env.Payload(&out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Strikes) != 2 || out.Strikes[0] != in.Strikes[0] || out.Strikes[1] != in.Strikes[1] {
+		t.Fatalf("aller-retour: %+v", out.Strikes)
+	}
+}

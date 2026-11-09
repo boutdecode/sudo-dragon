@@ -100,6 +100,15 @@ type Foe struct {
 // Alive dit si le monstre est encore debout.
 func (f Foe) Alive() bool { return f.HP > 0 }
 
+// Strike est une attaque résolue, pour les effets visuels du client.
+type Strike struct {
+	ByPlayer bool // le joueur frappe (sinon un monstre)
+	Foe      int  // indice du monstre concerné (cible ou attaquant)
+	Dmg      int  // dégâts infligés (0 si raté)
+	Hit      bool
+	Crit     bool
+}
+
 // Battle est un combat entre un joueur et un ou plusieurs monstres.
 type Battle struct {
 	Player  Fighter
@@ -108,6 +117,9 @@ type Battle struct {
 	Potions int
 	Round   int
 	Result  Result
+
+	// Events liste les attaques du dernier appel à Start ou Act.
+	Events []Strike
 
 	rng *rand.Rand
 }
@@ -197,6 +209,7 @@ func (b *Battle) Act(a Action, target int) []string {
 	if b.Result != Ongoing {
 		return nil
 	}
+	b.Events = b.Events[:0]
 	var log []string
 	if target < 0 || target >= len(b.Foes) || !b.Foes[target].Alive() {
 		target = b.FirstAlive()
@@ -215,6 +228,7 @@ func (b *Battle) Act(a Action, target int) []string {
 			}
 		}
 		bl := b.strike(att, foe.Def, foe.Reduction)
+		b.Events = append(b.Events, Strike{ByPlayer: true, Foe: target, Dmg: bl.damage, Hit: bl.hit, Crit: bl.crit})
 		switch {
 		case !bl.hit:
 			log = append(log, bl.rollText+" "+b.t("combat.player_miss", foe.Name))
@@ -262,12 +276,12 @@ func (b *Battle) Act(a Action, target int) []string {
 	}
 
 	// Riposte de chaque monstre vivant.
-	for _, foe := range b.Foes {
+	for i, foe := range b.Foes {
 		if !foe.Alive() {
 			continue
 		}
 		var died bool
-		if log, died = b.foeStrikes(foe, log); died {
+		if log, died = b.foeStrikes(i, log); died {
 			return log
 		}
 	}
@@ -277,8 +291,10 @@ func (b *Battle) Act(a Action, target int) []string {
 
 // foeStrikes résout l'attaque d'un monstre contre le joueur. Renvoie le journal complété et si le joueur est mort
 // (le combat est alors perdu).
-func (b *Battle) foeStrikes(foe Foe, log []string) ([]string, bool) {
+func (b *Battle) foeStrikes(i int, log []string) ([]string, bool) {
+	foe := b.Foes[i]
 	bl := b.strike(foe.Fighter, b.Player.Def, b.Player.Reduction)
+	b.Events = append(b.Events, Strike{Foe: i, Dmg: bl.damage, Hit: bl.hit, Crit: bl.crit})
 	switch {
 	case !bl.hit:
 		log = append(log, bl.rollText+" "+b.t("combat.monster_miss", foe.Name))
@@ -302,6 +318,7 @@ func (b *Battle) foeStrikes(foe Foe, log []string) ([]string, bool) {
 // appeler une fois, au début du combat. Renvoie les lignes de journal.
 func (b *Battle) Start() []string {
 	type roll struct{ idx, total int }
+	b.Events = b.Events[:0]
 	pr := b.rng.IntN(20) + 1
 	playerTotal := pr + b.Player.Init
 	var foes []string
@@ -321,7 +338,7 @@ func (b *Battle) Start() []string {
 	log = append(log, b.t("combat.init_foes"))
 	for _, f := range faster {
 		var died bool
-		if log, died = b.foeStrikes(b.Foes[f.idx], log); died {
+		if log, died = b.foeStrikes(f.idx, log); died {
 			break
 		}
 	}

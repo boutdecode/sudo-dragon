@@ -284,6 +284,10 @@ func (g *Game) sendFight(f *fight, log []string) {
 			Dmg: foe.Dmg.String(), Red: foe.Reduction.String(),
 		}
 	}
+	strikes := make([]protocol.Strike, len(b.Events))
+	for i, e := range b.Events {
+		strikes[i] = protocol.Strike{ByPlayer: e.ByPlayer, Foe: e.Foe, Dmg: e.Dmg, Hit: e.Hit, Crit: e.Crit}
+	}
 	f.p.sendCombat(protocol.Combat{
 		Round:       b.Round,
 		Enemies:     enemies,
@@ -296,6 +300,7 @@ func (g *Game) sendFight(f *fight, log []string) {
 		Style:       string(b.Player.Kind.OrMelee()),
 		Potions:     b.Potions,
 		Log:         log,
+		Strikes:     strikes,
 		Over:        b.Result != combat.Ongoing,
 		Result:      b.Result.String(),
 	})

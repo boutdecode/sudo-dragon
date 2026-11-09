@@ -429,3 +429,37 @@ func TestInitiativeTiesGoToThePlayerAndOpeningCanKill(t *testing.T) {
 		t.Fatalf("un coup d'ouverture mortel doit perdre le combat: %v", b.Result)
 	}
 }
+
+func TestEventsDescribeEveryAttack(t *testing.T) {
+	foe := Fighter{HP: 1000, MaxHP: 1000, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 0)}
+	b := NewGroup(Fighter{HP: 1000, MaxHP: 1000, Def: 10, Hit: 50, Dmg: dice.D(1, 4, 0)}, 0, group(foe, foe), rngSeed(4))
+	b.Act(Attack, 1)
+	if len(b.Events) != 3 { // 1 coup du joueur + 2 ripostes
+		t.Fatalf("%d événements, attendu 3: %+v", len(b.Events), b.Events)
+	}
+	if e := b.Events[0]; !e.ByPlayer || e.Foe != 1 || (e.Hit && e.Dmg == 0) {
+		t.Fatalf("coup du joueur: %+v", e)
+	}
+	for i, e := range b.Events[1:] {
+		if e.ByPlayer || e.Foe != i {
+			t.Fatalf("riposte %d: %+v", i, e)
+		}
+	}
+	b.Act(Item, 0) // sans potion: aucun tour joué, aucun événement
+	if len(b.Events) != 0 {
+		t.Fatalf("événements résiduels: %+v", b.Events)
+	}
+}
+
+func TestMissesAreEventsWithoutDamage(t *testing.T) {
+	b := NewGroup(Fighter{HP: 100, MaxHP: 100, Def: 10, Hit: -100, Dmg: dice.D(1, 4, 0)}, 0, group(Fighter{HP: 10, MaxHP: 10, Def: 100, Hit: -100}), rngSeed(1))
+	b.Act(Attack, 0)
+	for _, e := range b.Events {
+		if e.Hit && !e.Crit { // seul un 20 naturel touche toujours
+			t.Fatalf("touche impossible: %+v", e)
+		}
+		if !e.Hit && e.Dmg != 0 {
+			t.Fatalf("un raté ne blesse pas: %+v", e)
+		}
+	}
+}

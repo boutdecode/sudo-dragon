@@ -137,6 +137,15 @@ type Enemy struct {
 	Red   string `json:"red,omitempty"` // dés de réduction
 }
 
+// Strike est une attaque du tour, pour les effets visuels : Foe est la cible (si ByPlayer) ou l'attaquant.
+type Strike struct {
+	ByPlayer bool `json:"you,omitempty"`
+	Foe      int  `json:"foe"`
+	Dmg      int  `json:"dmg"`
+	Hit      bool `json:"hit,omitempty"`
+	Crit     bool `json:"crit,omitempty"`
+}
+
 // Combat est l'état d'un combat, envoyé à son début puis après chaque tour.
 // Log contient les événements du dernier tour. Quand Over est vrai, Result
 // donne l'issue et le joueur est déjà libéré dans le monde. Boss est l'indice
@@ -153,6 +162,7 @@ type Combat struct {
 	Style       string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic
 	Potions     int      `json:"pot"`
 	Log         []string `json:"log,omitempty"`
+	Strikes     []Strike `json:"strikes,omitempty"`
 	Over        bool     `json:"over,omitempty"`
 	Result      string   `json:"result,omitempty"`
 }

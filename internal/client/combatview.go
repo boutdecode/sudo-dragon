@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/gear"
@@ -31,7 +32,7 @@ func (m Model) combatView(w, h int) string {
 	colW := (leftW - 2 - 1) / 2 // deux colonnes et un filet
 	ih := midH - 2
 	left := m.playerColumn(colW, ih)
-	right := m.enemyColumn(leftW-2-colW-1, ih)
+	right := shiftBlockLines(m.enemyColumn(leftW-2-colW-1, ih), m.foeShake, leftW-2-colW-1)
 	sep := dimStyle.Render("│")
 	rows := make([]string, ih)
 	for i := range rows {
@@ -79,16 +80,21 @@ func (m Model) combatView(w, h int) string {
 		side = ui.Panel(m.t("fight.actions"), strings.Join(actions, "\n"), actionW, midH)
 	}
 	mid := lipgloss.JoinHorizontal(lipgloss.Top, fieldPanel, side)
-	return mid + "\n" + journalPanel(m.t("fight.journal"), m.combatLog, w, logH)
+	dx, dy := m.allShake()
+	return shiftBlock(mid+"\n"+journalPanel(m.t("fight.journal"), m.combatLog, w, logH), dx, dy, w, h)
 }
 
 // playerColumn: les informations du joueur, sur h lignes de w cellules.
 func (m Model) playerColumn(w, h int) []string {
 	c, st := m.combat, m.snap.Stats
 	barW := max(4, min(30, w-12))
+	hp := fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)
+	if m.fx.flashHP && m.flashing() { // coup reçu: les PV clignotent en rouge
+		hp = " " + errStyle.Bold(true).Render(ansi.Strip(hp[1:]))
+	}
 	lines := []string{
 		m.t("fight.you") + " " + dimStyle.Render(m.t("fight.def", c.PlayerDef)),
-		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP),
+		hp,
 	}
 	if c.PlayerMaxMP > 0 {
 		lines = append(lines, fmt.Sprintf(" %s %3d/%d %s", ui.Bar(c.PlayerMana, c.PlayerMaxMP, barW), c.PlayerMana, c.PlayerMaxMP, dimStyle.Render(m.t("hud.mana_short"))))
@@ -131,7 +137,7 @@ func (m Model) enemyColumn(w, h int) []string {
 	if len(c.Enemies) == 0 {
 		return padLines(nil, h)
 	}
-	barW := max(4, min(30, w-12))
+	barW := max(4, min(30, w-17)) // de la place pour les dégâts affichés à côté
 	redStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr))
 
 	// Une ligne de nom et une de PV par ennemi; la cible ajoute sa fiche si la place le permet.
@@ -150,7 +156,14 @@ func (m Model) enemyColumn(w, h int) []string {
 		if dead {
 			head = " " + mark + dimStyle.Render(e.Name+" ✝")
 		}
-		info = append(info, head, fmt.Sprintf("   %s %3d/%d", ui.Bar(e.HP, e.MaxHP, barW), e.HP, e.MaxHP))
+		hpLine := fmt.Sprintf("   %s %3d/%d", ui.Bar(e.HP, e.MaxHP, barW), e.HP, e.MaxHP)
+		if txt := m.foeHitText(i); txt != "" { // coup donné: dégâts à côté de la barre, nom en surbrillance une image sur deux
+			hpLine += errStyle.Bold(true).Render(txt)
+			if m.flashing() && !dead {
+				head = " " + mark + ui.Select.Render(e.Name)
+			}
+		}
+		info = append(info, head, hpLine)
 		if statsRoom && i == m.combatTarget && !dead && e.Dmg != "" {
 			stat := m.t("fight.hit", e.Hit) + " · " + m.t("fight.dmg", e.Dmg)
 			if e.Red != "" && e.Red != "0" {
@@ -176,6 +189,15 @@ func (m Model) enemyColumn(w, h int) []string {
 		lines = append(lines, "")
 	}
 	return padLines(append(lines, info...), h)
+}
+
+// shiftBlockLines décale les lignes d'une colonne de w cellules du décalage donné par off.
+func shiftBlockLines(lines []string, off func() (int, int), w int) []string {
+	dx, dy := off()
+	if dx == 0 && dy == 0 {
+		return lines
+	}
+	return strings.Split(shiftBlock(strings.Join(lines, "\n"), dx, dy, w, len(lines)), "\n")
 }
 
 // padLines complète (ou coupe) les lignes à exactement h.
