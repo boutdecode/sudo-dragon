@@ -218,7 +218,7 @@ func TestSavedCharacterIsRestoredOnLogin(t *testing.T) {
 	waitSavedOnLeave(t, be, "alice")
 
 	sp := spawn()
-	be.SaveCharacter("alice", store.Character{Level: 5, XP: 3, Potions: 4, HP: 20, X: sp.X, Y: sp.Y, Gold: 250})
+	be.SaveCharacter("alice", sheet(store.Character{Level: 5, XP: 3, Potions: 4, HP: 20, X: sp.X, Y: sp.Y, Gold: 250}))
 
 	c, w := signInEventually(t, url, "alice")
 	got := readSnapshot(t, c).Stats
@@ -244,7 +244,7 @@ func TestLeaveSavesCharacter(t *testing.T) {
 	waitSavedOnLeave(t, be, "alice")
 
 	sp := spawn()
-	be.SaveCharacter("alice", store.Character{Level: 3, XP: 7, Potions: 1, HP: 15, X: sp.X, Y: sp.Y, Gold: 88})
+	be.SaveCharacter("alice", sheet(store.Character{Level: 3, XP: 7, Potions: 1, HP: 15, X: sp.X, Y: sp.Y, Gold: 88}))
 
 	c, _ := signInEventually(t, url, "alice")
 	snap := readSnapshot(t, c)
@@ -382,7 +382,20 @@ func TestConcurrentLoginsOfDifferentAccountsAllSucceed(t *testing.T) {
 				errs <- err
 				return
 			}
-			if env, _ := protocol.Decode(reply); env.T != protocol.TWelcome {
+			env, _ := protocol.Decode(reply)
+			if env.T == protocol.TCreate { // nouveau compte: on valide le tirage
+				data, _ := protocol.Encode(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "mage"})
+				if err := c.Write(t.Context(), websocket.MessageText, data); err != nil {
+					errs <- err
+					return
+				}
+				if _, reply, err = c.Read(t.Context()); err != nil {
+					errs <- err
+					return
+				}
+				env, _ = protocol.Decode(reply)
+			}
+			if env.T != protocol.TWelcome {
 				errs <- errors.New("pas de welcome: " + env.T)
 				return
 			}
@@ -450,7 +463,7 @@ func TestHealerEndToEndWithPersistence(t *testing.T) {
 
 	npc, stand, dx, dy := healerSpot(t)
 	price := 3 * 4 // niveau 3 : 4 or par niveau
-	be.SaveCharacter("alice", store.Character{Level: 3, XP: 0, Potions: 1, HP: 5, X: stand.X, Y: stand.Y, Gold: 100})
+	be.SaveCharacter("alice", sheet(store.Character{Level: 3, XP: 0, Potions: 1, HP: 5, X: stand.X, Y: stand.Y, Gold: 100}))
 
 	c, w := signInEventually(t, url, "alice")
 	if w.X != stand.X || w.Y != stand.Y {
@@ -511,7 +524,7 @@ search:
 	url, be, _ := startServer(t, 10*time.Millisecond)
 	register(t, url, "alice")
 	waitSavedOnLeave(t, be, "alice")
-	be.SaveCharacter("alice", store.Character{Level: 2, Potions: 1, HP: 20, X: stand.X, Y: stand.Y, Gold: 50})
+	be.SaveCharacter("alice", sheet(store.Character{Level: 2, Potions: 1, HP: 20, X: stand.X, Y: stand.Y, Gold: 50}))
 
 	c, _ := signInEventually(t, url, "alice")
 	send(t, c, protocol.TMove, protocol.Move{DX: dx, DY: dy})
@@ -548,6 +561,7 @@ func TestSavedCharacterConversionRoundTrips(t *testing.T) {
 	in := store.Character{
 		Level: 7, XP: 12, Potions: 3, HP: 40, X: -5, Y: 9, Gold: 88,
 		LLMConsent: true, Kills: 40, BossKills: 3, Deaths: 6,
+		Class: "rogue", Scores: [6]int{9, 15, 12, 10, 8, 13}, MaxHP: 40, Mana: 3,
 		Quests: []quest.Quest{{ID: 4, Title: "Les loups", State: quest.Ready, Progress: 3, Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}}},
 		Rep:    map[world.RegionPos]int{{X: 1, Y: 2}: 5},
 	}

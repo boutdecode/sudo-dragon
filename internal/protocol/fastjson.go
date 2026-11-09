@@ -120,6 +120,8 @@ func (s Stats) AppendJSON(b []byte) []byte {
 	b = appendInt(b, `,"def":`, s.Def)
 	b = appendInt(b, `,"pot":`, s.Potions)
 	b = appendInt(b, `,"gold":`, s.Gold)
+	b = appendInt(b, `,"mp":`, s.Mana)
+	b = appendInt(b, `,"mmp":`, s.MaxMana)
 	return append(b, '}')
 }
 

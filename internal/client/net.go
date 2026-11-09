@@ -46,21 +46,37 @@ func Dial(ctx context.Context, url, name, password string, register bool) (*Conn
 
 // DialLang est Dial pour un client qui parle la langue lang: le serveur y rédige
 // ses messages (erreurs, journal de combat, dialogues des PNJ).
+//
+// Si le compte doit créer son personnage, DialLang valide le premier tirage en guerrier (bots, outils
+// et tests) ; l'interface passe par DialCreate pour laisser le joueur choisir.
 func DialLang(ctx context.Context, url, name, password string, register bool, lang i18n.Lang) (*Conn, protocol.Welcome, error) {
+	c, w, _, err := dial(ctx, url, name, password, register, lang, true)
+	return c, w, err
+}
+
+// DialCreate est DialLang pour l'interface : quand le personnage reste à créer, la connexion est
+// renvoyée avec le tirage proposé (create non nil) et sans welcome ; les actions de création partent
+// par Send (protocol.TCreateAction) et TWelcome arrive ensuite dans In.
+func DialCreate(ctx context.Context, url, name, password string, register bool, lang i18n.Lang) (c *Conn, w protocol.Welcome, create *protocol.Create, err error) {
+	return dial(ctx, url, name, password, register, lang, false)
+}
+
+func dial(ctx context.Context, url, name, password string, register bool, lang i18n.Lang, auto bool) (*Conn, protocol.Welcome, *protocol.Create, error) {
 	lang = lang.Normalize()
 	var w protocol.Welcome
+	var create *protocol.Create
 
 	dctx, dcancel := context.WithTimeout(ctx, dialTimeout)
 	defer dcancel()
 
 	ws, _, err := websocket.Dial(dctx, url, nil)
 	if err != nil {
-		return nil, w, fmt.Errorf("%s", i18n.T(lang, "net.cannot_connect", err))
+		return nil, w, nil, fmt.Errorf("%s", i18n.T(lang, "net.cannot_connect", err))
 	}
 	ws.SetReadLimit(readLimit)
-	fail := func(err error) (*Conn, protocol.Welcome, error) {
+	fail := func(err error) (*Conn, protocol.Welcome, *protocol.Create, error) {
 		ws.CloseNow()
-		return nil, w, err
+		return nil, w, nil, err
 	}
 
 	data, err := protocol.Encode(protocol.TLogin, protocol.Login{Name: name, Password: password, Register: register, Lang: string(lang)})
@@ -78,7 +94,28 @@ func DialLang(ctx context.Context, url, name, password string, register bool, la
 	if err != nil {
 		return fail(err)
 	}
+	if env.T == protocol.TCreate && auto {
+		reply, err := protocol.Encode(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "warrior"})
+		if err != nil {
+			return fail(err)
+		}
+		if err := ws.Write(dctx, websocket.MessageText, reply); err != nil {
+			return fail(err)
+		}
+		if _, data, err = ws.Read(dctx); err != nil {
+			return fail(fmt.Errorf("%s", i18n.T(lang, "net.no_reply", err)))
+		}
+		if env, err = protocol.Decode(data); err != nil {
+			return fail(err)
+		}
+	}
 	switch env.T {
+	case protocol.TCreate:
+		var cr protocol.Create
+		if err := env.Payload(&cr); err != nil {
+			return fail(err)
+		}
+		create = &cr
 	case protocol.TWelcome:
 		if err := env.Payload(&w); err != nil {
 			return fail(err)
@@ -100,7 +137,7 @@ func DialLang(ctx context.Context, url, name, password string, register bool, la
 	}
 	go c.readLoop(cctx)
 	go c.writeLoop(cctx)
-	return c, w, nil
+	return c, w, create, nil
 }
 
 func (c *Conn) emit(ctx context.Context, ev Event) bool {

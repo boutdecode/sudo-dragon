@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -22,12 +23,16 @@ const (
 // débutant sans le sou), puis 4 or par niveau.
 // buyPrice et healCost appliquent la réduction de réputation du lieu du PNJ. Le menu et la
 // transaction passent par ces deux fonctions, pour rester d'accord.
-func (g *Game) buyPrice(p *player, npc world.NPC) int {
-	return quest.Discount(potionBuyPrice, p.rep[npc.Region])
-}
+func (g *Game) buyPrice(p *player, npc world.NPC) int { return g.priceFor(p, npc, potionBuyPrice) }
 
 func (g *Game) healCost(p *player, npc world.NPC) int {
-	return quest.Discount(healPrice(p.stats.Level), p.rep[npc.Region])
+	return g.priceFor(p, npc, healPrice(p.stats.Level))
+}
+
+// priceFor applique à un tarif la réduction de réputation du lieu du PNJ, puis l'effet du
+// charisme du joueur (les PNJ le jugent sur sa mine).
+func (g *Game) priceFor(p *player, npc world.NPC, base int) int {
+	return hero.AdjustPrice(quest.Discount(base, p.rep[npc.Region]), p.stats.Scores.Mod(hero.CHA))
 }
 
 func healPrice(level int) int {
@@ -218,12 +223,12 @@ func (g *Game) talkAct(p *player, action, text string) {
 		switch {
 		case t.npc.Kind != world.NPCHealer:
 			log = notOffered(p.lang)
-		case p.hp >= p.stats.MaxHP:
+		case p.hp >= p.stats.MaxHP && p.mana >= p.stats.MaxMana:
 			log = []string{i18n.T(p.lang, "npc.already_healthy")} // rien n'est débité
 		case !p.stats.SpendGold(price):
 			log = []string{i18n.T(p.lang, "npc.missing_gold", price-p.stats.Gold)}
 		default:
-			p.hp = p.stats.MaxHP
+			p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 			changed = true
 			if price == 0 {
 				log = []string{i18n.T(p.lang, "npc.healed_free")}
@@ -269,7 +274,7 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 		price := g.healCost(p, npc)
 		offers = []protocol.NPCOffer{
 			{Action: protocol.NPCHeal, Label: i18n.T(p.lang, "npc.offer.heal"), Price: price,
-				Available: p.hp < p.stats.MaxHP && p.stats.Gold >= price},
+				Available: (p.hp < p.stats.MaxHP || p.mana < p.stats.MaxMana) && p.stats.Gold >= price},
 		}
 	}
 	// Quêtes prêtes à rendre à ce PNJ : fonctionne sans modèle de langage.

@@ -35,8 +35,15 @@ const (
 type Character struct {
 	Level, XP, Potions int
 	HP                 int
-	X, Y               int
-	Gold               int
+
+	// Création du personnage (voir internal/hero). Scores à zéro: la création reste à faire.
+	// MaxHP est la somme des dés de vie (0: à recalculer), Mana la réserve actuelle.
+	Class  string
+	Scores [6]int
+	MaxHP  int
+	Mana   int
+	X, Y   int
+	Gold   int
 
 	// Accord du joueur pour l'envoi de ses messages à un service de langage
 	// tiers (voir le dialogue des PNJ), et faits établis par le serveur que les
@@ -237,6 +244,18 @@ var migrations = []string{
 		created_at  INTEGER NOT NULL,
 		PRIMARY KEY (region_x, region_y, npc_index)
 	)`,
+	// 14: classe, caractéristiques tirées à la création (toutes à 0: création à faire), PV maximaux
+	// (somme des dés de vie), mana, et style des armes du sac.
+	`ALTER TABLE characters ADD COLUMN class TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE characters ADD COLUMN str INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN agi INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN int_ INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN con INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN wis INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN cha INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE characters ADD COLUMN mana INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE items ADD COLUMN kind TEXT NOT NULL DEFAULT ''`,
 }
 
 // migrate applique les migrations manquantes, chacune dans sa transaction.
@@ -359,9 +378,11 @@ func (s *Store) Authenticate(name, password string) (string, error) {
 func (s *Store) LoadCharacter(account string) (*Character, error) {
 	var c Character
 	var consent int
-	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold, llm_consent, kills, boss_kills, deaths
+	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold, llm_consent, kills, boss_kills, deaths,
+			class, str, agi, int_, con, wis, cha, max_hp, mana
 		FROM characters WHERE account = ?`, account).
-		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold, &consent, &c.Kills, &c.BossKills, &c.Deaths)
+		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold, &consent, &c.Kills, &c.BossKills, &c.Deaths,
+			&c.Class, &c.Scores[0], &c.Scores[1], &c.Scores[2], &c.Scores[3], &c.Scores[4], &c.Scores[5], &c.MaxHP, &c.Mana)
 	c.LLMConsent = consent != 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -391,13 +412,16 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`INSERT INTO characters(account, level, xp, potions, hp, x, y, gold,
-			llm_consent, kills, boss_kills, deaths, updated_at)
-		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
+			llm_consent, kills, boss_kills, deaths, class, str, agi, int_, con, wis, cha, max_hp, mana, updated_at)
+		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
 		ON CONFLICT(account) DO UPDATE SET
 			level = excluded.level, xp = excluded.xp, potions = excluded.potions,
 			hp = excluded.hp, x = excluded.x, y = excluded.y, gold = excluded.gold,
 			llm_consent = excluded.llm_consent, kills = excluded.kills,
 			boss_kills = excluded.boss_kills, deaths = excluded.deaths,
+			class = excluded.class, str = excluded.str, agi = excluded.agi, int_ = excluded.int_,
+			con = excluded.con, wis = excluded.wis, cha = excluded.cha,
+			max_hp = excluded.max_hp, mana = excluded.mana,
 			updated_at = excluded.updated_at`)
 	if err != nil {
 		return err
@@ -407,7 +431,9 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 	now := time.Now().Unix()
 	for account, c := range chars {
 		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold,
-			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths, now, account); err != nil {
+			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths,
+			c.Class, c.Scores[0], c.Scores[1], c.Scores[2], c.Scores[3], c.Scores[4], c.Scores[5], c.MaxHP, c.Mana,
+			now, account); err != nil {
 			return fmt.Errorf("sauvegarde de %s: %w", account, err)
 		}
 		if c.QuestsDirty {

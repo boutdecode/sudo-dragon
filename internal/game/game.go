@@ -52,6 +52,7 @@ type player struct {
 	talk       *talk                    // conversation en cours avec un PNJ
 	consent    bool                     // a accepté l'envoi de ses messages à un service de langage
 	stats      combat.Stats
+	mana       int // réserve actuelle (le maximum est dans stats)
 	hp         int
 	fight      *fight
 
@@ -81,8 +82,9 @@ type player struct {
 // Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
 // à sa reconnexion.
 type Saved struct {
-	Stats combat.Stats
+	Stats combat.Stats // classe, caractéristiques et PV maximaux compris (à zéro: guerrier neutre)
 	HP    int
+	Mana  int
 	Pos   world.Pos
 
 	// LLMConsent : le joueur a accepté que ses messages soient envoyés à un
@@ -308,16 +310,18 @@ func (g *Game) join(name string, send func(protocol.Snapshot)) *player {
 // les valeurs hors bornes sont ramenées dans les bornes valides.
 func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved) *player {
 	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1}
-	p.hp = p.stats.MaxHP
+	p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 	start := g.World.FindSpawn()
 	if saved != nil {
-		p.stats = combat.StatsAt(saved.Stats.Level, saved.Stats.XP, saved.Stats.Potions).
+		p.stats = combat.StatsFor(saved.Stats.Level, saved.Stats.XP, saved.Stats.Potions,
+			saved.Stats.Class, saved.Stats.Scores, saved.Stats.MaxHP).
 			WithGold(saved.Stats.Gold).
 			WithRecord(saved.Stats.Kills, saved.Stats.BossKills, saved.Stats.Deaths)
 		p.consent = saved.LLMConsent
 		g.loadQuests(p, saved)
 		p.inv = gear.SanitizeInventory(saved.Gear)
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
+		p.mana = max(0, min(saved.Mana, p.stats.MaxMana))
 		start = saved.Pos
 	}
 	g.nextID++
@@ -333,7 +337,7 @@ func (g *Game) save(p *player) {
 		// Les quêtes sont toujours jointes (une reconnexion avant l'écriture doit les retrouver) ;
 		// QuestsDirty dit seulement s'il faut les réécrire en base.
 		g.Persist(p.name, Saved{
-			Stats: p.stats, HP: p.hp, Pos: p.pos, LLMConsent: p.consent,
+			Stats: p.stats, HP: p.hp, Mana: p.mana, Pos: p.pos, LLMConsent: p.consent,
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 		})

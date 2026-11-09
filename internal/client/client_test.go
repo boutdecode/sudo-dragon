@@ -512,7 +512,7 @@ func TestCombatViewFitsAndShowsEssentials(t *testing.T) {
 				t.Errorf("%v ligne %d: largeur %d > %d", sz, i, w, sz[0])
 			}
 		}
-		for _, want := range []string{"COMBAT", "Loup", "16/16", "30/30", "[A] Attaquer", "[F] Fuir"} {
+		for _, want := range []string{"COMBAT", "Loup", "16/16", "30/30", "[A] Frapper", "[F] Fuir"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%v: %q absent de l'écran de combat", sz, want)
 			}
@@ -720,9 +720,10 @@ func TestLoginFormEndToEnd(t *testing.T) {
 	}
 
 	m := run(true)
-	if m.state != statePlaying || m.conn == nil {
+	if m.state != stateCreating || m.conn == nil || m.create == nil {
 		t.Fatalf("création de compte: état=%v err=%q", m.state, m.errMsg)
 	}
+	m = finishCreation(t, m)
 	m.conn.Close()
 
 	// Le départ est asynchrone côté serveur: on réessaie brièvement.

@@ -4,6 +4,8 @@ import (
 	"math/rand/v2"
 	"strings"
 	"testing"
+
+	"github.com/kevin/ascii-adventure/internal/hero"
 )
 
 func rngSeed(n uint64) *rand.Rand { return rand.New(rand.NewPCG(n, n*7+1)) }
@@ -13,8 +15,8 @@ func newBattle(player, monster Fighter, potions int, seed uint64) *Battle {
 }
 
 var (
-	hero = Fighter{HP: 30, MaxHP: 30, Atk: 6, Def: 2}
-	rat  = Fighter{HP: 8, MaxHP: 8, Atk: 3, Def: 0}
+	player = Fighter{HP: 30, MaxHP: 30, Atk: 6, Def: 2}
+	rat    = Fighter{HP: 8, MaxHP: 8, Atk: 3, Def: 0}
 )
 
 func TestParseAction(t *testing.T) {
@@ -41,7 +43,9 @@ func TestAttackAlwaysDealsAtLeastOneAndNeverNegativeHP(t *testing.T) {
 		// Attaque très inférieure à la défense: dégâts planchers à 1.
 		b := newBattle(Fighter{HP: 100, MaxHP: 100, Atk: 1, Def: 50}, Fighter{HP: 50, MaxHP: 50, Atk: 1, Def: 40}, 0, seed)
 		before := b.Monster.HP
-		b.Act(Attack)
+		for try := 0; try < 40 && b.Monster.HP == before; try++ { // un coup peut manquer
+			b.Act(Attack)
+		}
 		if b.Monster.HP >= before {
 			t.Fatalf("seed %d: aucun dégât infligé", seed)
 		}
@@ -75,7 +79,7 @@ func TestPlayerLosesAgainstStrongMonster(t *testing.T) {
 }
 
 func TestRoundCountsOnlyCompletedRounds(t *testing.T) {
-	b := newBattle(hero, Fighter{HP: 1000, MaxHP: 1000, Atk: 1, Def: 0}, 0, 3)
+	b := newBattle(player, Fighter{HP: 1000, MaxHP: 1000, Atk: 1, Def: 0}, 0, 3)
 	b.Act(Attack)
 	b.Act(Defend)
 	if b.Round != 2 {
@@ -132,12 +136,12 @@ func TestItemHealsAndIsCapped(t *testing.T) {
 }
 
 func TestItemWithoutPotionDoesNotConsumeTurn(t *testing.T) {
-	b := newBattle(hero, rat, 0, 1)
+	b := newBattle(player, rat, 0, 1)
 	log := b.Act(Item)
 	if len(log) != 1 || !strings.Contains(log[0], "plus de potion") {
 		t.Fatalf("journal: %v", log)
 	}
-	if b.Round != 0 || b.Player.HP != hero.HP || b.Monster.HP != rat.HP {
+	if b.Round != 0 || b.Player.HP != player.HP || b.Monster.HP != rat.HP {
 		t.Fatalf("le tour a été consommé: round=%d, PV joueur=%d", b.Round, b.Player.HP)
 	}
 }
@@ -169,7 +173,7 @@ func TestFleeRateAndEffects(t *testing.T) {
 }
 
 func TestAbandon(t *testing.T) {
-	b := newBattle(hero, rat, 0, 1)
+	b := newBattle(player, rat, 0, 1)
 	b.Abandon()
 	if b.Result != Fled {
 		t.Fatalf("Result=%v", b.Result)
@@ -184,21 +188,77 @@ func TestAbandon(t *testing.T) {
 }
 
 func TestUnknownAction(t *testing.T) {
-	b := newBattle(hero, rat, 0, 1)
+	b := newBattle(player, rat, 0, 1)
 	log := b.Act(Action(99))
-	if len(log) != 1 || b.Round != 0 || b.Player.HP != hero.HP {
+	if len(log) != 1 || b.Round != 0 || b.Player.HP != player.HP {
 		t.Fatalf("action inconnue mal gérée: %v", log)
 	}
 }
 
 func TestFullFightsTerminate(t *testing.T) {
 	for seed := uint64(0); seed < 300; seed++ {
-		b := newBattle(hero, Fighter{HP: 20, MaxHP: 20, Atk: 5, Def: 1}, 2, seed)
+		b := newBattle(player, Fighter{HP: 20, MaxHP: 20, Atk: 5, Def: 1}, 2, seed)
 		for i := 0; b.Result == Ongoing; i++ {
 			if i > 200 {
 				t.Fatalf("seed %d: combat sans fin", seed)
 			}
 			b.Act(Attack)
+		}
+	}
+}
+
+func TestMeleeMissesSometimesAndAccuracyFollowsTheModifier(t *testing.T) {
+	count := func(mod int) (hits int) {
+		b := newBattle(Fighter{HP: 1e6, MaxHP: 1e6, Atk: 5, Def: 0, Mod: mod}, Fighter{HP: 1e6, MaxHP: 1e6, Atk: 0, Def: 0}, 0, 7)
+		for range 2000 {
+			before := b.Monster.HP
+			b.Act(Attack)
+			if b.Monster.HP < before {
+				hits++
+			}
+		}
+		return
+	}
+	plain, strong, weak := count(0), count(4), count(-4)
+	if plain >= 2000 || plain < 1500 {
+		t.Fatalf("touche à mod 0: %d/2000", plain)
+	}
+	if strong <= plain || weak >= plain {
+		t.Fatalf("la précision doit suivre le modificateur: %d / %d / %d", weak, plain, strong)
+	}
+}
+
+func TestModifierAddsToDamage(t *testing.T) {
+	b := newBattle(Fighter{HP: 100, MaxHP: 100, Atk: 10, Def: 0, Mod: 5}, Fighter{HP: 1000, MaxHP: 1000, Atk: 0, Def: 0}, 0, 3)
+	for range 50 {
+		before := b.Monster.HP
+		b.Act(Attack)
+		if d := before - b.Monster.HP; d != 0 && d < 14 { // 10 + 5 - 1 au pire
+			t.Fatalf("dégâts %d trop faibles pour Atk 10 + mod 5", d)
+		}
+	}
+}
+
+func TestSpellNeedsManaAndDoesNotConsumeTheTurnWithout(t *testing.T) {
+	mage := Fighter{HP: 30, MaxHP: 30, Atk: 6, Def: 2, Kind: hero.Magic, Mana: 1, MaxMana: 10}
+	b := newBattle(mage, rat, 0, 1)
+	log := b.Act(Attack)
+	if len(log) != 1 || b.Round != 0 || b.Player.HP != 30 || b.Monster.HP != rat.HP || b.Player.Mana != 1 {
+		t.Fatalf("sort sans mana: %v round %d mana %d", log, b.Round, b.Player.Mana)
+	}
+	b.Player.Mana = 5
+	b.Act(Attack)
+	if b.Player.Mana != 5-hero.SpellCost {
+		t.Fatalf("mana après un sort: %d", b.Player.Mana)
+	}
+}
+
+func TestOtherStylesCostNoMana(t *testing.T) {
+	for _, k := range []hero.Kind{hero.Melee, hero.Ranged, "", "inconnu"} {
+		b := newBattle(Fighter{HP: 30, MaxHP: 30, Atk: 6, Kind: k, Mana: 0}, rat, 0, 1)
+		b.Act(Attack)
+		if b.Player.Mana != 0 || b.Round == 0 && b.Result == Ongoing {
+			t.Fatalf("style %q: tour non joué", k)
 		}
 	}
 }

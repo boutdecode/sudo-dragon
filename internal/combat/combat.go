@@ -6,6 +6,7 @@ package combat
 import (
 	"math/rand/v2"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
@@ -70,6 +71,12 @@ const (
 type Fighter struct {
 	HP, MaxHP int
 	Atk, Def  int
+
+	// Style de l'arme (vide: mêlée), modificateur de la caractéristique qui le dirige, et mana
+	// (seuls les joueurs en ont). Les monstres frappent toujours, sans modificateur.
+	Kind          hero.Kind
+	Mod           int
+	Mana, MaxMana int
 }
 
 // Battle est un duel entre un joueur et un monstre.
@@ -113,11 +120,27 @@ func (b *Battle) Act(a Action) []string {
 
 	switch a {
 	case Attack:
-		dmg, crit := b.damage(b.Player.Atk, b.Monster.Def, playerCritRate)
+		kind := b.Player.Kind.OrMelee()
+		if kind == hero.Magic {
+			if b.Player.Mana < hero.SpellCost {
+				return []string{b.t("combat.no_mana", hero.SpellCost)}
+			}
+			b.Player.Mana -= hero.SpellCost
+		}
+		if b.rng.Float64() >= hero.Accuracy(b.Player.Mod) {
+			log = append(log, b.t("combat.player_miss", b.MonsterName))
+			break
+		}
+		dmg, crit := b.damage(b.Player.Atk+b.Player.Mod, b.Monster.Def, playerCritRate)
 		b.Monster.HP = max(0, b.Monster.HP-dmg)
-		if crit {
+		switch {
+		case crit:
 			log = append(log, b.t("combat.player_crit", dmg, b.MonsterName))
-		} else {
+		case kind == hero.Ranged:
+			log = append(log, b.t("combat.player_shot", b.MonsterName, dmg))
+		case kind == hero.Magic:
+			log = append(log, b.t("combat.player_spell", b.MonsterName, dmg))
+		default:
 			log = append(log, b.t("combat.player_hit", b.MonsterName, dmg))
 		}
 	case Defend:

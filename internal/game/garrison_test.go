@@ -344,8 +344,11 @@ func TestBossLootIsGuaranteed(t *testing.T) {
 		r := newRig(t, func() species { s := speciesNamed(t, "warlord"); s.HP = 1; return s }())
 		r.g.rng = rand.New(rand.NewPCG(uint64(i), 3))
 		r.p.stats.Potions = 0
+		r.p.stats.MaxHP, r.p.hp = 10_000, 10_000 // le seigneur ne doit pas l'emporter avant le coup fatal
 		r.engage()
-		r.g.act(r.p, combat.Attack)
+		for r.p.fight != nil { // un coup peut manquer
+			r.g.act(r.p, combat.Attack)
+		}
 
 		if r.p.stats.Potions != bossPotions {
 			t.Fatalf("essai %d: %d potions, attendu %d", i, r.p.stats.Potions, bossPotions)
@@ -391,7 +394,7 @@ func TestGarrisonBalance(t *testing.T) {
 	winRate := func(kind string, level int) float64 {
 		sp := speciesNamed(t, kind)
 		st := combat.NewStats()
-		st.AddXP(sumXPForLevel(level))
+		st.AddXP(sumXPForLevel(level), nil)
 		if st.Level != level {
 			t.Fatalf("niveau %d atteint au lieu de %d", st.Level, level)
 		}

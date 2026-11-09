@@ -225,7 +225,7 @@ func TestHealerRefusesWhenPoor(t *testing.T) {
 func TestHealerDoesNotChargeWhenHealthy(t *testing.T) {
 	r := newNPCRig(t, world.NPCHealer)
 	r.p.stats = combat.StatsAt(6, 0, 2)
-	r.p.hp = r.p.stats.MaxHP
+	r.p.hp, r.p.mana = r.p.stats.MaxHP, r.p.stats.MaxMana
 	r.p.stats.Gold = 100
 	r.talk()
 	if o, _ := r.offer(protocol.NPCHeal); o.Available {

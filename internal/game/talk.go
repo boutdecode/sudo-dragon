@@ -3,6 +3,7 @@ package game
 import (
 	"slices"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -151,7 +152,7 @@ func (g *Game) ask(p *player, text string, opening bool) {
 			BossKills: p.stats.BossKills, Deaths: p.stats.Deaths,
 		},
 		Message: text, History: slices.Clone(t.history), Opening: opening,
-		Reputation: p.rep[t.npc.Region], Offer: g.offerContext(p, t.npc),
+		Reputation: p.rep[t.npc.Region], Impression: i18n.T(p.lang, "hero.impression."+hero.Impression(p.stats.Scores.Mod(hero.CHA))), Offer: g.offerContext(p, t.npc),
 		Landmarks: g.landmarksIfKnown(t.npc, p.lang),
 	}
 	id, gen := p.id, t.gen

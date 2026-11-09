@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/kevin/ascii-adventure/internal/gear"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -611,8 +612,9 @@ func TestGearRoundTripAndWares(t *testing.T) {
 	origin := world.NPCKey{Region: world.RegionPos{X: 2, Y: -1}, Index: 6}
 	inv := gear.Inventory{
 		Items: []gear.Item{
-			{ID: 1, Name: "Épée longue", Desc: "Bien équilibrée.", Slot: gear.Weapon, Tier: 2, Atk: 4, Price: 130, Origin: origin},
+			{ID: 1, Name: "Épée longue", Desc: "Bien équilibrée.", Slot: gear.Weapon, Tier: 2, Atk: 4, Price: 130, Kind: hero.Melee, Origin: origin},
 			{ID: 2, Name: "Casque de fer", Slot: gear.Helm, Tier: 1, Def: 1, Price: 30, Origin: origin},
+			{ID: 3, Name: "Arc long", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 40, Kind: hero.Ranged, Origin: origin},
 		},
 		Worn: map[gear.Slot]int64{gear.Weapon: 1},
 	}
@@ -630,7 +632,7 @@ func TestGearRoundTripAndWares(t *testing.T) {
 	// Une sauvegarde sans changement de sac ne le réécrit pas.
 	c.Gear, c.GearDirty = gear.Inventory{}, false
 	_ = st.SaveCharacters(map[string]Character{"aldric": c})
-	if again, _ := st.LoadCharacter("aldric"); len(again.Gear.Items) != 2 {
+	if again, _ := st.LoadCharacter("aldric"); len(again.Gear.Items) != 3 {
 		t.Fatalf("sac perdu: %+v", again.Gear)
 	}
 	// Purger le compte emporte le sac.
@@ -651,7 +653,7 @@ func TestGearRoundTripAndWares(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, ok, err := st.GetWares(ctx, origin)
-	if err != nil || !ok || back.Specialty != "lames courtes" || len(back.Items) != 2 || back.Items[0].Name != "Épée longue" {
+	if err != nil || !ok || back.Specialty != "lames courtes" || len(back.Items) != 3 || back.Items[0].Name != "Épée longue" {
 		t.Fatalf("%+v %v %v", back, ok, err)
 	}
 	w.Specialty = "haches"
@@ -664,5 +666,28 @@ func TestGearRoundTripAndWares(t *testing.T) {
 	}
 	if ok, _ := st.DeleteWares(ctx, origin); ok {
 		t.Fatal("double suppression")
+	}
+}
+
+func TestHeroSheetRoundTripAndNeedsCreationForOldRows(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	// Un personnage d'avant la création n'a aucune caractéristique.
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 4, HP: 9}}); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := st.LoadCharacter("aldric")
+	if old.Scores != [6]int{} || old.Class != "" || old.MaxHP != 0 {
+		t.Fatalf("ancien personnage: %+v", old)
+	}
+	c := Character{Level: 4, HP: 9, Class: "mage", Scores: [6]int{8, 12, 17, 9, 14, 11}, MaxHP: 21, Mana: 7}
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.LoadCharacter("aldric")
+	if got.Class != "mage" || got.Scores != c.Scores || got.MaxHP != 21 || got.Mana != 7 {
+		t.Fatalf("fiche relue: %+v", got)
 	}
 }

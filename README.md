@@ -78,10 +78,10 @@ Un joueur avance de 5 cases par seconde ; tous les monstres sont plus lents, on 
 | `/help` | rappel des commandes |
 
 **Combattre** : marchez sur un monstre pour l'attaquer, ou laissez-le vous toucher. L'écran de combat propose :
-`A` attaquer · `D` défendre (dégâts réduits de moitié) · `I` boire une potion (+15 PV) · `F` fuir (une chance sur deux).
+`A` attaquer (frapper, tirer ou lancer un sort selon l'arme) · `D` défendre (dégâts réduits de moitié) · `I` boire une potion (+15 PV) · `F` fuir (une chance sur deux).
 Les touches `1` à `4` font la même chose. Après la victoire, `Entrée` ferme l'écran.
 
-- Vainqueur : de l'XP, et 30 % de chances de trouver une potion. Chaque niveau donne +6 PV, +2 attaque, +1 défense, et restaure tous les PV.
+- Vainqueur : de l'XP, et 30 % de chances de trouver une potion. Chaque niveau lance le dé de vie de la classe (+ bonus de CON), donne +2 attaque et +1 défense, et restaure tous les PV et la mana.
 - Vaincu : vous réapparaissez au point de départ avec tous vos PV, en perdant 25 % de l'XP du niveau (jamais de niveau).
 - Les PV remontent d'un point toutes les 3 secondes hors combat.
 - Pendant un combat, vous et votre adversaire restez sur place, hors d'atteinte des autres, et apparaissez en rouge pour les autres joueurs.
@@ -100,7 +100,7 @@ Les touches `1` à `4` font la même chose. Après la victoire, `Entrée` ferme 
 
 Un monstre vaincu laisse de l'or : entre la moitié et la totalité de son XP.
 
-Un personnage débute niveau 1 avec 30 PV, 6 d'attaque, 2 de défense, 2 potions et aucun or ; il faut `10 × niveau` XP pour passer au niveau suivant.
+Un personnage débute niveau 1 avec ses PV de classe (voir « Caractéristiques et classes »), 6 d'attaque, 2 de défense, 2 potions et aucun or ; il faut `10 × niveau` XP pour passer au niveau suivant.
 Un débutant bat un rat ou un loup, mais pas un yéti : il faut progresser (c'est vérifié par un test d'équilibrage).
 
 ## Régions et contrées
@@ -176,6 +176,36 @@ un résumé **privé** de ses conversations avec chaque joueur, jamais montré a
 `server -lore-list [-lore-account NOM]` et `server -lore-purge account:NOM` ou `place:RX,RY`.
 
 `make llm-smoke` fait un essai réel de l'API (ignoré sans clé).
+
+## Caractéristiques et classes
+
+À la première connexion, un écran de **création** propose six caractéristiques tirées par le serveur (**4d6, on garde les trois meilleurs**, soit 3 à 18) :
+
+| | Rôle |
+|---|---|
+| FOR (force) | attaque et dégâts de **mêlée** |
+| AGI (agilité) | attaque et dégâts **à distance** |
+| INT (intelligence) | attaque et dégâts **magiques** |
+| CON (constitution) | points de vie |
+| SAG (sagesse) | mana |
+| CHA (charisme) | perception par les PNJ : prix, et première impression donnée à leur modèle de langage |
+
+Chaque valeur donne un **modificateur** : 3 → −4, 4-5 → −3, 6-7 → −2, 8-9 → −1, 10-11 → 0, 12-13 → +1, 14-15 → +2… (20-21 → +5).
+Vous pouvez **relancer 3 fois en tout** (une caractéristique à la fois, touche `R`), puis choisissez une **classe** :
+
+| Classe | Dé de vie | Mana de départ |
+|---|---|---|
+| Guerrier | d12 | 2 |
+| Gredin | d8 | 4 |
+| Magicien | d6 | 8 |
+
+- **PV** : niveau 1 = dé maximal + modificateur de CON ; chaque niveau suivant = dé lancé + modificateur de CON (au moins 1). Les PV maximaux sont enregistrés.
+- **Mana** = base de classe + 2 par niveau + niveau × modificateur de SAG. Un sort coûte 2 mana ; elle revient avec les PV (repos, soigneur, montée de niveau).
+- **Style d'attaque = arme portée** : épée, hache… (mêlée, FOR) ; arc, arbalète (distance, AGI) ; bâton, baguette (magie, INT, 2 mana par sort). À mains nues : mêlée. Le modificateur s'ajoute aux dégâts, et la chance de toucher
+  vaut 85 % + 5 % par point de modificateur (bornée à 40-95 %). Les monstres touchent toujours.
+- **Charisme** : ±2 % par point de modificateur sur les prix des PNJ (bornés à ±10 %, après la réduction de réputation).
+- Les personnages créés avant cette version gardent niveau, or, quêtes et sac, mais repassent par la création à leur prochaine connexion ; leurs PV sont relancés niveau par niveau.
+- Les caractéristiques sont visibles dans le panneau latéral et dans l'écran du sac (`I`).
 
 ## Équipement et forges
 

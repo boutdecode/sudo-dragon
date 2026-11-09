@@ -18,7 +18,8 @@ import (
 // de joueur n'entre dans cette demande.
 
 // StockVersion identifie la version du prompt d'étalage (enregistrée avec l'assortiment).
-const StockVersion = 1
+// La version 2 ajoute le style des armes (mêlée, distance, magie) : les étalages plus anciens sont régénérés.
+const StockVersion = 2
 
 const (
 	stockMaxTokens = 900
@@ -89,6 +90,7 @@ type rawStockItem struct {
 	Atk   flexInt    `json:"atk"`
 	Def   flexInt    `json:"def"`
 	Price flexInt    `json:"price"`
+	Kind  flexString `json:"kind"`
 }
 
 type rawStock struct {
@@ -109,7 +111,7 @@ func parseStock(content string) (specialty string, props []gear.Proposal, ok boo
 	for _, it := range raw.Items {
 		props = append(props, gear.Proposal{
 			Slot: string(it.Slot), Name: string(it.Name), Desc: string(it.Desc),
-			Tier: int(it.Tier), Atk: int(it.Atk), Def: int(it.Def), Price: int(it.Price),
+			Tier: int(it.Tier), Atk: int(it.Atk), Def: int(it.Def), Price: int(it.Price), Kind: string(it.Kind),
 		})
 	}
 	return textsafe.Clean(string(raw.Specialty), maxSpecialty), props, true
@@ -156,13 +158,26 @@ func (s *Service) processStock(parent context.Context, req StockRequest) StockRe
 	defer cancel()
 	key := req.NPC.Key()
 
+	var stale *gear.Wares // étalage d'une version plus ancienne: il sert tant qu'on ne sait pas le régénérer
 	if s.wares != nil {
 		if w, ok, err := s.wares.GetWares(ctx, key); err != nil {
 			s.log.Warn("lecture de l'assortiment", "err", err)
 		} else if ok && len(w.Items) > 0 {
-			return StockReply{Wares: w, FromStore: true}
+			if w.Version >= StockVersion {
+				return StockReply{Wares: w, FromStore: true}
+			}
+			stale = &w
 		}
 	}
+	r := s.generateStock(ctx, req, key)
+	if len(r.Wares.Items) == 0 && stale != nil {
+		return StockReply{Wares: *stale, FromStore: true}
+	}
+	return r
+}
+
+// generateStock demande un nouvel étalage au modèle, le valide, le modère et l'enregistre.
+func (s *Service) generateStock(ctx context.Context, req StockRequest, key world.NPCKey) StockReply {
 	if !s.Available() {
 		return StockReply{Failure: Unavailable}
 	}

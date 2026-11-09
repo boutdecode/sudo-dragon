@@ -46,6 +46,9 @@ type Request struct {
 
 	// Reputation : points du joueur dans le lieu de ce PNJ (fait établi par le serveur).
 	Reputation int
+	// Impression : ce que le charisme du joueur donne comme première impression (palier calculé
+	// par le serveur, jamais un texte du joueur).
+	Impression string
 	// Offer, renseigné seulement pour un donneur de quêtes qui peut en confier une
 	// au joueur, autorise le modèle à proposer une quête (voir quest.Validate).
 	Offer *OfferContext

@@ -114,7 +114,7 @@ func (e *talkEnv) join(t *testing.T, name string, sp spot, consent bool) *player
 		// compte déjà créé : on se reconnecte
 		_ = err
 	}
-	e.be.SaveCharacter(name, store.Character{Level: 5, HP: 30, X: sp.stand.X, Y: sp.stand.Y, LLMConsent: consent})
+	e.be.SaveCharacter(name, sheet(store.Character{Level: 5, HP: 30, X: sp.stand.X, Y: sp.stand.Y, LLMConsent: consent}))
 	var c *websocket.Conn
 	waitUntil(t, "connexion de "+name, func() bool {
 		c = dial(t, e.url)
@@ -321,7 +321,7 @@ func TestNoTalkOptionWithoutAService(t *testing.T) {
 	if _, err := be.Store.CreateAccount("aldric", storetest.Password); err != nil {
 		t.Fatal(err)
 	}
-	be.SaveCharacter("aldric", store.Character{Level: 5, HP: 30, X: spots[0].stand.X, Y: spots[0].stand.Y})
+	be.SaveCharacter("aldric", sheet(store.Character{Level: 5, HP: 30, X: spots[0].stand.X, Y: spots[0].stand.Y}))
 	var c *websocket.Conn
 	waitUntil(t, "connexion", func() bool {
 		c = dial(t, url)

@@ -48,7 +48,7 @@ func (e *talkEnv) joinChar(t *testing.T, name string, sp spot, ch store.Characte
 	t.Helper()
 	_, _ = e.be.Store.CreateAccount(name, storetest.Password)
 	ch.X, ch.Y = sp.stand.X, sp.stand.Y
-	e.be.SaveCharacter(name, ch)
+	e.be.SaveCharacter(name, sheet(ch))
 	var c *websocket.Conn
 	waitUntil(t, "connexion de "+name, func() bool {
 		c = dial(t, e.url)

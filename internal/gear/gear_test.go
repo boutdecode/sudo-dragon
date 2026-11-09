@@ -1,6 +1,7 @@
 package gear
 
 import (
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"strings"
 	"testing"
 
@@ -139,7 +140,7 @@ func FuzzValidate(f *testing.F) {
 	f.Add("weapon", "Épée", "d", 2, 3, 4, 50)
 	f.Add("armor", "\x1b[0m", "‮", -1, 1<<60, -1, 1<<30)
 	f.Fuzz(func(t *testing.T, slot, name, desc string, tier, atk, def, price int) {
-		it, err := Validate(Proposal{slot, name, desc, tier, atk, def, price}, Context{Slots: Slots, MaxTier: MaxTier})
+		it, err := Validate(Proposal{Slot: slot, Name: name, Desc: desc, Tier: tier, Atk: atk, Def: def, Price: price}, Context{Slots: Slots, MaxTier: MaxTier})
 		if err != nil {
 			return
 		}
@@ -283,5 +284,35 @@ func TestFallbackWaresAreDeterministicValidAndWithinCaps(t *testing.T) {
 	same := Fallback(npc, Context{Slots: SlotsOfSmith, MaxTier: 3}, i18n.FR)
 	if other.Specialty == same.Specialty && other.Items[0].Name == same.Items[0].Name && other.Items[1].Name == same.Items[1].Name {
 		t.Log("deux vendeurs ont le même assortiment (possible mais rare)")
+	}
+}
+
+func TestWeaponKindIsValidatedAndOnlyForWeapons(t *testing.T) {
+	ctx := Context{Slots: Slots, MaxTier: 3}
+	for in, want := range map[string]hero.Kind{"ranged": hero.Ranged, " MAGIC ": hero.Magic, "melee": hero.Melee, "": hero.Melee, "laser": hero.Melee} {
+		it, err := Validate(Proposal{Slot: "weapon", Name: "Arme", Tier: 1, Atk: 2, Price: 30, Kind: in}, ctx)
+		if err != nil || it.Kind != want {
+			t.Errorf("style %q: %q (%v), attendu %q", in, it.Kind, err, want)
+		}
+	}
+	it, err := Validate(Proposal{Slot: "armor", Name: "Cotte", Tier: 1, Def: 1, Price: 30, Kind: "magic"}, ctx)
+	if err != nil || it.Kind != "" {
+		t.Fatalf("une armure n'a pas de style: %+v %v", it, err)
+	}
+	if s, ok := Sanitize(Item{ID: 1, Name: "x", Slot: Weapon, Tier: 1, Atk: 2, Price: 10, Kind: "x"}); !ok || s.Kind != hero.Melee {
+		t.Fatalf("Sanitize: %+v", s)
+	}
+}
+
+func TestFallbackSmithSellsAllThreeStyles(t *testing.T) {
+	for idx := range 12 {
+		w := Fallback(world.NPCKey{Index: idx}, Context{Slots: SlotsOfSmith, MaxTier: 3}, i18n.FR)
+		kinds := map[hero.Kind]bool{}
+		for _, it := range w.Items {
+			kinds[it.Kind] = true
+		}
+		if !kinds[hero.Melee] || !kinds[hero.Ranged] || !kinds[hero.Magic] {
+			t.Fatalf("vendeur %d: styles %v", idx, kinds)
+		}
 	}
 }

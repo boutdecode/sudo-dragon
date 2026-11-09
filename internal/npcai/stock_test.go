@@ -152,3 +152,43 @@ func TestParseStockIsTolerant(t *testing.T) {
 		}
 	}
 }
+
+func TestStockPromptAsksForWeaponStyleAndParsesIt(t *testing.T) {
+	if sys := BuildStockMessages(smithReq())[0].Content; !strings.Contains(sys, "melee|ranged|magic") {
+		t.Error("le prompt d'étalage doit demander le style des armes")
+	}
+	_, props, ok := parseStock(`{"specialty":"arcs","items":[{"slot":"weapon","name":"Arc","tier":1,"atk":2,"price":30,"kind":"ranged"}]}`)
+	if !ok || len(props) != 1 || props[0].Kind != "ranged" {
+		t.Fatalf("%+v %v", props, ok)
+	}
+}
+
+func TestStaleStockIsRegeneratedButStillServedWhenTheModelIsDown(t *testing.T) {
+	r := newRig(t, Config{})
+	r.svc.wares = r.be.Store
+	old := gear.Wares{NPC: smithReq().NPC.Key(), Specialty: "anciennes lames", Version: 1,
+		Items: []gear.Item{{ID: 1, Name: "Vieille épée", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 30}}}
+	if err := r.be.Store.PutWares(context.Background(), old); err != nil {
+		t.Fatal(err)
+	}
+
+	// Modèle en panne: l'ancien étalage sert.
+	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
+		return llm.Response{}, context.DeadlineExceeded
+	}
+	if rep := r.stock(smithReq()); rep.Failure != OK || rep.Wares.Specialty != "anciennes lames" {
+		t.Fatalf("repli sur l'ancien étalage attendu: %+v", rep)
+	}
+
+	// Modèle disponible: nouvel étalage, enregistré à la version courante.
+	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
+		return stockJSON(item("Dague", 1), item("Épée courte", 2), item("Épée longue", 3), item("Rapière", 2)), nil
+	}
+	rep := r.stock(smithReq())
+	if rep.Failure != OK || rep.FromStore || rep.Wares.Version != StockVersion || rep.Wares.Specialty != "lames courtes et dagues" {
+		t.Fatalf("%+v", rep)
+	}
+	if rep2 := r.stock(smithReq()); !rep2.FromStore || rep2.Wares.Version != StockVersion {
+		t.Fatalf("%+v", rep2)
+	}
+}

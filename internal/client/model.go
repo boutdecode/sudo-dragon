@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
@@ -38,6 +39,7 @@ type state int
 const (
 	stateLogin state = iota
 	stateConnecting
+	stateCreating // personnage à créer: tirage des caractéristiques et choix de la classe
 	statePlaying
 )
 
@@ -51,6 +53,7 @@ type (
 	connectedMsg struct {
 		conn    *Conn
 		welcome protocol.Welcome
+		create  *protocol.Create // non nil: le personnage reste à créer (pas encore de welcome)
 	}
 	connectFailedMsg struct{ err error }
 	eventMsg         struct{ Event }
@@ -131,6 +134,9 @@ type Model struct {
 	combatSel int // entrée choisie dans le menu d'actions
 
 	inventory bool // écran d'inventaire ouvert (touche i)
+
+	// Création du personnage (état stateCreating).
+	create *createState
 
 	// Latence mesurée par ping/pong (hasPing faux tant qu'aucune réponse).
 	pingSent time.Time
@@ -260,11 +266,11 @@ func (m Model) Init() tea.Cmd { return nil }
 
 func connectCmd(addr, name, password string, register bool, lang i18n.Lang) tea.Cmd {
 	return func() tea.Msg {
-		c, w, err := DialLang(context.Background(), addr, name, password, register, lang)
+		c, w, create, err := DialCreate(context.Background(), addr, name, password, register, lang)
 		if err != nil {
 			return connectFailedMsg{err}
 		}
-		return connectedMsg{conn: c, welcome: w}
+		return connectedMsg{conn: c, welcome: w, create: create}
 	}
 }
 
@@ -297,31 +303,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.state {
 		case stateLogin:
 			return m.updateLoginKey(msg)
+		case stateCreating:
+			return m.updateCreateKey(msg)
 		case statePlaying:
 			return m.updatePlayKey(msg)
 		}
 		return m, nil
 
 	case connectedMsg:
-		m.conn = msg.conn
-		m.self = msg.welcome
-		m.world = world.New(msg.welcome.Seed)
-		m.state = statePlaying
-		m.errMsg = ""
-		m.pass.Reset() // le mot de passe n'a plus de raison de rester en mémoire
-		m.hasSnap = false
-		m.chat = nil
-		m.chatScroll = 0
-		m.combat, m.combatLog = nil, nil
-		m.npc, m.npcLog = nil, nil
-		m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
-		m.locSeen, m.locInPlace = false, false
-		m.bag, m.bagSel = protocol.Bag{}, 0
-		m.hasPing = false
-		m.walkGen++
-		m.walking, m.walkPath = false, nil
-		m = m.sendPing()
-		return m, tea.Batch(waitEvent(m.conn), pingTick(m.conn))
+		if msg.create != nil {
+			m.conn = msg.conn
+			m.state = stateCreating
+			m.errMsg = ""
+			m.pass.Reset()
+			m.create = newCreateState(*msg.create)
+			return m, waitEvent(m.conn)
+		}
+		return m.enterGame(msg.conn, msg.welcome)
 
 	case pingTickMsg:
 		if msg.conn == nil || msg.conn != m.conn || m.state != statePlaying {
@@ -339,11 +337,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case eventMsg:
+		if m.state == stateCreating {
+			return m.updateCreateEvent(msg.Event)
+		}
 		return m.updateEvent(msg.Event)
 	}
 
 	// Autres messages (clignotement du curseur…) : au champ actif.
 	return m.forwardToInput(msg)
+}
+
+// enterGame passe en jeu une fois la connexion établie et le personnage créé.
+func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.Cmd) {
+	m.conn = conn
+	m.self = welcome
+	m.world = world.New(welcome.Seed)
+	m.state = statePlaying
+	m.errMsg = ""
+	m.pass.Reset() // le mot de passe n'a plus de raison de rester en mémoire
+	m.hasSnap = false
+	m.chat = nil
+	m.chatScroll = 0
+	m.combat, m.combatLog = nil, nil
+	m.npc, m.npcLog = nil, nil
+	m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
+	m.locSeen, m.locInPlace = false, false
+	m.bag, m.bagSel = protocol.Bag{}, 0
+	m.hasPing = false
+	m.walkGen++
+	m.walking, m.walkPath = false, nil
+	m = m.sendPing()
+	return m, tea.Batch(waitEvent(m.conn), pingTick(m.conn))
 }
 
 // sendPing émet un ping et note l'heure d'envoi.
@@ -814,6 +838,8 @@ func (m Model) View() tea.View {
 	switch m.state {
 	case statePlaying:
 		s = inner.viewPlaying()
+	case stateCreating:
+		s = inner.viewCreate()
 	default:
 		s = inner.viewLogin()
 	}
@@ -962,9 +988,15 @@ func (m Model) sidePanel() string {
 		m.t("hud.hp") + ui.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
 		dimStyle.Render(m.t("hud.stats", st.Atk, st.Def, st.Potions)),
 		" " + goldStyle.Render(m.t("hud.gold", st.Gold)),
-		"",
-		" " + dimStyle.Render(m.t("hud.nearby", len(m.snap.Others))),
 	}
+	if st.MaxMana > 0 {
+		lines = append(lines[:4], append([]string{m.t("hud.mana") + ui.Bar(st.Mana, st.MaxMana, 10) + fmt.Sprintf(" %d/%d", st.Mana, st.MaxMana)}, lines[4:]...)...)
+	}
+	if sc := m.scoresLine(); sc != "" {
+		lines = append(lines, dimStyle.Render(sc))
+	}
+	lines = append(lines, "",
+		" "+dimStyle.Render(m.t("hud.nearby", len(m.snap.Others))))
 	for _, o := range m.snap.Others {
 		lines = append(lines, "  "+nameStyle.Render("@")+" "+o.Name)
 	}
@@ -1066,6 +1098,9 @@ func (m Model) combatView(w, h int) string {
 		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP)}
 	playerLines := []string{m.t("fight.you"),
 		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)}
+	if c.PlayerMaxMP > 0 {
+		playerLines = append(playerLines, fmt.Sprintf(" %s %3d/%d %s", ui.Bar(c.PlayerMana, c.PlayerMaxMP, barW), c.PlayerMana, c.PlayerMaxMP, dimStyle.Render(m.t("hud.mana_short"))))
+	}
 
 	field := slices.Clone(monsterLines)
 	if art := render.MonsterArt(c.Monster); ih >= len(art)+len(monsterLines)+len(playerLines)+2 {
@@ -1092,6 +1127,9 @@ func (m Model) combatView(w, h int) string {
 	} else {
 		for i, it := range combatMenu {
 			label := m.t(it.label)
+			if it.action == "attack" {
+				label = m.t("fight.act.attack." + string(hero.Kind(c.Style).OrMelee()))
+			}
 			if it.action == "item" {
 				label = fmt.Sprintf("%s (%d)", label, c.Potions)
 			}

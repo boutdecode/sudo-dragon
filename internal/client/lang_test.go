@@ -62,7 +62,7 @@ func TestEnglishPlayingScreen(t *testing.T) {
 func TestEnglishCombatScreen(t *testing.T) {
 	m := inEnglish(startCombat(t, playingModel(t, 120, 40), "You attack the Wolf!"))
 	view := plainView(m)
-	for _, want := range []string{"FIGHT · Wolf", "[A] Attack", "[D] Defend", "[I] Potion (2)", "[F] Flee", "Actions", "Log"} {
+	for _, want := range []string{"FIGHT · Wolf", "[A] Strike", "[D] Defend", "[I] Potion (2)", "[F] Flee", "Actions", "Log"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("combat sans %q:\n%s", want, view)
 		}

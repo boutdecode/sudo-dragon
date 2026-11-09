@@ -77,7 +77,20 @@ func send(t *testing.T, c *websocket.Conn, typ string, payload any) {
 	}
 }
 
+// recv lit un message. Les tests qui ne s'intéressent pas à la création du personnage la
+// laissent à ce helper: il valide le premier tirage en guerrier. Voir recvRaw pour la voir passer.
 func recv(t *testing.T, c *websocket.Conn) protocol.Envelope {
+	t.Helper()
+	env := recvRaw(t, c)
+	if env.T == protocol.TCreate {
+		send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "warrior"})
+		return recvRaw(t, c)
+	}
+	return env
+}
+
+// recvRaw lit un message sans rien interpréter.
+func recvRaw(t *testing.T, c *websocket.Conn) protocol.Envelope {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -580,4 +593,13 @@ helpOK:
 		}
 	}
 	t.Fatal("annonce non reçue")
+}
+
+// sheet complète un personnage de test avec une fiche neutre (guerrier, caractéristiques à 10) pour
+// qu'il ne repasse pas par la création ; ses PV maximaux restent calculés d'après son niveau.
+func sheet(c store.Character) store.Character {
+	if c.Scores == [6]int{} {
+		c.Class, c.Scores = "warrior", [6]int{10, 10, 10, 10, 10, 10}
+	}
+	return c
 }

@@ -8,10 +8,10 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/gear"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
-	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -109,12 +109,20 @@ func (g *Game) stockArrived(key world.NPCKey, rep npcai.StockReply) {
 
 // ---------------------------------------------------------------- calculs et présentation
 
+// weaponKind est le style d'attaque de l'arme portée (mêlée à mains nues).
+func (p *player) weaponKind() hero.Kind {
+	if w := p.inv.Equipped().Weapon; w != nil {
+		return w.Kind.OrMelee()
+	}
+	return hero.Melee
+}
+
 // gearBonus renvoie les bonus d'attaque et de défense de l'équipement porté.
 func (p *player) gearBonus() (atk, def int) { return p.inv.Equipped().Bonus() }
 
 func (g *Game) itemInfo(l i18n.Lang, p *player, it gear.Item) protocol.ItemInfo {
 	info := protocol.ItemInfo{
-		ID: it.ID, Name: it.Name, Desc: it.Desc, Slot: string(it.Slot), Tier: it.Tier, Atk: it.Atk, Def: it.Def,
+		ID: it.ID, Name: it.Name, Desc: it.Desc, Slot: string(it.Slot), Kind: string(it.Kind), Tier: it.Tier, Atk: it.Atk, Def: it.Def,
 		MinLevel: it.MinLevel(), Sell: it.SellPrice(), Worn: p.inv.IsWorn(it.ID),
 	}
 	if s := g.World.StructureOfRegion(it.Origin.Region); s != nil && it.Origin.Index >= 0 && it.Origin.Index < len(s.NPCs) {
@@ -129,7 +137,8 @@ func (g *Game) sendBag(p *player) {
 		return
 	}
 	atk, def := p.gearBonus()
-	b := protocol.Bag{Items: make([]protocol.ItemInfo, 0, len(p.inv.Items)), Capacity: gear.BagCapacity, AtkBonus: atk, DefBonus: def}
+	b := protocol.Bag{Items: make([]protocol.ItemInfo, 0, len(p.inv.Items)), Capacity: gear.BagCapacity, AtkBonus: atk, DefBonus: def,
+		Class: string(p.stats.Class), Scores: p.stats.Scores[:], Style: string(p.weaponKind()), HitDie: p.stats.Class.HitDie()}
 	for _, it := range p.inv.Items {
 		b.Items = append(b.Items, g.itemInfo(p.lang, p, it))
 	}
@@ -163,13 +172,12 @@ func (g *Game) itemDetail(l i18n.Lang, p *player, it gear.Item) string {
 // shopOffers construit les offres d'un vendeur : l'étalage, puis la revente.
 func (g *Game) shopOffers(p *player, npc world.NPC) []protocol.NPCOffer {
 	w, rev := g.waresFor(p, npc)
-	rep := p.rep[npc.Region]
 	var offers []protocol.NPCOffer
 	for i, it := range w.Items {
 		if i >= maxShopLines {
 			break
 		}
-		price := quest.Discount(it.Price, rep)
+		price := g.priceFor(p, npc, it.Price)
 		offers = append(offers, protocol.NPCOffer{
 			Action: protocol.NPCBuyItem, Label: it.Name, Detail: g.itemDetail(p.lang, p, it), Price: price,
 			Arg:       fmt.Sprintf("%d.%d", rev, it.ID),
@@ -232,7 +240,7 @@ func (g *Game) buyItem(p *player, npc world.NPC, arg string) []string {
 	if item == nil {
 		return notOffered(p.lang)
 	}
-	price := quest.Discount(item.Price, p.rep[npc.Region])
+	price := g.priceFor(p, npc, item.Price)
 	switch {
 	case len(p.inv.Items) >= gear.BagCapacity:
 		return []string{i18n.T(p.lang, "shop.bag_full")}

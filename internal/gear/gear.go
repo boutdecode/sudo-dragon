@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -70,6 +71,7 @@ type Item struct {
 	Tier     int
 	Atk, Def int
 	Price    int
+	Kind     hero.Kind    // style d'une arme (mêlée, distance, magie) ; vide pour le reste
 	Origin   world.NPCKey // vendeur d'origine
 }
 
@@ -146,6 +148,7 @@ type Proposal struct {
 	Tier             int
 	Atk, Def         int
 	Price            int
+	Kind             string // style de l'arme, facultatif (inconnu ou absent: mêlée)
 }
 
 // Context est ce que le serveur autorise pour l'étalage d'un vendeur.
@@ -190,6 +193,7 @@ func Validate(p Proposal, c Context) (Item, error) {
 	it := Item{Name: name, Desc: desc, Slot: slot, Tier: tier, Origin: c.Origin}
 	if slot == Weapon {
 		it.Atk = max(lo, min(p.Atk, hi))
+		it.Kind = hero.Kind(strings.ToLower(strings.TrimSpace(p.Kind))).OrMelee()
 	} else {
 		it.Def = max(lo, min(p.Def, hi))
 	}
@@ -214,8 +218,10 @@ func Sanitize(it Item) (Item, bool) {
 	lo := 1
 	if it.Slot == Weapon {
 		it.Atk, it.Def = max(lo, min(it.Atk, hi)), 0
+		it.Kind = it.Kind.OrMelee()
 	} else {
 		it.Def, it.Atk = max(lo, min(it.Def, hi)), 0
+		it.Kind = ""
 	}
 	_, phi := PriceBounds(it.Tier, it.Atk+it.Def)
 	it.Price = max(1, min(it.Price, phi))

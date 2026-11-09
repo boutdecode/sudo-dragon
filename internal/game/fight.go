@@ -67,7 +67,7 @@ func (g *Game) act(p *player, a combat.Action) {
 	}
 	f.lastAct = g.tick
 	log := f.b.Act(a)
-	p.hp = f.b.Player.HP
+	p.hp, p.mana = f.b.Player.HP, f.b.Player.Mana
 	p.stats.Potions = f.b.Potions
 	if f.b.Result != combat.Ongoing {
 		log = append(log, g.endFight(f)...)
@@ -97,8 +97,8 @@ func (g *Game) endFight(f *fight) []string {
 		if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
 			log = append(log, i18n.T(p.lang, "fight.gold", gold))
 		}
-		if p.stats.AddXP(m.sp.XP) > 0 {
-			p.hp = p.stats.MaxHP
+		if p.stats.AddXP(m.sp.XP, g.rng) > 0 {
+			p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 			log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
 		}
 		if m.sp.Boss {
@@ -111,7 +111,7 @@ func (g *Game) endFight(f *fight) []string {
 	case combat.Lost:
 		p.stats.Deaths++
 		p.stats.Penalize()
-		p.hp = p.stats.MaxHP
+		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 		g.setPos(p, g.freeSpawn())
 		m.cooldown = disengageCooldown
 		log = append(log, i18n.T(p.lang, "fight.respawn"))
@@ -168,8 +168,14 @@ func (g *Game) healDue(ids []int) []int {
 func (g *Game) regenerate(ids []int) {
 	for _, id := range ids {
 		p := g.players[id]
-		if p.fight == nil && p.hp < p.stats.MaxHP {
+		if p.fight != nil {
+			continue
+		}
+		if p.hp < p.stats.MaxHP {
 			p.hp++
+		}
+		if p.mana < p.stats.MaxMana {
+			p.mana++
 		}
 	}
 }
@@ -187,6 +193,9 @@ func (g *Game) sendFight(f *fight, log []string) {
 		MonsterMaxHP: b.Monster.MaxHP,
 		PlayerHP:     b.Player.HP,
 		PlayerMaxHP:  b.Player.MaxHP,
+		PlayerMana:   b.Player.Mana,
+		PlayerMaxMP:  b.Player.MaxMana,
+		Style:        string(b.Player.Kind.OrMelee()),
 		Potions:      b.Potions,
 		Log:          log,
 		Over:         b.Result != combat.Ongoing,
@@ -201,6 +210,7 @@ func statsOf(p *player) protocol.Stats {
 		Level: p.stats.Level, XP: p.stats.XP, XPNext: p.stats.XPToNext(),
 		HP: p.hp, MaxHP: p.stats.MaxHP, Atk: p.stats.Atk + atkBonus, Def: p.stats.Def + defBonus,
 		Potions: p.stats.Potions, Gold: p.stats.Gold,
+		Mana: p.mana, MaxMana: p.stats.MaxMana,
 	}
 }
 
@@ -210,5 +220,8 @@ func (p *player) fighter() combat.Fighter {
 	atk, def := p.gearBonus()
 	f.Atk += atk
 	f.Def += def
+	f.Kind = p.weaponKind()
+	f.Mod = p.stats.Mod(f.Kind)
+	f.Mana, f.MaxMana = p.mana, p.stats.MaxMana
 	return f
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -452,9 +453,9 @@ func TestBalance(t *testing.T) {
 		t.Fatalf("espèce %q inconnue", kind)
 		return species{}
 	}
-	winRate := func(level int, sp species) float64 {
-		st := combat.NewStats()
-		st.AddXP(sumXPForLevel(level))
+	winRate := func(class hero.Class, level int, sp species) float64 {
+		st := combat.NewStatsFor(class, hero.Default())
+		st.AddXP(sumXPForLevel(level), nil)
 		wins := 0
 		const trials = 500
 		for i := 0; i < trials; i++ {
@@ -479,21 +480,28 @@ func TestBalance(t *testing.T) {
 	}
 
 	cases := []struct {
+		class    hero.Class
 		kind     string
 		level    int
 		min, max float64
 		why      string
 	}{
-		{"rat", 1, 0.95, 1, "un débutant bat un rat"},
-		{"wolf", 1, 0.90, 1, "un débutant bat un loup, de justesse"},
-		{"yeti", 1, 0, 0.05, "un débutant ne bat pas un yéti"},
-		{"yeti", 6, 0.90, 1, "un joueur aguerri bat un yéti"},
+		{hero.Warrior, "rat", 1, 0.95, 1, "un débutant bat un rat"},
+		{hero.Warrior, "wolf", 1, 0.78, 1, "un guerrier débutant bat un loup, de justesse"},
+		{hero.Warrior, "yeti", 1, 0, 0.05, "un débutant ne bat pas un yéti"},
+		{hero.Warrior, "yeti", 6, 0.90, 1, "un joueur aguerri bat un yéti"},
+		{hero.Rogue, "rat", 1, 0.95, 1, "un gredin débutant bat un rat"},
+		{hero.Mage, "rat", 1, 0.90, 1, "un magicien débutant bat un rat (de peu)"},
+		{hero.Rogue, "wolf", 1, 0, 0.5, "un gredin débutant évite le loup"},
+		{hero.Mage, "wolf", 1, 0, 0.3, "un magicien débutant, fragile, évite le loup"},
+		{hero.Mage, "wolf", 3, 0.90, 1, "mais il le bat dès le niveau 3"},
+		{hero.Mage, "yeti", 6, 0.90, 1, "un magicien aguerri bat un yéti"},
 	}
 	for _, c := range cases {
-		got := winRate(c.level, spec(c.kind))
+		got := winRate(c.class, c.level, spec(c.kind))
 		if got < c.min || got > c.max {
-			t.Errorf("%s niveau %d: %.0f %% de victoires, attendu [%.0f%%, %.0f%%] (%s)",
-				c.kind, c.level, got*100, c.min*100, c.max*100, c.why)
+			t.Errorf("%s %s niveau %d: %.0f %% de victoires, attendu [%.0f%%, %.0f%%] (%s)",
+				c.class, c.kind, c.level, got*100, c.min*100, c.max*100, c.why)
 		}
 	}
 }

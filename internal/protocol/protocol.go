@@ -23,10 +23,14 @@ const (
 	TQuestAction = "quest_action"
 	// TGearAction: voir GearAction.
 	TGearAction = "gear_action"
+	// TCreateAction: voir CreateAction (phase de création du personnage, avant TWelcome).
+	TCreateAction = "create_action"
 	// TPing: mesure de latence, le serveur répond TPong (sans charge utile).
 	TPing = "ping"
 
 	// Serveur -> client
+	// TCreate: voir Create, envoyé à la place de TWelcome tant que le personnage n'est pas créé.
+	TCreate   = "create"
 	TWelcome  = "welcome"
 	TError    = "error"
 	TChat     = "chat"
@@ -91,6 +95,8 @@ type Stats struct {
 	Def     int `json:"def"`
 	Potions int `json:"pot"`
 	Gold    int `json:"gold"`
+	Mana    int `json:"mp"`
+	MaxMana int `json:"mmp"`
 }
 
 // Snapshot décrit ce qu'un joueur voit à un tick donné. Il n'est envoyé que
@@ -127,6 +133,9 @@ type Combat struct {
 	MonsterMaxHP int      `json:"mmhp"`
 	PlayerHP     int      `json:"php"`
 	PlayerMaxHP  int      `json:"pmhp"`
+	PlayerMana   int      `json:"pmp"`
+	PlayerMaxMP  int      `json:"pmmp"`
+	Style        string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic
 	Potions      int      `json:"pot"`
 	Log          []string `json:"log,omitempty"`
 	Over         bool     `json:"over,omitempty"`
@@ -200,7 +209,8 @@ type ItemInfo struct {
 	ID       int64  `json:"id"`
 	Name     string `json:"name"`
 	Desc     string `json:"desc,omitempty"`
-	Slot     string `json:"slot"` // weapon, armor, shield, helm
+	Slot     string `json:"slot"`           // weapon, armor, shield, helm
+	Kind     string `json:"kind,omitempty"` // style d'une arme: melee, ranged, magic
 	Tier     int    `json:"tier"`
 	Atk      int    `json:"atk,omitempty"`
 	Def      int    `json:"def,omitempty"`
@@ -210,6 +220,36 @@ type ItemInfo struct {
 	Origin   string `json:"origin,omitempty"` // nom du vendeur d'origine
 }
 
+// Create est le tirage proposé pendant la création du personnage: le serveur lance les dés, le client
+// affiche. Il est renvoyé après chaque relance. Le client répond par des CreateAction ; TWelcome
+// clôt la création.
+type Create struct {
+	Scores  []int       `json:"scores"` // FOR AGI INT CON SAG CHA
+	Left    int         `json:"left"`   // relances restantes (3 au total)
+	Level   int         `json:"lvl"`    // niveau conservé d'un personnage existant (1 pour un nouveau)
+	Classes []ClassInfo `json:"classes"`
+}
+
+// ClassInfo décrit une base de personnage.
+type ClassInfo struct {
+	ID   string `json:"id"` // warrior, rogue, mage
+	Die  int    `json:"die"`
+	Mana int    `json:"mana"` // mana de départ avant le modificateur de SAG
+}
+
+// Actions de CreateAction.Action.
+const (
+	CreateReroll  = "reroll"  // relancer la caractéristique Index (0 à 5)
+	CreateConfirm = "confirm" // valider le tirage avec la classe Class
+)
+
+// CreateAction est une décision du joueur pendant la création.
+type CreateAction struct {
+	Action string `json:"action"`
+	Index  int    `json:"index,omitempty"`
+	Class  string `json:"class,omitempty"`
+}
+
 // Bag est le sac d'équipement, envoyé à la connexion et à chaque changement.
 type Bag struct {
 	Notice   []string   `json:"notice,omitempty"` // lignes à ajouter au journal
@@ -217,6 +257,13 @@ type Bag struct {
 	Capacity int        `json:"cap"`
 	AtkBonus int        `json:"atk"` // bonus total de l'équipement porté
 	DefBonus int        `json:"def"`
+
+	// Fiche de création (voir internal/hero) : base, six caractéristiques (FOR AGI INT CON SAG CHA),
+	// style de l'arme portée et dé de vie.
+	Class  string `json:"class,omitempty"`
+	Scores []int  `json:"scores,omitempty"`
+	Style  string `json:"style,omitempty"`
+	HitDie int    `json:"die,omitempty"`
 }
 
 // GearAction est une action sur le sac : équiper un objet (ID) ou retirer l'objet d'un emplacement (Slot).

@@ -233,7 +233,7 @@ func TestNilPersistIsHarmless(t *testing.T) {
 func TestSaveThenRestoreRoundTrip(t *testing.T) {
 	g1, sv := gameWithSaves()
 	p, _ := joinRec(g1, "alice")
-	p.stats.AddXP(25) // niveau 3
+	p.stats.AddXP(25, nil) // niveau 3
 	p.stats.Potions = 4
 	p.hp = 11
 	dx, dy := freeDir(t, g1, p)

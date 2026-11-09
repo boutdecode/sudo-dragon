@@ -11,6 +11,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/quest"
+	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -67,8 +68,9 @@ type interlocutorJSON struct {
 	Certain      factsJSON       `json:"faits_certains"`
 	Presentation *cardJSON       `json:"sa_presentation"`
 	Memory       string          `json:"mon_souvenir_de_lui"`
-	Reputation   *reputationJSON `json:"reputation_ici,omitempty"`     // fait établi par le serveur
-	DeedsDone    []deedJSON      `json:"quetes_rendues_ici,omitempty"` // faits établis par le serveur
+	Reputation   *reputationJSON `json:"reputation_ici,omitempty"`      // fait établi par le serveur
+	DeedsDone    []deedJSON      `json:"quetes_rendues_ici,omitempty"`  // faits établis par le serveur
+	Impression   string          `json:"premiere_impression,omitempty"` // charisme, calculé par le serveur
 }
 
 type speciesJSON struct {
@@ -224,6 +226,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 		}
 		data.Landmarks = append(data.Landmarks, landmarkJSON{Name: lm.Name, Kind: lm.Kind, Region: lm.Region, Direction: lm.Direction, Distance: lm.Distance, Note: lm.Note})
 	}
+	data.Interlocutor.Impression = textsafe.Clean(req.Impression, 40)
 	if req.Reputation > 0 {
 		data.Interlocutor.Reputation = &reputationJSON{Tier: quest.TierLabel(l, req.Reputation), Points: req.Reputation}
 	}

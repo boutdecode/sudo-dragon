@@ -16,6 +16,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/game"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -102,6 +103,7 @@ func fromSaved(sv game.Saved) store.Character {
 		Level: sv.Stats.Level, XP: sv.Stats.XP, Potions: sv.Stats.Potions, Gold: sv.Stats.Gold,
 		HP: sv.HP, X: sv.Pos.X, Y: sv.Pos.Y,
 		LLMConsent: sv.LLMConsent, Kills: sv.Stats.Kills, BossKills: sv.Stats.BossKills, Deaths: sv.Stats.Deaths,
+		Class: string(sv.Stats.Class), Scores: sv.Stats.Scores, MaxHP: sv.Stats.MaxHP, Mana: sv.Mana,
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 		Gear: sv.Gear, GearDirty: sv.GearDirty,
 	}
@@ -109,8 +111,10 @@ func fromSaved(sv game.Saved) store.Character {
 
 func toSaved(c store.Character) *game.Saved {
 	return &game.Saved{
-		Stats:      combat.StatsAt(c.Level, c.XP, c.Potions).WithGold(c.Gold).WithRecord(c.Kills, c.BossKills, c.Deaths),
+		Stats: combat.StatsFor(c.Level, c.XP, c.Potions, hero.Class(c.Class), hero.Scores(c.Scores), c.MaxHP).
+			WithGold(c.Gold).WithRecord(c.Kills, c.BossKills, c.Deaths),
 		HP:         c.HP,
+		Mana:       c.Mana,
 		Pos:        world.Pos{X: c.X, Y: c.Y},
 		LLMConsent: c.LLMConsent,
 		Quests:     c.Quests, Rep: c.Rep, Gear: c.Gear,
@@ -298,12 +302,17 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	name = canonical
 
 	var saved *game.Saved
-	if ch, err := s.be.LoadCharacter(name); err != nil {
+	ch, err := s.be.LoadCharacter(name)
+	if err != nil {
 		s.Log.Error("chargement du personnage", "name", name, "err", err)
 		return fail("srv.err.server")
-	} else if ch != nil {
-		saved = toSaved(*ch)
 	}
+	if needsCreation(ch) {
+		if ch, err = s.runCreation(ctx, conn, name, ch); err != nil {
+			return nil, err
+		}
+	}
+	saved = toSaved(*ch)
 
 	sess := &session{
 		name:    name,

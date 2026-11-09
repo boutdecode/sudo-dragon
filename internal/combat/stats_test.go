@@ -1,6 +1,11 @@
 package combat
 
-import "testing"
+import (
+	"math/rand/v2"
+	"testing"
+
+	"github.com/kevin/ascii-adventure/internal/hero"
+)
 
 func TestNewStats(t *testing.T) {
 	s := NewStats()
@@ -14,14 +19,14 @@ func TestNewStats(t *testing.T) {
 
 func TestAddXPLevelsUpAndCarriesOver(t *testing.T) {
 	s := NewStats()
-	if n := s.AddXP(4); n != 0 || s.Level != 1 || s.XP != 4 {
+	if n := s.AddXP(4, nil); n != 0 || s.Level != 1 || s.XP != 4 {
 		t.Fatalf("pas de niveau attendu: %+v (niveaux gagnés %d)", s, n)
 	}
 	hp, atk, def := s.MaxHP, s.Atk, s.Def
-	if n := s.AddXP(8); n != 1 || s.Level != 2 || s.XP != 2 {
+	if n := s.AddXP(8, nil); n != 1 || s.Level != 2 || s.XP != 2 {
 		t.Fatalf("niveau 2 avec reliquat 2 attendu: %+v (niveaux gagnés %d)", s, n)
 	}
-	if s.MaxHP != hp+hpPerLevel || s.Atk != atk+atkPerLevel || s.Def != def+defPerLevel {
+	if s.MaxHP != hp+7 || s.Atk != atk+atkPerLevel || s.Def != def+defPerLevel {
 		t.Fatalf("gains de niveau incorrects: %+v", s)
 	}
 }
@@ -29,14 +34,14 @@ func TestAddXPLevelsUpAndCarriesOver(t *testing.T) {
 func TestAddXPSeveralLevelsAtOnce(t *testing.T) {
 	s := NewStats()
 	// 10 (niv. 1) + 20 (niv. 2) = 30 pour atteindre le niveau 3, plus 5 de reliquat.
-	if n := s.AddXP(35); n != 2 || s.Level != 3 || s.XP != 5 {
+	if n := s.AddXP(35, nil); n != 2 || s.Level != 3 || s.XP != 5 {
 		t.Fatalf("attendu niveau 3 / XP 5, obtenu %+v (niveaux gagnés %d)", s, n)
 	}
 }
 
 func TestAddXPNegativeIgnored(t *testing.T) {
 	s := NewStats()
-	s.AddXP(-50)
+	s.AddXP(-50, nil)
 	if s.XP != 0 || s.Level != 1 {
 		t.Fatalf("XP négative appliquée: %+v", s)
 	}
@@ -44,7 +49,7 @@ func TestAddXPNegativeIgnored(t *testing.T) {
 
 func TestPenalizeKeepsLevel(t *testing.T) {
 	s := NewStats()
-	s.AddXP(10 + 15) // niveau 2, XP 15
+	s.AddXP(10+15, nil) // niveau 2, XP 15
 	s.Penalize()
 	if s.Level != 2 || s.XP != 11 {
 		t.Fatalf("attendu niveau 2 / XP 11, obtenu %+v", s)
@@ -88,7 +93,7 @@ func TestStatsAtMatchesProgression(t *testing.T) {
 		if got != s {
 			t.Fatalf("niveau %d: StatsAt=%+v, progression=%+v", level, got, s)
 		}
-		s.AddXP(s.XPToNext() - s.XP + 3) // passe au niveau suivant avec un reliquat de 3
+		s.AddXP(s.XPToNext()-s.XP+3, nil) // passe au niveau suivant avec un reliquat de 3
 	}
 }
 
@@ -147,7 +152,7 @@ func TestWithGoldClamps(t *testing.T) {
 func TestLevelUpKeepsGold(t *testing.T) {
 	s := NewStats()
 	s.AddGold(50)
-	s.AddXP(100)
+	s.AddXP(100, nil)
 	if s.Gold != 50 {
 		t.Fatalf("l'or a changé à la montée de niveau: %d", s.Gold)
 	}
@@ -166,8 +171,51 @@ func TestWithRecordClamps(t *testing.T) {
 
 func TestLevelUpKeepsRecord(t *testing.T) {
 	s := NewStats().WithRecord(10, 1, 2)
-	s.AddXP(500)
+	s.AddXP(500, nil)
 	if s.Kills != 10 || s.BossKills != 1 || s.Deaths != 2 {
 		t.Fatalf("historique altéré à la montée de niveau: %+v", s)
+	}
+}
+
+func TestNewStatsForUsesClassDieAndConstitution(t *testing.T) {
+	sc := hero.Default()
+	sc[hero.CON], sc[hero.WIS] = 14, 16 // +2, +3
+	mage := NewStatsFor(hero.Mage, sc)
+	if mage.MaxHP != 8 || mage.MaxMana != 8+3 || mage.Class != hero.Mage {
+		t.Fatalf("mage: %+v", mage)
+	}
+	if w := NewStatsFor(hero.Warrior, sc); w.MaxHP != 14 {
+		t.Fatalf("guerrier: %+v", w)
+	}
+	if d := NewStatsFor("", hero.Scores{}); d.Class != hero.Warrior || d.Scores != hero.Default() {
+		t.Fatalf("défauts: %+v", d)
+	}
+}
+
+func TestAddXPRollsHitDice(t *testing.T) {
+	rng := rand.New(rand.NewPCG(9, 9))
+	s := NewStatsFor(hero.Rogue, hero.Default())
+	seen := map[int]bool{}
+	for range 200 {
+		before := s.MaxHP
+		s.AddXP(s.XPToNext(), rng)
+		gain := s.MaxHP - before
+		if gain < 1 || gain > 8 {
+			t.Fatalf("gain %d hors d8", gain)
+		}
+		seen[gain] = true
+	}
+	if len(seen) < 5 {
+		t.Fatalf("les dés ne varient pas: %v", seen)
+	}
+}
+
+func TestStatsForClampsHitPointsAndMana(t *testing.T) {
+	s := StatsFor(3, 0, 0, hero.Mage, hero.Default(), 10_000)
+	if s.MaxHP != 6+2*6 {
+		t.Fatalf("PV excessifs: %d", s.MaxHP)
+	}
+	if s := StatsFor(3, 0, 0, hero.Mage, hero.Default(), 1); s.MaxHP != 3 {
+		t.Fatalf("PV plancher: %d", s.MaxHP)
 	}
 }

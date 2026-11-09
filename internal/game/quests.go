@@ -374,9 +374,9 @@ func (g *Game) turnIn(p *player, arg string) []string {
 	q.State, q.DoneAt = quest.Done, g.now()
 	gold := p.stats.AddGold(q.Reward.Gold)
 	potions := p.stats.AddPotions(q.Reward.Potions)
-	levels := p.stats.AddXP(q.Reward.XP)
+	levels := p.stats.AddXP(q.Reward.XP, g.rng)
 	if levels > 0 {
-		p.hp = p.stats.MaxHP
+		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 	}
 	before := p.rep[q.Place()]
 	p.rep[q.Place()] = before + q.ReputationGain()
