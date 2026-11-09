@@ -208,7 +208,7 @@ func (g *Game) endFight(f *fight) []string {
 	if f.b.Result != combat.Won {
 		for i, m := range f.ms {
 			if !f.slain[i] {
-				m.cooldown = disengageCooldown
+				m.calm = disengageCooldown
 			}
 		}
 	}
@@ -228,7 +228,7 @@ func (g *Game) abortFight(p *player) {
 		for i, m := range f.ms {
 			if !f.slain[i] {
 				m.fight = nil
-				m.cooldown = disengageCooldown
+				m.calm = disengageCooldown
 			}
 		}
 		p.fight = nil

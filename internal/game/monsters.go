@@ -104,7 +104,7 @@ func (g *Game) gatherGroup(m *monster) []*monster {
 	var near []*monster
 	for _, id := range g.sortedMonsterIDs() {
 		o := g.monsters[id]
-		if o == m || o.zone != m.zone || o.fight != nil || o.cooldown > 0 || cheb(o.pos, m.pos) > groupRadius || !canGroup(m.sp.Kind, o.sp.Kind) {
+		if o == m || o.zone != m.zone || o.fight != nil || o.calm > 0 || cheb(o.pos, m.pos) > groupRadius || !canGroup(m.sp.Kind, o.sp.Kind) {
 			continue
 		}
 		near = append(near, o)
@@ -199,7 +199,8 @@ type monster struct {
 	sp       species
 	pos      world.Pos
 	home     world.Pos
-	cooldown int
+	cooldown int // ticks avant le prochain pas
+	calm     int // ticks pendant lesquels il reste inerte et n'engage pas (après une fuite ou une défaite)
 	fight    *fight // non nil pendant un combat: le monstre est figé
 
 	// Monstre de garnison: occupe un emplacement de forteresse, ne quitte pas
@@ -318,6 +319,12 @@ func (g *Game) stepMonsters(ids []int) {
 		m := g.monsters[id]
 		if m.fight != nil || (m.zone != 0 && !occupied[m.zone]) {
 			continue
+		}
+		if m.calm > 0 {
+			m.calm--
+			if m.calm > 0 {
+				continue
+			}
 		}
 		if m.cooldown > 0 {
 			m.cooldown--

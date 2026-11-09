@@ -210,7 +210,7 @@ func TestLossRespawnsWithPenalty(t *testing.T) {
 	if r.g.byPos[r.p.pos] != r.p.id {
 		t.Fatal("nouvelle case non indexée")
 	}
-	if _, alive := r.g.monsters[r.m.id]; !alive || r.m.cooldown != disengageCooldown {
+	if _, alive := r.g.monsters[r.m.id]; !alive || r.m.calm != disengageCooldown {
 		t.Fatal("le monstre vainqueur doit rester, avec un délai avant de ré-engager")
 	}
 }
@@ -228,8 +228,8 @@ func TestFleeFreesBothAndMonsterWaits(t *testing.T) {
 	if c := r.last(); !c.Over || c.Result != protocol.ResultFled {
 		t.Fatalf("issue de fuite attendue: %+v", c)
 	}
-	if r.m.fight != nil || r.m.cooldown != disengageCooldown {
-		t.Fatalf("monstre: fight=%v cooldown=%d", r.m.fight, r.m.cooldown)
+	if r.m.fight != nil || r.m.calm != disengageCooldown {
+		t.Fatalf("monstre: fight=%v cooldown=%d", r.m.fight, r.m.calm)
 	}
 
 	// Le joueur reste collé au monstre, qui ne ré-engage qu'après le délai.
@@ -255,8 +255,8 @@ func TestLeaveDuringFightFreesMonster(t *testing.T) {
 	if _, ok := r.g.monsters[r.m.id]; !ok {
 		t.Fatal("le monstre aurait dû rester dans le monde")
 	}
-	if r.m.cooldown != disengageCooldown {
-		t.Fatalf("cooldown=%d", r.m.cooldown)
+	if r.m.calm != disengageCooldown {
+		t.Fatalf("cooldown=%d", r.m.calm)
 	}
 }
 
@@ -525,8 +525,8 @@ func TestKillsAreRewardedPerMonsterAndFleeReleasesTheRest(t *testing.T) {
 	}
 	r.p.fight.b.Abandon()
 	r.g.endFight(r.p.fight)
-	if extra.fight != nil || extra.cooldown != disengageCooldown {
-		t.Fatalf("le survivant doit être libéré: fight=%v cooldown=%d", extra.fight, extra.cooldown)
+	if extra.fight != nil || extra.calm != disengageCooldown {
+		t.Fatalf("le survivant doit être libéré: fight=%v cooldown=%d", extra.fight, extra.calm)
 	}
 }
 
@@ -538,5 +538,26 @@ func TestBeginnersMeetNoPacks(t *testing.T) {
 	}
 	if len(r.g.monsters) != before {
 		t.Fatalf("%d monstres de plus pour un joueur de niveau 1", len(r.g.monsters)-before)
+	}
+}
+
+// Les compagnons en train de marcher (cooldown de pas en cours) rejoignent le combat; ceux qui viennent de fuir
+// ou de perdre (calm) restent à l'écart.
+func TestPackJoinsEvenWhileWalking(t *testing.T) {
+	r := newRig(t, testRat)
+	var mates []*monster
+	for _, d := range [][2]int{{1, 0}, {0, 1}} {
+		pos := world.Pos{X: r.m.pos.X + d[0], Y: r.m.pos.Y + d[1]}
+		if r.g.blocked(pos) || r.g.World.Safe(pos.X, pos.Y) {
+			t.Skip("terrain peu praticable autour de la case de test")
+		}
+		m := r.g.addMonster(testRat, pos)
+		m.cooldown = testRat.MoveEvery
+		mates = append(mates, m)
+	}
+	mates[1].calm = disengageCooldown
+	r.engage()
+	if r.p.fight == nil || len(r.p.fight.ms) != 2 || mates[0].fight == nil || mates[1].fight != nil {
+		t.Fatalf("groupe attendu: le compagnon en marche oui, le calmé non (fight=%v)", r.p.fight)
 	}
 }

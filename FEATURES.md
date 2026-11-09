@@ -70,7 +70,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 ## Combat (`internal/combat/`, `game/fight.go`, `client/combatview.go`)
 
 - **Règles** : d20 + modificateur doit dépasser strictement la DEF. 20 naturel : touche et double les dés de dégâts ; 1 naturel : rate. La réduction d'armure est retirée des dégâts (minimum 1 si touché).
-- **Groupes** : jusqu'à 3 monstres (2 pour les garnisons) ; les monstres libres compatibles à **5 cases** se joignent. Doublons numérotés (« Loup 1 », « Loup 2 »).
+- **Groupes** : jusqu'à 3 monstres (2 pour les garnisons) ; les monstres libres compatibles à **5 cases** se joignent, même en marche ; ceux qui viennent de fuir ou de perdre un combat (2 s) restent à l'écart. Doublons numérotés (« Loup 1 », « Loup 2 »).
 - **Initiative** : d20 + AGI. Les monstres strictement plus rapides frappent avant le premier tour ; à égalité, le joueur commence.
 - **Actions** : Attaquer (`A`/`1`), Objet (`I`/`2`, potion +15 PV), Fuir (`F`/`3`, une chance sur deux). Flèches haut/bas + Entrée, gauche/droite pour changer de cible.
 - **Interface** : deux colonnes (joueur / ennemis), détail de l'action, journal.
