@@ -516,7 +516,7 @@ var fr = map[string]string{
 	"hero.impression.pleasant":      "agréable",
 	"hero.impression.charismatic":   "charismatique",
 	"create.title":                  "Création du personnage",
-	"create.intro":                  "Quatre dés à six faces, on garde les trois meilleurs. Niveau %d.",
+	"create.intro":                  "Trois dés à six faces. Niveau %d.",
 	"create.rerolls":                "Relances restantes : %d sur %d (une caractéristique à la fois)",
 	"create.preview":                "Points de vie : %d · Mana : %d",
 	"create.key.stat":               "choisir",

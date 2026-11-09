@@ -19,18 +19,23 @@ func TestModTable(t *testing.T) {
 	}
 }
 
-func TestRoll4d6StaysInRangeAndKeepsBestThree(t *testing.T) {
+func TestRoll3d6StaysInRangeAndCoversEveryValue(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1, 2))
-	sum := 0
-	for range 5000 {
-		v := Roll4d6(rng)
+	sum, seen := 0, map[int]bool{}
+	const n = 20000
+	for range n {
+		v := Roll3d6(rng)
 		if v < 3 || v > 18 {
 			t.Fatalf("hors bornes: %d", v)
 		}
 		sum += v
+		seen[v] = true
 	}
-	if avg := float64(sum) / 5000; avg < 12 || avg > 13.2 { // moyenne théorique ≈ 12,24
+	if avg := float64(sum) / n; avg < 10.3 || avg > 10.7 { // moyenne théorique 10,5
 		t.Fatalf("moyenne %.2f", avg)
+	}
+	if len(seen) != 16 {
+		t.Fatalf("valeurs vues: %d sur 16", len(seen))
 	}
 }
 

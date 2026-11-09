@@ -5,7 +5,6 @@ package hero
 
 import (
 	"math/rand/v2"
-	"sort"
 )
 
 // Ability est l'une des six caractéristiques.
@@ -72,21 +71,16 @@ func (s Scores) Sanitize() Scores {
 	return s
 }
 
-// Roll4d6 lance 4d6 et additionne les trois meilleurs dés.
-func Roll4d6(rng *rand.Rand) int {
-	d := [4]int{}
-	for i := range d {
-		d[i] = rng.IntN(6) + 1
-	}
-	sort.Ints(d[:])
-	return d[1] + d[2] + d[3]
+// Roll3d6 lance trois dés à six faces et les additionne (3 à 18).
+func Roll3d6(rng *rand.Rand) int {
+	return rng.IntN(6) + rng.IntN(6) + rng.IntN(6) + 3
 }
 
 // RollScores tire les six caractéristiques.
 func RollScores(rng *rand.Rand) Scores {
 	var s Scores
 	for i := range s {
-		s[i] = Roll4d6(rng)
+		s[i] = Roll3d6(rng)
 	}
 	return s
 }
@@ -109,7 +103,7 @@ func (c *Creation) Reroll(a Ability, rng *rand.Rand) bool {
 	if a < 0 || a >= NumAbilities || c.Rolls >= MaxRolls {
 		return false
 	}
-	c.Scores[a] = Roll4d6(rng)
+	c.Scores[a] = Roll3d6(rng)
 	c.Rolls++
 	return true
 }

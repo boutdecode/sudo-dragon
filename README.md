@@ -184,7 +184,7 @@ un résumé **privé** de ses conversations avec chaque joueur, jamais montré a
 
 ## Caractéristiques et classes
 
-À la première connexion, un écran de **création** propose six caractéristiques tirées par le serveur (**4d6, on garde les trois meilleurs**, soit 3 à 18) :
+À la première connexion, un écran de **création** propose six caractéristiques tirées par le serveur (**3d6**, soit 3 à 18) :
 
 | | Rôle |
 |---|---|

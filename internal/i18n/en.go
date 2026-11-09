@@ -516,7 +516,7 @@ var en = map[string]string{
 	"hero.impression.pleasant":      "pleasant",
 	"hero.impression.charismatic":   "charismatic",
 	"create.title":                  "Character creation",
-	"create.intro":                  "Four six-sided dice, keep the best three. Level %d.",
+	"create.intro":                  "Three six-sided dice. Level %d.",
 	"create.rerolls":                "Rerolls left: %d of %d (one ability at a time)",
 	"create.preview":                "Hit points: %d · Mana: %d",
 	"create.key.stat":               "pick",

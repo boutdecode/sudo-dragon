@@ -13,7 +13,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// Écran de création du personnage : le serveur a lancé les dés (4d6, trois meilleurs), le joueur peut
+// Écran de création du personnage : le serveur a lancé les dés (3d6), le joueur peut
 // relancer trois fois en tout une caractéristique de son choix, puis choisit sa base et valide.
 
 // createState est l'écran en cours.
