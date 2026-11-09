@@ -32,7 +32,7 @@ func TestLevelUpRollsHitDieAndRestoresHitPointsAndMana(t *testing.T) {
 		before := r.p.stats.MaxHP
 		r.engage()
 		for r.p.fight != nil {
-			r.g.act(r.p, combat.Attack)
+			r.g.act(r.p, combat.Attack, 0)
 		}
 		if r.p.stats.Level != 2 {
 			t.Skipf("niveau %d (le joueur a pu perdre)", r.p.stats.Level)
@@ -96,7 +96,7 @@ func TestSpellsSpendManaInFightAndItSticks(t *testing.T) {
 	staff := gear.Item{ID: 1, Name: "Bâton", Slot: gear.Weapon, Tier: 1, Family: "staff", Price: 20, Kind: hero.Magic}
 	r.p.inv = gear.Inventory{Items: []gear.Item{staff}, Worn: map[gear.Slot]int64{gear.Weapon: 1}}
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.mana != 5-hero.SpellCost {
 		t.Fatalf("mana après un sort: %d", r.p.mana)
 	}

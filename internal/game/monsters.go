@@ -60,6 +60,83 @@ var speciesByTile = func() map[world.Tile][]species {
 	return m
 }()
 
+// companions donne, pour chaque espèce, les autres espèces avec lesquelles elle se bat de façon vraisemblable
+// (la relation est symétrisée par canGroup). Chaque espèce se bat aussi avec les siens.
+var companions = map[string][]string{
+	"wolf":     {"rat"},    // les rats rôdent dans le sillage des loups
+	"goblin":   {"wolf"},   // le gobelin et ses loups
+	"yeti":     {"wolf"},   // loups des neiges
+	"skeleton": {"knight"}, // garnison
+	"warlord":  {"knight", "skeleton"},
+}
+
+// canGroup dit si deux espèces peuvent se battre ensemble.
+func canGroup(a, b string) bool {
+	return a == b || slices.Contains(companions[a], b) || slices.Contains(companions[b], a)
+}
+
+// Réglages des groupes.
+const (
+	maxGroup    = 3 // monstres au plus dans un même combat
+	maxGarrison = 2 // idem pour une garnison de forteresse (déjà redoutable seule)
+	packLevels  = 3 // un joueur ne rencontre de meutes que d'un compagnon de plus tous les packLevels niveaux
+	groupRadius = 5 // distance (Chebyshev) à laquelle un monstre libre se joint à un combat
+)
+
+// packExtra donne le nombre maximal de compagnons qui apparaissent avec une espèce de biome.
+var packExtra = map[string]int{"rat": 2, "crab": 1, "wolf": 2, "goblin": 1, "yeti": 0}
+
+// gatherGroup renvoie m et les monstres libres et compatibles qui l'entourent (au plus maxGroup en tout, les
+// plus proches d'abord).
+func (g *Game) gatherGroup(m *monster) []*monster {
+	var near []*monster
+	for _, id := range g.sortedMonsterIDs() {
+		o := g.monsters[id]
+		if o == m || o.fight != nil || o.cooldown > 0 || cheb(o.pos, m.pos) > groupRadius || !canGroup(m.sp.Kind, o.sp.Kind) {
+			continue
+		}
+		near = append(near, o)
+	}
+	slices.SortStableFunc(near, func(a, b *monster) int { return cheb(a.pos, m.pos) - cheb(b.pos, m.pos) })
+	limit := maxGroup
+	if m.sp.Garrison {
+		limit = maxGarrison
+	}
+	return append([]*monster{m}, near[:min(len(near), limit-1)]...)
+}
+
+// spawnPack fait apparaître autour de m des compagnons, selon l'espèce et le niveau du joueur (sans dépasser le quota autour de around), sur des cases libres de son habitat.
+func (g *Game) spawnPack(m *monster, around world.Pos, level int) {
+	n := g.rng.IntN(min(packExtra[m.sp.Kind], level/packLevels) + 1) // pas de meute pour un débutant
+	for range n {
+		if g.monstersAround(around) >= maxPerPlayer || len(g.monsters)-g.garrisonCount >= maxMonsters {
+			return // la meute respecte les mêmes quotas que les monstres isolés
+		}
+		for range spawnTries {
+			d := dirs8[g.rng.IntN(len(dirs8))]
+			pos := world.Pos{X: m.pos.X + d[0]*(1+g.rng.IntN(2)), Y: m.pos.Y + d[1]*(1+g.rng.IntN(2))}
+			if _, taken := g.monsterAt[pos]; taken || g.blocked(pos) || g.World.Safe(pos.X, pos.Y) || g.seenByAnyPlayer(pos) {
+				continue
+			}
+			// Même espèce, ou (rarement) une espèce compagne dont l'habitat est celui de la case.
+			sp := m.sp
+			if cs := companions[m.sp.Kind]; len(cs) > 0 && g.rng.IntN(4) == 0 {
+				for _, c := range speciesList {
+					if c.Kind == cs[g.rng.IntN(len(cs))] && !c.Garrison && c.Habitat == g.World.At(pos.X, pos.Y) {
+						sp = c
+					}
+				}
+			}
+			if sp.Habitat != g.World.At(pos.X, pos.Y) {
+				continue
+			}
+			c := g.addMonster(sp, pos)
+			c.home = m.home
+			break
+		}
+	}
+}
+
 // SpeciesKinds liste les identifiants d'espèces (pour vérifier que le client
 // sait toutes les dessiner).
 func SpeciesKinds() []string {
@@ -82,7 +159,7 @@ func SpeciesName(l i18n.Lang, kind string) string {
 
 // fighter convertit l'espèce en combattant (PV pleins).
 func (s species) fighter() combat.Fighter {
-	return combat.Fighter{HP: s.HP, MaxHP: s.HP, Def: hero.DefBase(s.Size) + s.DexMod, Hit: s.Hit, Dmg: s.Dmg, Reduction: s.Reduction, Kind: hero.Melee}
+	return combat.Fighter{HP: s.HP, MaxHP: s.HP, Def: hero.DefBase(s.Size) + s.DexMod, Init: s.DexMod, Hit: s.Hit, Dmg: s.Dmg, Reduction: s.Reduction, Kind: hero.Melee}
 }
 
 // name renvoie le nom de l'espèce dans la langue l (clé "monster.<kind>").
@@ -307,7 +384,7 @@ func (g *Game) spawnMonsters() {
 			if len(sps) == 0 {
 				continue
 			}
-			g.addMonster(sps[g.rng.IntN(len(sps))], pos)
+			g.spawnPack(g.addMonster(sps[g.rng.IntN(len(sps))], pos), p.pos, p.stats.Level)
 			break
 		}
 	}

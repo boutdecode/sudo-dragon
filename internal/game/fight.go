@@ -1,6 +1,9 @@
 package game
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
@@ -15,109 +18,191 @@ const (
 	safeRegenEvery    = 10 // ticks entre deux PV rendus dans une zone sûre (1 s)
 )
 
-// fight relie un joueur et un monstre engagés dans un duel. Pendant le duel,
-// les deux restent sur leur case, immobiles et hors d'atteinte des autres.
+// fight relie un joueur et un ou plusieurs monstres engagés. Pendant le combat, tous restent sur leur case,
+// immobiles et hors d'atteinte des autres.
 type fight struct {
 	p       *player
-	m       *monster
+	ms      []*monster // aligné sur b.Foes
+	slain   []bool     // monstres déjà récompensés et retirés du monde
 	b       *combat.Battle
 	lastAct uint64 // tick de la dernière action du joueur
 }
 
-// Act applique l'action de combat d'un joueur ("attack", "item", "flee").
-// Sans effet si le joueur n'est pas en combat ou si l'action est inconnue.
-func (g *Game) Act(id int, action string) {
+// Act applique l'action de combat d'un joueur ("attack", "item", "flee") sur le monstre target (indice dans le
+// combat; invalide: le premier vivant). Sans effet si le joueur n'est pas en combat ou si l'action est inconnue.
+func (g *Game) Act(id int, action string, target int) {
 	a, ok := combat.ParseAction(action)
 	if !ok {
 		return
 	}
 	g.do(func() {
 		if p, ok := g.players[id]; ok {
-			g.act(p, a)
+			g.act(p, a, target)
 		}
 	})
 }
 
-// startFight engage p et m s'ils sont tous deux libres.
+// startFight engage p et m (et les monstres compatibles qui l'entourent) s'ils sont tous libres.
 func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	if p.fight != nil || m.fight != nil {
 		return
 	}
-	f := &fight{p: p, m: m, lastAct: g.tick}
-	f.b = combat.New(
-		p.fighter(), p.stats.Potions,
-		m.sp.fighter(),
-		m.sp.name(p.lang), g.rng,
-	)
+	group := g.gatherGroup(m)
+	f := &fight{p: p, ms: group, slain: make([]bool, len(group)), lastAct: g.tick}
+	foes := make([]combat.Foe, len(group))
+	for i, gm := range group {
+		foes[i] = combat.Foe{Fighter: gm.sp.fighter(), Name: gm.sp.name(p.lang), Kind: gm.sp.Kind, XP: gm.sp.XP}
+	}
+	numberDuplicates(foes)
+	f.b = combat.NewGroup(p.fighter(), p.stats.Potions, foes, g.rng)
 	f.b.Lang = p.lang
-	p.fight, m.fight = f, f
+	p.fight = f
+	for _, gm := range group {
+		gm.fight = f
+	}
 	p.hasPending = false
 
-	intro := i18n.T(p.lang, "fight.monster_attacks", m.sp.name(p.lang))
-	if playerStarted {
-		intro = i18n.T(p.lang, "fight.you_attack", m.sp.name(p.lang))
+	var intro string
+	switch {
+	case len(group) > 1 && playerStarted:
+		intro = i18n.T(p.lang, "fight.you_attack_group", groupLabel(foes))
+	case len(group) > 1:
+		intro = i18n.T(p.lang, "fight.group_attacks", groupLabel(foes))
+	case playerStarted:
+		intro = i18n.T(p.lang, "fight.you_attack", foes[0].Name)
+	default:
+		intro = i18n.T(p.lang, "fight.monster_attacks", foes[0].Name)
 	}
-	g.sendFight(f, []string{intro})
-}
-
-// act résout un tour de combat et libère les combattants si c'est fini.
-func (g *Game) act(p *player, a combat.Action) {
-	f := p.fight
-	if f == nil {
-		return
-	}
-	f.lastAct = g.tick
-	log := f.b.Act(a)
-	p.hp, p.mana = f.b.Player.HP, f.b.Player.Mana
-	p.stats.Potions = f.b.Potions
-	if f.b.Result != combat.Ongoing {
+	log := append([]string{intro}, f.b.Start()...)
+	if f.b.Result != combat.Ongoing { // terrassé par les coups d'ouverture
 		log = append(log, g.endFight(f)...)
 	}
 	g.sendFight(f, log)
 }
 
-// endFight libère les combattants, applique les conséquences de l'issue et
-// renvoie les lignes de journal correspondantes.
+// numberDuplicates numérote les monstres de même nom ("Loup 1", "Loup 2").
+func numberDuplicates(foes []combat.Foe) {
+	count := map[string]int{}
+	for _, f := range foes {
+		count[f.Name]++
+	}
+	seen := map[string]int{}
+	for i := range foes {
+		if n := foes[i].Name; count[n] > 1 {
+			seen[n]++
+			foes[i].Name = fmt.Sprintf("%s %d", n, seen[n])
+		}
+	}
+}
+
+// groupLabel résume un groupe: "Loup ×2, Rat" (noms non numérotés).
+func groupLabel(foes []combat.Foe) string {
+	var order []string
+	count := map[string]int{}
+	for _, f := range foes {
+		name := strings.TrimRight(f.Name, " 0123456789")
+		if count[name] == 0 {
+			order = append(order, name)
+		}
+		count[name]++
+	}
+	for i, n := range order {
+		if count[n] > 1 {
+			order[i] = fmt.Sprintf("%s ×%d", n, count[n])
+		}
+	}
+	return strings.Join(order, ", ")
+}
+
+// act résout un tour de combat, récompense chaque monstre abattu et libère les combattants si c'est fini.
+func (g *Game) act(p *player, a combat.Action, target int) {
+	f := p.fight
+	if f == nil {
+		return
+	}
+	f.lastAct = g.tick
+	log := f.b.Act(a, target)
+	p.hp, p.mana = f.b.Player.HP, f.b.Player.Mana
+	p.stats.Potions = f.b.Potions
+
+	leveled := false
+	for i, foe := range f.b.Foes {
+		if !foe.Alive() && !f.slain[i] {
+			var l []string
+			l, lv := g.monsterSlain(f, i)
+			log = append(log, l...)
+			leveled = leveled || lv
+		}
+	}
+	if f.b.Result != combat.Ongoing {
+		log = append(log, g.endFight(f)...)
+	} else if leveled { // un niveau gagné en plein combat: PV max, PM et fiche à jour
+		f.b.Player = p.fighter()
+	}
+	g.sendFight(f, log)
+}
+
+// monsterSlain récompense la mort du monstre i et le retire du monde. Renvoie les lignes de journal et si le
+// joueur a gagné un niveau.
+func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
+	p, m := f.p, f.ms[i]
+	f.slain[i] = true
+	m.fight = nil
+	if m.slot != nil { // l'emplacement ne repousse qu'après un délai
+		g.slotDefeated[*m.slot] = g.tick
+	}
+	g.removeMonster(m)
+	p.stats.Kills++
+	if m.sp.Boss {
+		p.stats.BossKills++
+	}
+	log := g.questKill(p, m.sp)
+	log = append(log, i18n.T(p.lang, "fight.xp", m.sp.XP))
+	if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
+		log = append(log, i18n.T(p.lang, "fight.gold", gold))
+	}
+	leveled := false
+	if p.stats.AddXP(m.sp.XP, g.rng) > 0 {
+		leveled = true
+		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
+		log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
+	}
+	if m.sp.Boss {
+		// Le seigneur d'une forteresse laisse un trésor garanti.
+		gold, potions := p.stats.AddGold(bossGold), p.stats.AddPotions(bossPotions)
+		log = append(log, i18n.T(p.lang, "fight.treasure", m.sp.name(p.lang), gold, potions))
+	} else if g.rng.Float64() < lootPotionChance && p.stats.AddPotions(1) > 0 {
+		log = append(log, i18n.T(p.lang, "fight.loot_potion"))
+	}
+	return log, leveled
+}
+
+// endFight libère les combattants, applique les conséquences de l'issue et renvoie les lignes de journal
+// correspondantes. Les récompenses des monstres abattus ont déjà été données (monsterSlain).
 func (g *Game) endFight(f *fight) []string {
-	p, m := f.p, f.m
-	p.fight, m.fight = nil, nil
+	p := f.p
+	p.fight = nil
 
 	var log []string
 	switch f.b.Result {
-	case combat.Won:
-		if m.slot != nil { // l'emplacement ne repousse qu'après un délai
-			g.slotDefeated[*m.slot] = g.tick
-		}
-		g.removeMonster(m)
-		p.stats.Kills++
-		if m.sp.Boss {
-			p.stats.BossKills++
-		}
-		log = append(log, g.questKill(p, m.sp)...)
-		log = append(log, i18n.T(p.lang, "fight.xp", m.sp.XP))
-		if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
-			log = append(log, i18n.T(p.lang, "fight.gold", gold))
-		}
-		if p.stats.AddXP(m.sp.XP, g.rng) > 0 {
-			p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
-			log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
-		}
-		if m.sp.Boss {
-			// Le seigneur d'une forteresse laisse un trésor garanti.
-			gold, potions := p.stats.AddGold(bossGold), p.stats.AddPotions(bossPotions)
-			log = append(log, i18n.T(p.lang, "fight.treasure", m.sp.name(p.lang), gold, potions))
-		} else if g.rng.Float64() < lootPotionChance && p.stats.AddPotions(1) > 0 {
-			log = append(log, i18n.T(p.lang, "fight.loot_potion"))
-		}
 	case combat.Lost:
 		p.stats.Deaths++
 		p.stats.Penalize()
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 		g.setPos(p, g.freeSpawn())
-		m.cooldown = disengageCooldown
 		log = append(log, i18n.T(p.lang, "fight.respawn"))
-	case combat.Fled:
-		m.cooldown = disengageCooldown
+	}
+	if f.b.Result != combat.Won {
+		for i, m := range f.ms {
+			if !f.slain[i] {
+				m.cooldown = disengageCooldown
+			}
+		}
+	}
+	for i, m := range f.ms {
+		if !f.slain[i] {
+			m.fight = nil
+		}
 	}
 	g.sendBag(p) // la fiche de personnage affiche le palmarès
 	g.save(p)    // un combat change la progression: on n'attend pas la sauvegarde périodique
@@ -127,8 +212,12 @@ func (g *Game) endFight(f *fight) []string {
 // abortFight interrompt le combat d'un joueur qui part, sans issue.
 func (g *Game) abortFight(p *player) {
 	if f := p.fight; f != nil {
-		f.m.fight = nil
-		f.m.cooldown = disengageCooldown
+		for i, m := range f.ms {
+			if !f.slain[i] {
+				m.fight = nil
+				m.cooldown = disengageCooldown
+			}
+		}
 		p.fight = nil
 	}
 }
@@ -188,25 +277,27 @@ func (g *Game) sendFight(f *fight, log []string) {
 		return
 	}
 	b := f.b
+	enemies := make([]protocol.Enemy, len(b.Foes))
+	for i, foe := range b.Foes {
+		enemies[i] = protocol.Enemy{
+			Kind: foe.Kind, Name: foe.Name, HP: foe.HP, MaxHP: foe.MaxHP, Def: foe.Def, Hit: foe.Hit,
+			Dmg: foe.Dmg.String(), Red: foe.Reduction.String(),
+		}
+	}
 	f.p.sendCombat(protocol.Combat{
-		Round:        b.Round,
-		Monster:      f.m.sp.Kind,
-		MonsterHP:    b.Monster.HP,
-		MonsterMaxHP: b.Monster.MaxHP,
-		PlayerHP:     b.Player.HP,
-		PlayerMaxHP:  b.Player.MaxHP,
-		PlayerDef:    b.Player.Def,
-		MonsterDef:   b.Monster.Def,
-		MonsterHit:   b.Monster.Hit,
-		MonsterDmg:   b.Monster.Dmg.String(),
-		MonsterRed:   b.Monster.Reduction.String(),
-		PlayerMana:   b.Player.Mana,
-		PlayerMaxMP:  b.Player.MaxMana,
-		Style:        string(b.Player.Kind.OrMelee()),
-		Potions:      b.Potions,
-		Log:          log,
-		Over:         b.Result != combat.Ongoing,
-		Result:       b.Result.String(),
+		Round:       b.Round,
+		Enemies:     enemies,
+		Boss:        max(0, b.Strongest()),
+		PlayerHP:    b.Player.HP,
+		PlayerMaxHP: b.Player.MaxHP,
+		PlayerDef:   b.Player.Def,
+		PlayerMana:  b.Player.Mana,
+		PlayerMaxMP: b.Player.MaxMana,
+		Style:       string(b.Player.Kind.OrMelee()),
+		Potions:     b.Potions,
+		Log:         log,
+		Over:        b.Result != combat.Ongoing,
+		Result:      b.Result.String(),
 	})
 }
 
@@ -235,5 +326,6 @@ func (p *player) fighter() combat.Fighter {
 	f.MeleeHit = p.stats.Mod(hero.Melee)
 	f.MeleeMod = f.MeleeHit
 	f.Mana, f.MaxMana = p.mana, p.stats.MaxMana
+	f.Init = p.stats.Scores.Mod(hero.AGI)
 	return f
 }

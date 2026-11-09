@@ -21,7 +21,7 @@ const detailMinHeight = 6
 // colonnes (joueur, ennemi), à droite les actions et le détail de l'action choisie, dessous le journal.
 func (m Model) combatView(w, h int) string {
 	c := m.combat
-	name := render.MonsterName(m.lang, c.Monster)
+	name := m.groupTitle()
 
 	actionW := min(34, w/3)
 	leftW := w - actionW
@@ -31,7 +31,7 @@ func (m Model) combatView(w, h int) string {
 	colW := (leftW - 2 - 1) / 2 // deux colonnes et un filet
 	ih := midH - 2
 	left := m.playerColumn(colW, ih)
-	right := m.enemyColumn(name, colW, ih)
+	right := m.enemyColumn(leftW-2-colW-1, ih)
 	sep := dimStyle.Render("│")
 	rows := make([]string, ih)
 	for i := range rows {
@@ -106,31 +106,70 @@ func (m Model) playerColumn(w, h int) []string {
 	return padLines(lines, h)
 }
 
-// enemyColumn: le portrait de l'ennemi (la moitié de la place disponible), puis ses informations.
-func (m Model) enemyColumn(name string, w, h int) []string {
-	c := m.combat
-	barW := max(4, min(30, w-12))
-	info := []string{
-		" " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr)).Render(name) + " " + dimStyle.Render(m.t("fight.def", c.MonsterDef)),
-		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP),
-	}
-	if c.MonsterDmg != "" {
-		stat := m.t("fight.hit", c.MonsterHit) + " · " + m.t("fight.dmg", c.MonsterDmg)
-		if c.MonsterRed != "" && c.MonsterRed != "0" {
-			stat += " · " + m.t("bag.item.red", c.MonsterRed)
+// groupTitle résume les ennemis pour le titre de l'encart: "Loup ×2, Rat".
+func (m Model) groupTitle() string {
+	var order []string
+	count := map[string]int{}
+	for _, e := range m.combat.Enemies {
+		if count[e.Kind] == 0 {
+			order = append(order, e.Kind)
 		}
-		info = append(info, " "+dimStyle.Render(stat))
+		count[e.Kind]++
+	}
+	for i, k := range order {
+		order[i] = render.MonsterName(m.lang, k)
+		if count[k] > 1 {
+			order[i] += fmt.Sprintf(" ×%d", count[k])
+		}
+	}
+	return strings.Join(order, ", ")
+}
+
+// enemyColumn: le portrait du monstre le plus fort (la moitié de la place disponible), puis la liste des ennemis.
+func (m Model) enemyColumn(w, h int) []string {
+	c := m.combat
+	if len(c.Enemies) == 0 {
+		return padLines(nil, h)
+	}
+	barW := max(4, min(30, w-12))
+	redStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr))
+
+	// Une ligne de nom et une de PV par ennemi; la cible ajoute sa fiche si la place le permet.
+	statsRoom := h-2*len(c.Enemies)-6 >= 1
+	var info []string
+	for i, e := range c.Enemies {
+		dead := e.HP <= 0
+		mark, nameStyle := "  ", redStyle
+		if dead {
+			nameStyle = dimStyle
+		}
+		if i == m.combatTarget && !dead && !c.Over {
+			mark = ui.Select.Render("› ")
+		}
+		head := " " + mark + nameStyle.Render(e.Name) + " " + dimStyle.Render(m.t("fight.def", e.Def))
+		if dead {
+			head = " " + mark + dimStyle.Render(e.Name+" ✝")
+		}
+		info = append(info, head, fmt.Sprintf("   %s %3d/%d", ui.Bar(e.HP, e.MaxHP, barW), e.HP, e.MaxHP))
+		if statsRoom && i == m.combatTarget && !dead && e.Dmg != "" {
+			stat := m.t("fight.hit", e.Hit) + " · " + m.t("fight.dmg", e.Dmg)
+			if e.Red != "" && e.Red != "0" {
+				stat += " · " + m.t("bag.item.red", e.Red)
+			}
+			info = append(info, "   "+dimStyle.Render(stat))
+		}
 	}
 
 	var lines []string
+	boss := c.Enemies[min(max(0, c.Boss), len(c.Enemies)-1)].Kind
 	room := h - len(info) - 1
-	if img := render.MonsterImage(c.Monster, (w-2)/2, room/2); img != nil {
+	if img := render.MonsterImage(boss, (w-2)/2, room/2); img != nil {
 		for _, l := range img {
 			lines = append(lines, ui.Center(l, w))
 		}
 		lines = append(lines, "")
-	} else if art := render.MonsterArt(c.Monster); room >= len(art)+1 {
-		style := render.ArtStyle(c.Monster)
+	} else if art := render.MonsterArt(boss); room >= len(art)+1 {
+		style := render.ArtStyle(boss)
 		for _, l := range art {
 			lines = append(lines, ui.Center(style.Render(l), w))
 		}
@@ -164,6 +203,9 @@ func (m Model) actionDetail(action string, w int) []string {
 			}
 		}
 		out = append(out, "", " "+m.t("fight.detail.stats", st.Hit, st.Dmg))
+		if t := m.combatTarget; t >= 0 && t < len(c.Enemies) && len(c.Enemies) > 1 {
+			out = append(out, " "+m.t("fight.detail.target", c.Enemies[t].Name))
+		}
 		if style == hero.Magic {
 			out = append(out, " "+m.t("fight.detail.spell", hero.SpellCost, c.PlayerMana, c.PlayerMaxMP), " "+dimStyle.Render(m.t("fight.detail.club")))
 		}

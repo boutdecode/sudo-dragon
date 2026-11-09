@@ -54,16 +54,41 @@ func playerWith(class hero.Class, level int, scores hero.Scores, items []gear.It
 	return p
 }
 
+// winRateGroup comme winRate, contre un groupe d'espèces (le joueur frappe toujours le premier vivant).
+func winRateGroup(p *player, sps []species, trials int) float64 {
+	wins := 0
+	for i := 0; i < trials; i++ {
+		foes := make([]combat.Foe, len(sps))
+		for j, sp := range sps {
+			foes[j] = combat.Foe{Fighter: sp.fighter(), Name: sp.Kind, Kind: sp.Kind, XP: sp.XP}
+		}
+		b := combat.NewGroup(p.fighter(), p.stats.Potions, foes, rand.New(rand.NewPCG(uint64(i), 11)))
+		b.Start()
+		for turn := 0; b.Result == combat.Ongoing && turn < 500; turn++ {
+			if b.Player.HP <= p.stats.MaxHP/3 && b.Potions > 0 {
+				b.Act(combat.Item, 0)
+			} else {
+				b.Act(combat.Attack, -1)
+			}
+		}
+		if b.Result == combat.Won {
+			wins++
+		}
+	}
+	return float64(wins) / float64(trials)
+}
+
 // winRate simule des combats complets (potion sous le tiers des PV) et renvoie la fréquence de victoire.
 func winRate(p *player, sp species, trials int) float64 {
 	wins := 0
 	for i := 0; i < trials; i++ {
 		b := combat.New(p.fighter(), p.stats.Potions, sp.fighter(), sp.name(i18n.FR), rand.New(rand.NewPCG(uint64(i), 11)))
+		b.Start()
 		for turn := 0; b.Result == combat.Ongoing && turn < 500; turn++ {
 			if b.Player.HP <= p.stats.MaxHP/3 && b.Potions > 0 {
-				b.Act(combat.Item)
+				b.Act(combat.Item, 0)
 			} else {
-				b.Act(combat.Attack)
+				b.Act(combat.Attack, 0)
 			}
 		}
 		if b.Result == combat.Won {
@@ -128,6 +153,34 @@ func TestBalance(t *testing.T) {
 		if got < c.min || got > c.max {
 			t.Errorf("%s niveau %d (%v) contre %s : %.0f %% de victoires, attendu [%.0f %%, %.0f %%] (%s)",
 				c.class, c.level, c.kit, c.kind, got*100, c.min*100, c.max*100, c.why)
+		}
+	}
+}
+
+// Les groupes sont l'exception qui exige de l'équipement : un débutant n'en croise pas à l'apparition (voir packLevels),
+// et le niveau d'équipement détermine s'il en vient à bout.
+func TestGroupBalance(t *testing.T) {
+	cases := []struct {
+		level    int
+		kinds    []string
+		min, max float64
+		why      string
+	}{
+		{3, []string{"wolf", "wolf"}, 0.85, 1, "deux loups sont faisables au niveau 3, équipé"},
+		{3, []string{"yeti", "wolf"}, 0.20, 0.80, "un yéti et son loup restent un défi au niveau 3"},
+		{5, []string{"wolf", "wolf", "wolf"}, 0.90, 1, "une meute de trois loups tombe au niveau 5"},
+		{5, []string{"skeleton", "knight"}, 0.15, 0.70, "squelette et chevalier : un défi au niveau 5"},
+		{10, []string{"skeleton", "knight"}, 0.90, 1, "…qui tombe au niveau 10"},
+		{10, []string{"warlord", "knight"}, 0, 0.10, "le seigneur de guerre accompagné reste hors de portée au niveau 10"},
+	}
+	for _, c := range cases {
+		sps := make([]species, len(c.kinds))
+		for i, k := range c.kinds {
+			sps[i] = speciesNamed(t, k)
+		}
+		p := playerWith(hero.Warrior, c.level, warriorScores, bestKit(rankAt(c.level), "longsword"))
+		if got := winRateGroup(p, sps, 300); got < c.min || got > c.max {
+			t.Errorf("niveau %d contre %v : %.0f %% de victoires, attendu [%.0f %%, %.0f %%] (%s)", c.level, c.kinds, got*100, c.min*100, c.max*100, c.why)
 		}
 	}
 }

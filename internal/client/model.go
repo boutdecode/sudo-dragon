@@ -132,9 +132,10 @@ type Model struct {
 
 	// Combat en cours (nil hors combat). Un combat terminé reste affiché
 	// jusqu'à ce que le joueur le ferme.
-	combat    *protocol.Combat
-	combatLog []string
-	combatSel int // entrée choisie dans le menu d'actions
+	combat       *protocol.Combat
+	combatLog    []string
+	combatSel    int // entrée choisie dans le menu d'actions
+	combatTarget int // monstre visé (indice dans Combat.Enemies)
 
 	inventory bool // écran d'inventaire ouvert (touche i)
 	sheet     bool // fiche de personnage ouverte (touche c)
@@ -668,7 +669,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 func (m *Model) applyCombat(c protocol.Combat) {
 	if m.combat == nil || m.combat.Over { // nouveau combat
 		m.combatLog = nil
-		m.combatSel = 0
+		m.combatSel, m.combatTarget = 0, -1 // -1: le plus fort, choisi plus bas
 	}
 	m.chatting, m.inventory, m.questBook, m.sheet = false, false, false, false
 	m.worldMap = false
@@ -683,6 +684,9 @@ func (m *Model) applyCombat(c protocol.Combat) {
 	}
 	m.combatLog = log
 	m.combat = &c
+	if t := m.combatTarget; t < 0 || t >= len(c.Enemies) || c.Enemies[t].HP <= 0 { // cible abattue: le monstre le plus fort
+		m.combatTarget = max(0, c.Boss)
+	}
 }
 
 // applyNPC enregistre l'état d'un dialogue; un dialogue terminé se ferme aussitôt.
@@ -827,16 +831,34 @@ func (m Model) updateCombatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "down":
 		m.combatSel = (m.combatSel + 1) % len(combatMenu)
 		return m, nil
+	case "left", "right":
+		m.combatTarget = m.nextTarget(key == "right")
+		return m, nil
 	case "enter":
 		if m.conn != nil {
-			m.conn.Send(protocol.TCombatAction, protocol.CombatAction{Action: combatMenu[m.combatSel].action})
+			m.conn.Send(protocol.TCombatAction, protocol.CombatAction{Action: combatMenu[m.combatSel].action, Target: m.combatTarget})
 		}
 		return m, nil
 	}
 	if action, ok := combatKeys[key]; ok && m.conn != nil {
-		m.conn.Send(protocol.TCombatAction, protocol.CombatAction{Action: action})
+		m.conn.Send(protocol.TCombatAction, protocol.CombatAction{Action: action, Target: m.combatTarget})
 	}
 	return m, nil
+}
+
+// nextTarget renvoie le monstre vivant suivant (ou précédent) la cible actuelle.
+func (m Model) nextTarget(forward bool) int {
+	n, step := len(m.combat.Enemies), 1
+	if !forward {
+		step = -1
+	}
+	for i := 1; i <= n; i++ {
+		t := ((m.combatTarget+i*step)%n + n) % n
+		if m.combat.Enemies[t].HP > 0 {
+			return t
+		}
+	}
+	return m.combatTarget
 }
 
 // combatMenu est le menu d'actions, dans l'ordre d'affichage.
@@ -1147,7 +1169,7 @@ func (m Model) helpLine() string {
 	case m.npc != nil:
 		return m.npcHelp()
 	case m.combat != nil && !m.combat.Over:
-		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"↵", m.t("key.confirm")}, [2]string{"a i f", m.t("key.shortcuts")})
+		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"↵", m.t("key.confirm")}, [2]string{"←→", m.t("key.target")}, [2]string{"a i f", m.t("key.shortcuts")})
 	case m.combat != nil:
 		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}

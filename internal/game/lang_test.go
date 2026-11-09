@@ -20,7 +20,7 @@ func TestEnglishPlayerGetsEnglishFightLog(t *testing.T) {
 	if got := r.last().Log[0]; got != "You attack the Rat!" {
 		t.Fatalf("intro: %q", got)
 	}
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	log := strings.Join(r.last().Log, " | ")
 	for _, want := range []string{"defeated", "XP"} {
 		if !strings.Contains(log, want) {

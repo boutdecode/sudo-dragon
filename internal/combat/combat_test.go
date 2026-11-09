@@ -28,7 +28,7 @@ func finish(t *testing.T, b *Battle) {
 		if i > 500 {
 			t.Fatal("combat sans fin")
 		}
-		b.Act(Attack)
+		b.Act(Attack, 0)
 	}
 }
 
@@ -57,8 +57,8 @@ func hitRate(att Fighter, def int) float64 {
 	const n = 6000
 	for seed := uint64(0); seed < n; seed++ {
 		b := newBattle(att, Fighter{HP: 1000, MaxHP: 1000, Def: def}, 0, seed)
-		b.Act(Attack)
-		if b.Monster.HP < 1000 {
+		b.Act(Attack, 0)
+		if b.Foes[0].HP < 1000 {
 			hits++
 		}
 	}
@@ -90,8 +90,8 @@ func TestCriticalDoublesDiceButNotTheBonus(t *testing.T) {
 	seen := map[int]int{}
 	for seed := uint64(0); seed < 3000; seed++ {
 		b := newBattle(att, Fighter{HP: 1000, MaxHP: 1000, Def: 10}, 0, seed)
-		b.Act(Attack)
-		if d := 1000 - b.Monster.HP; d != 0 {
+		b.Act(Attack, 0)
+		if d := 1000 - b.Foes[0].HP; d != 0 {
 			seen[d]++
 		}
 	}
@@ -113,8 +113,8 @@ func TestArmourDiceReduceDamageButNeverBelowOne(t *testing.T) {
 		seen := map[int]bool{}
 		for seed := uint64(0); seed < 400; seed++ {
 			b := newBattle(att, Fighter{HP: 1000, MaxHP: 1000, Def: 10, Reduction: c.red}, 0, seed)
-			b.Act(Attack)
-			if d := 1000 - b.Monster.HP; d != 0 {
+			b.Act(Attack, 0)
+			if d := 1000 - b.Foes[0].HP; d != 0 {
 				seen[d] = true
 			}
 		}
@@ -140,8 +140,8 @@ func TestReductionIsReportedInTheLog(t *testing.T) {
 	att := Fighter{HP: 100, MaxHP: 100, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 9)}
 	for seed := uint64(0); seed < 50; seed++ {
 		b := newBattle(att, Fighter{HP: 1000, MaxHP: 1000, Def: 10, Reduction: dice.D(1, 1, 2)}, 0, seed)
-		log := b.Act(Attack)
-		if b.Monster.HP < 1000 && !strings.Contains(log[0], "armure") {
+		log := b.Act(Attack, 0)
+		if b.Foes[0].HP < 1000 && !strings.Contains(log[0], "armure") {
 			t.Fatalf("la réduction n'apparaît pas dans le journal: %v", log)
 		}
 	}
@@ -150,11 +150,11 @@ func TestReductionIsReportedInTheLog(t *testing.T) {
 func TestPlayerWinsAgainstWeakMonster(t *testing.T) {
 	b := newBattle(Fighter{HP: 100, MaxHP: 100, Def: 30, Hit: 10, Dmg: dice.D(1, 1, 50)}, rat, 0, 1)
 	finish(t, b)
-	if b.Result != Won || b.Monster.HP != 0 {
-		t.Fatalf("victoire attendue: %v, PV monstre %d", b.Result, b.Monster.HP)
+	if b.Result != Won || b.Foes[0].HP != 0 {
+		t.Fatalf("victoire attendue: %v, PV monstre %d", b.Result, b.Foes[0].HP)
 	}
 	hp := b.Player.HP
-	if log := b.Act(Attack); log != nil || b.Player.HP != hp {
+	if log := b.Act(Attack, 0); log != nil || b.Player.HP != hp {
 		t.Fatalf("action acceptée après la fin: %v", log)
 	}
 }
@@ -171,7 +171,7 @@ func TestDeadMonsterDoesNotStrikeBack(t *testing.T) {
 	for seed := uint64(0); seed < 50; seed++ {
 		b := newBattle(Fighter{HP: 100, MaxHP: 100, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 50)}, Fighter{HP: 5, MaxHP: 5, Def: 0, Hit: 50, Dmg: dice.D(1, 1, 9)}, 0, seed)
 		before := b.Player.HP
-		b.Act(Attack)
+		b.Act(Attack, 0)
 		if b.Result == Won && b.Player.HP != before {
 			t.Fatalf("seed %d: un monstre mort a riposté", seed)
 		}
@@ -180,8 +180,8 @@ func TestDeadMonsterDoesNotStrikeBack(t *testing.T) {
 
 func TestRoundCountsOnlyCompletedRounds(t *testing.T) {
 	b := newBattle(player, Fighter{HP: 1000, MaxHP: 1000, Def: 10, Dmg: dice.D(1, 1, 0)}, 0, 3)
-	b.Act(Attack)
-	b.Act(Attack)
+	b.Act(Attack, 0)
+	b.Act(Attack, 0)
 	if b.Round != 2 {
 		t.Fatalf("Round=%d, attendu 2", b.Round)
 	}
@@ -192,7 +192,7 @@ func TestItemHealsAndIsCapped(t *testing.T) {
 
 	// Soin plafonné aux PV max.
 	b := newBattle(Fighter{HP: 25, MaxHP: 30, Def: 100}, weak, 2, 1)
-	log := b.Act(Item)
+	log := b.Act(Item, 0)
 	if b.Potions != 1 {
 		t.Fatalf("potions=%d, attendu 1", b.Potions)
 	}
@@ -202,7 +202,7 @@ func TestItemHealsAndIsCapped(t *testing.T) {
 
 	// Soin complet quand il y a de la marge.
 	b = newBattle(Fighter{HP: 5, MaxHP: 100, Def: 100}, weak, 1, 1)
-	log = b.Act(Item)
+	log = b.Act(Item, 0)
 	if want := "+15 PV"; !strings.Contains(log[0], want) {
 		t.Fatalf("soin de %d attendu, journal: %v", HealAmount, log)
 	}
@@ -210,11 +210,11 @@ func TestItemHealsAndIsCapped(t *testing.T) {
 
 func TestItemWithoutPotionDoesNotConsumeTurn(t *testing.T) {
 	b := newBattle(player, rat, 0, 1)
-	log := b.Act(Item)
+	log := b.Act(Item, 0)
 	if len(log) != 1 || !strings.Contains(log[0], "plus de potion") {
 		t.Fatalf("journal: %v", log)
 	}
-	if b.Round != 0 || b.Player.HP != player.HP || b.Monster.HP != rat.HP {
+	if b.Round != 0 || b.Player.HP != player.HP || b.Foes[0].HP != rat.HP {
 		t.Fatalf("le tour a été consommé: round=%d, PV joueur=%d", b.Round, b.Player.HP)
 	}
 }
@@ -224,7 +224,7 @@ func TestFleeRateAndEffects(t *testing.T) {
 	const n = 2000
 	for seed := uint64(0); seed < n; seed++ {
 		b := newBattle(Fighter{HP: 1000, MaxHP: 1000, Def: 0}, Fighter{HP: 1000, MaxHP: 1000, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 9)}, 0, seed)
-		b.Act(Flee)
+		b.Act(Flee, 0)
 		switch b.Result {
 		case Fled:
 			fled++
@@ -259,7 +259,7 @@ func TestAbandon(t *testing.T) {
 
 func TestUnknownAction(t *testing.T) {
 	b := newBattle(player, rat, 0, 1)
-	log := b.Act(Action(99))
+	log := b.Act(Action(99), 0)
 	if len(log) != 1 || b.Round != 0 || b.Player.HP != player.HP {
 		t.Fatalf("action inconnue mal gérée: %v", log)
 	}
@@ -276,9 +276,9 @@ func TestModifierAddsToDamage(t *testing.T) {
 	// 1d1 + 5 de mod : au moins 6 à chaque coup (12 en critique), jamais moins.
 	b := newBattle(Fighter{HP: 100, MaxHP: 100, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 0), DmgMod: 5}, Fighter{HP: 100000, MaxHP: 100000, Def: 10}, 0, 3)
 	for range 100 {
-		before := b.Monster.HP
-		b.Act(Attack)
-		if d := before - b.Monster.HP; d != 0 && d != 6 && d != 7 {
+		before := b.Foes[0].HP
+		b.Act(Attack, 0)
+		if d := before - b.Foes[0].HP; d != 0 && d != 6 && d != 7 {
 			t.Fatalf("dégâts %d pour 1d1 + 5", d)
 		}
 	}
@@ -288,15 +288,15 @@ func TestWithoutManaAMagicWeaponIsAClub(t *testing.T) {
 	mage := Fighter{HP: 30, MaxHP: 30, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 40), Kind: hero.Magic, Mana: 1, MaxMana: 10, MeleeHit: 50, MeleeMod: 1}
 	for seed := uint64(0); seed < 40; seed++ {
 		b := newBattle(mage, Fighter{HP: 1000, MaxHP: 1000, Def: 10}, 0, seed)
-		b.Act(Attack)
+		b.Act(Attack, 0)
 		// Mana intacte, tour joué, dégâts de gourdin (1d4 + FOR) et non du sort (1d1+40).
-		if d := 1000 - b.Monster.HP; b.Player.Mana != 1 || b.Round != 1 || d > 2*4+1 {
+		if d := 1000 - b.Foes[0].HP; b.Player.Mana != 1 || b.Round != 1 || d > 2*4+1 {
 			t.Fatalf("seed %d: mana %d, round %d, dégâts %d", seed, b.Player.Mana, b.Round, d)
 		}
 	}
 	b := newBattle(mage, rat, 0, 1)
 	b.Player.Mana = 5
-	b.Act(Attack)
+	b.Act(Attack, 0)
 	if b.Player.Mana != 5-hero.SpellCost {
 		t.Fatalf("mana après un sort: %d", b.Player.Mana)
 	}
@@ -305,7 +305,7 @@ func TestWithoutManaAMagicWeaponIsAClub(t *testing.T) {
 func TestOtherStylesCostNoMana(t *testing.T) {
 	for _, k := range []hero.Kind{hero.Melee, hero.Ranged, "", "inconnu"} {
 		b := newBattle(Fighter{HP: 30, MaxHP: 30, Def: 10, Dmg: dice.D(1, 6, 0), Kind: k, Mana: 0}, rat, 0, 1)
-		b.Act(Attack)
+		b.Act(Attack, 0)
 		if b.Player.Mana != 0 || b.Round == 0 && b.Result == Ongoing {
 			t.Fatalf("style %q: tour non joué", k)
 		}
@@ -314,8 +314,118 @@ func TestOtherStylesCostNoMana(t *testing.T) {
 
 func TestLogShowsTheRollAgainstTheDefense(t *testing.T) {
 	b := newBattle(player, rat, 0, 1)
-	log := b.Act(Attack)
+	log := b.Act(Attack, 0)
 	if !strings.Contains(log[0], "DEF 8") || !strings.Contains(log[0], "d20") {
 		t.Fatalf("journal sans jet ni DEF: %v", log)
+	}
+}
+
+func group(foes ...Fighter) []Foe {
+	out := make([]Foe, len(foes))
+	for i, f := range foes {
+		out[i] = Foe{Fighter: f, Name: "Rat " + string(rune('1'+i)), Kind: "rat", XP: 4 * (i + 1)}
+	}
+	return out
+}
+
+func TestEveryLivingFoeStrikesBack(t *testing.T) {
+	foe := Fighter{HP: 1000, MaxHP: 1000, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 0)} // touche toujours: 1 PV par coup
+	b := NewGroup(Fighter{HP: 100, MaxHP: 100, Def: 10}, 0, group(foe, foe, foe), rngSeed(1))
+	log := b.Act(Attack, 0)
+	if b.Player.HP > 100-3+1 || b.Player.HP < 100-3 { // 3 ripostes (le 1 naturel peut rater)
+		t.Fatalf("PV du joueur %d, 3 ripostes attendues: %v", b.Player.HP, log)
+	}
+	if b.Round != 1 {
+		t.Fatalf("Round=%d", b.Round)
+	}
+}
+
+func TestAttackHitsTheChosenTargetAndFallsBack(t *testing.T) {
+	weak := Fighter{HP: 1, MaxHP: 1, Def: 0}
+	sturdy := Fighter{HP: 1000, MaxHP: 1000, Def: 0}
+	for seed := uint64(0); seed < 200; seed++ {
+		b := NewGroup(Fighter{HP: 1000, MaxHP: 1000, Def: 100, Hit: 50, Dmg: dice.D(1, 4, 50)}, 0, group(sturdy, weak, sturdy), rngSeed(seed))
+		for i := 0; i < 40 && b.Foes[1].Alive(); i++ {
+			b.Act(Attack, 1)
+		}
+		if b.Foes[1].Alive() || !b.Foes[0].Alive() || !b.Foes[2].Alive() {
+			t.Fatalf("seed %d: seule la cible 1 devait tomber (%v)", seed, b.Foes)
+		}
+		for i := 0; i < 40 && b.Foes[0].HP == 1000; i++ { // cible abattue ou invalide: repli (le 1 naturel rate toujours)
+			b.Act(Attack, 1+98*(i%2))
+		}
+		if b.Foes[0].HP == 1000 {
+			t.Fatalf("seed %d: le repli sur le premier vivant n'a pas frappé", seed)
+		}
+	}
+}
+
+func TestWonOnlyWhenEveryFoeIsDead(t *testing.T) {
+	weak := Fighter{HP: 1, MaxHP: 1, Def: 0}
+	b := NewGroup(Fighter{HP: 1000, MaxHP: 1000, Def: 100, Hit: 50, Dmg: dice.D(1, 4, 50)}, 0, group(weak, weak), rngSeed(3))
+	b.Act(Attack, 0)
+	if b.Result != Ongoing {
+		t.Fatalf("un monstre reste debout, résultat %v", b.Result)
+	}
+	b.Act(Attack, 1)
+	if b.Result != Won {
+		t.Fatalf("victoire attendue, résultat %v", b.Result)
+	}
+}
+
+func TestStrongestIgnoresTheDead(t *testing.T) {
+	f := Fighter{HP: 10, MaxHP: 10}
+	b := NewGroup(player, 0, group(f, f, f), rngSeed(1)) // XP 4, 8, 12
+	if got := b.Strongest(); got != 2 {
+		t.Fatalf("Strongest=%d, attendu 2", got)
+	}
+	b.Foes[2].HP = 0
+	if got := b.Strongest(); got != 1 {
+		t.Fatalf("Strongest=%d après la mort du plus fort, attendu 1", got)
+	}
+	b.Foes[1].HP, b.Foes[0].HP = 0, 0
+	if got := b.Strongest(); got != -1 {
+		t.Fatalf("Strongest=%d sans survivant, attendu -1", got)
+	}
+	// Égalité d'XP: le plus de PV max.
+	b = NewGroup(player, 0, []Foe{{Fighter: Fighter{HP: 5, MaxHP: 5}, XP: 3}, {Fighter: Fighter{HP: 9, MaxHP: 9}, XP: 3}}, rngSeed(1))
+	if got := b.Strongest(); got != 1 {
+		t.Fatalf("égalité d'XP: Strongest=%d, attendu 1", got)
+	}
+}
+
+func TestInitiativeDecidesWhoOpens(t *testing.T) {
+	foe := Fighter{HP: 10, MaxHP: 10, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 0)} // touche toujours (sauf 1 naturel)
+	hero := Fighter{HP: 100, MaxHP: 100, Def: 10}
+	for seed := uint64(0); seed < 100; seed++ {
+		// Initiative écrasante du joueur: le monstre ne frappe jamais en premier.
+		h := hero
+		h.Init = 100
+		b := NewGroup(h, 0, group(foe), rngSeed(seed))
+		log := b.Start()
+		if b.Player.HP != 100 || !strings.Contains(log[0], "Initiative") || len(log) != 2 {
+			t.Fatalf("seed %d: le joueur devait commencer: HP=%d %v", seed, b.Player.HP, log)
+		}
+		// Initiative écrasante du monstre: il frappe avant le premier tour.
+		f := foe
+		f.Init = 100
+		b = NewGroup(hero, 0, group(f), rngSeed(seed))
+		log = b.Start()
+		if len(log) != 3 || b.Player.HP > 100 {
+			t.Fatalf("seed %d: le monstre devait ouvrir: %v", seed, log)
+		}
+	}
+}
+
+func TestInitiativeTiesGoToThePlayerAndOpeningCanKill(t *testing.T) {
+	foe := Fighter{HP: 10, MaxHP: 10, Def: 10, Hit: 50, Dmg: dice.D(1, 1, 99), Init: 100}
+	b := NewGroup(Fighter{HP: 5, MaxHP: 5, Def: 10}, 0, group(foe, foe), rngSeed(1))
+	b.Start()
+	if b.Result != Lost && b.Player.HP == 5 { // le 1 naturel peut rater; on réessaie
+		b = NewGroup(Fighter{HP: 5, MaxHP: 5, Def: 10}, 0, group(foe, foe), rngSeed(2))
+		b.Start()
+	}
+	if b.Result != Lost {
+		t.Fatalf("un coup d'ouverture mortel doit perdre le combat: %v", b.Result)
 	}
 }

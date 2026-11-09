@@ -115,6 +115,7 @@ type Snapshot struct {
 // "attack", "item" ou "flee".
 type CombatAction struct {
 	Action string `json:"action"`
+	Target int    `json:"target,omitempty"` // indice du monstre visé dans Combat.Enemies
 }
 
 // Issues d'un combat (Combat.Result).
@@ -124,28 +125,36 @@ const (
 	ResultFled = "fled"
 )
 
+// Enemy est un monstre du combat. Abattu, il reste dans la liste avec HP == 0 (les indices sont stables).
+type Enemy struct {
+	Kind  string `json:"kind"` // espèce
+	Name  string `json:"name"` // nom affiché, numéroté si plusieurs de même espèce
+	HP    int    `json:"hp"`
+	MaxHP int    `json:"mhp"`
+	Def   int    `json:"def"`
+	Hit   int    `json:"hit"`           // bonus de toucher
+	Dmg   string `json:"dmg,omitempty"` // dés de dégâts
+	Red   string `json:"red,omitempty"` // dés de réduction
+}
+
 // Combat est l'état d'un combat, envoyé à son début puis après chaque tour.
 // Log contient les événements du dernier tour. Quand Over est vrai, Result
-// donne l'issue et le joueur est déjà libéré dans le monde.
+// donne l'issue et le joueur est déjà libéré dans le monde. Boss est l'indice
+// du monstre vivant le plus fort (celui dont on affiche le portrait).
 type Combat struct {
-	Round        int      `json:"round"`
-	Monster      string   `json:"monster"` // espèce
-	MonsterHP    int      `json:"mhp"`
-	MonsterMaxHP int      `json:"mmhp"`
-	PlayerHP     int      `json:"php"`
-	PlayerMaxHP  int      `json:"pmhp"`
-	PlayerDef    int      `json:"pdef"`
-	MonsterDef   int      `json:"mdef"`
-	MonsterHit   int      `json:"mhit"`           // bonus de toucher de l'ennemi
-	MonsterDmg   string   `json:"mdmg,omitempty"` // dés de dégâts de l'ennemi
-	MonsterRed   string   `json:"mred,omitempty"` // dés de réduction de l'ennemi
-	PlayerMana   int      `json:"pmp"`
-	PlayerMaxMP  int      `json:"pmmp"`
-	Style        string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic
-	Potions      int      `json:"pot"`
-	Log          []string `json:"log,omitempty"`
-	Over         bool     `json:"over,omitempty"`
-	Result       string   `json:"result,omitempty"`
+	Round       int      `json:"round"`
+	Enemies     []Enemy  `json:"enemies"`
+	Boss        int      `json:"boss"`
+	PlayerHP    int      `json:"php"`
+	PlayerMaxHP int      `json:"pmhp"`
+	PlayerDef   int      `json:"pdef"`
+	PlayerMana  int      `json:"pmp"`
+	PlayerMaxMP int      `json:"pmmp"`
+	Style       string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic
+	Potions     int      `json:"pot"`
+	Log         []string `json:"log,omitempty"`
+	Over        bool     `json:"over,omitempty"`
+	Result      string   `json:"result,omitempty"`
 }
 
 // Actions de dialogue avec un PNJ (NPCAction.Action).

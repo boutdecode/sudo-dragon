@@ -205,7 +205,7 @@ func TestVictoryStartsRespawnDelay(t *testing.T) {
 		t.Skip("case voisine du poste indisponible")
 	}
 	g.startFight(p, m, true)
-	g.act(p, combat.Attack)
+	g.act(p, combat.Attack, 0)
 	if p.fight != nil {
 		t.Fatal("le combat aurait dû être gagné")
 	}
@@ -346,7 +346,7 @@ func TestBossLootIsGuaranteed(t *testing.T) {
 		r.p.stats.MaxHP, r.p.hp = 10_000, 10_000 // le seigneur ne doit pas l'emporter avant le coup fatal
 		r.engage()
 		for r.p.fight != nil { // un coup peut manquer
-			r.g.act(r.p, combat.Attack)
+			r.g.act(r.p, combat.Attack, 0)
 		}
 
 		if r.p.stats.Potions != bossPotions {
@@ -369,7 +369,7 @@ func TestBossLootRespectsCaps(t *testing.T) {
 	r.p.stats.Potions = combat.MaxPotions - 1
 	r.p.stats.Gold = combat.MaxGold - 10
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.stats.Potions != combat.MaxPotions || r.p.stats.Gold != combat.MaxGold {
 		t.Fatalf("plafonds dépassés: %d potions, %d or", r.p.stats.Potions, r.p.stats.Gold)
 	}
@@ -379,7 +379,7 @@ func TestOrdinaryMonsterDoesNotDropBossLoot(t *testing.T) {
 	r := newRig(t, weak(testRat))
 	r.p.stats.Potions = 0
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.stats.Potions > 1 || strings.Contains(strings.Join(r.last().Log, "|"), "trésor") {
 		t.Fatalf("butin de boss pour un rat: %d potions, %v", r.p.stats.Potions, r.last().Log)
 	}

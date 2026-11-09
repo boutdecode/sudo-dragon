@@ -557,7 +557,7 @@ func (sess *session) readLoop(ctx context.Context) {
 				sess.sendErr("srv.err.unknown_combat_action", a.Action)
 				continue
 			}
-			sess.srv.Game.Act(sess.id, a.Action)
+			sess.srv.Game.Act(sess.id, a.Action, a.Target)
 		case protocol.TNPCAction:
 			var a protocol.NPCAction
 			if err := env.Payload(&a); err != nil {

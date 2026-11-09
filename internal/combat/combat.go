@@ -4,7 +4,10 @@
 package combat
 
 import (
+	"fmt"
 	"math/rand/v2"
+	"slices"
+	"strings"
 
 	"github.com/kevin/ascii-adventure/internal/dice"
 	"github.com/kevin/ascii-adventure/internal/hero"
@@ -70,6 +73,7 @@ const (
 // qualité de l'arme) + DmgMod, moins les dés de Reduction de l'adversaire.
 type Fighter struct {
 	HP, MaxHP int
+	Init      int       // modificateur du jet d'initiative (AGI pour un joueur)
 	Def       int       // DEF totale (taille, agilité, équipement)
 	Hit       int       // bonus au jet de toucher
 	Dmg       dice.Dice // dés de dégâts
@@ -84,22 +88,63 @@ type Fighter struct {
 	MeleeHit, MeleeMod int
 }
 
-// Battle est un duel entre un joueur et un monstre.
+// Foe est un monstre engagé dans un combat. Un monstre abattu reste dans la liste avec HP == 0, pour que les
+// indices restent stables.
+type Foe struct {
+	Fighter
+	Name string // pour les messages, ex. "Rat 2" (déjà dans la langue du joueur)
+	Kind string // espèce
+	XP   int    // sert à désigner le plus fort
+}
+
+// Alive dit si le monstre est encore debout.
+func (f Foe) Alive() bool { return f.HP > 0 }
+
+// Battle est un combat entre un joueur et un ou plusieurs monstres.
 type Battle struct {
-	Player      Fighter
-	Monster     Fighter
-	MonsterName string    // pour les messages, ex. "Rat" (déjà dans la langue du joueur)
-	Lang        i18n.Lang // langue du journal; le zéro vaut le français
-	Potions     int
-	Round       int
-	Result      Result
+	Player  Fighter
+	Foes    []Foe
+	Lang    i18n.Lang // langue du journal; le zéro vaut le français
+	Potions int
+	Round   int
+	Result  Result
 
 	rng *rand.Rand
 }
 
-// New prépare un combat. rng ne doit pas être nil.
+// New prépare un duel contre un seul monstre. rng ne doit pas être nil.
 func New(player Fighter, potions int, monster Fighter, monsterName string, rng *rand.Rand) *Battle {
-	return &Battle{Player: player, Monster: monster, MonsterName: monsterName, Potions: potions, rng: rng}
+	return NewGroup(player, potions, []Foe{{Fighter: monster, Name: monsterName}}, rng)
+}
+
+// NewGroup prépare un combat contre plusieurs monstres.
+func NewGroup(player Fighter, potions int, foes []Foe, rng *rand.Rand) *Battle {
+	return &Battle{Player: player, Foes: foes, Potions: potions, rng: rng}
+}
+
+// FirstAlive renvoie l'indice du premier monstre vivant (-1 s'il n'en reste aucun).
+func (b *Battle) FirstAlive() int {
+	for i, f := range b.Foes {
+		if f.Alive() {
+			return i
+		}
+	}
+	return -1
+}
+
+// Strongest renvoie l'indice du monstre vivant le plus fort: le plus d'XP, puis le plus de PV max, puis le premier
+// (-1 s'il n'en reste aucun).
+func (b *Battle) Strongest() int {
+	best := -1
+	for i, f := range b.Foes {
+		if !f.Alive() {
+			continue
+		}
+		if best < 0 || f.XP > b.Foes[best].XP || (f.XP == b.Foes[best].XP && f.MaxHP > b.Foes[best].MaxHP) {
+			best = i
+		}
+	}
+	return best
 }
 
 func (b *Battle) t(key string, args ...any) string { return i18n.T(b.Lang, key, args...) }
@@ -145,17 +190,21 @@ func (b *Battle) reducedNote(bl blow) string {
 	return " " + b.t("combat.reduced", bl.reduced)
 }
 
-// Act résout un tour complet: l'action du joueur puis la riposte du monstre.
-// Renvoie les lignes de journal du tour. Utiliser une potion sans en avoir ne
-// consomme pas le tour. Sans effet si le combat est terminé.
-func (b *Battle) Act(a Action) []string {
+// Act résout un tour complet: l'action du joueur (target désigne le monstre visé; s'il est invalide ou abattu, le
+// premier vivant) puis la riposte de chaque monstre vivant. Renvoie les lignes de journal du tour. Utiliser une potion
+// sans en avoir ne consomme pas le tour. Sans effet si le combat est terminé.
+func (b *Battle) Act(a Action, target int) []string {
 	if b.Result != Ongoing {
 		return nil
 	}
 	var log []string
+	if target < 0 || target >= len(b.Foes) || !b.Foes[target].Alive() {
+		target = b.FirstAlive()
+	}
 
 	switch a {
 	case Attack:
+		foe := &b.Foes[target]
 		kind := b.Player.Kind.OrMelee()
 		att, clubbed := b.Player, false
 		if kind == hero.Magic {
@@ -165,26 +214,29 @@ func (b *Battle) Act(a Action) []string {
 				b.Player.Mana -= hero.SpellCost
 			}
 		}
-		bl := b.strike(att, b.Monster.Def, b.Monster.Reduction)
+		bl := b.strike(att, foe.Def, foe.Reduction)
 		switch {
 		case !bl.hit:
-			log = append(log, bl.rollText+" "+b.t("combat.player_miss", b.MonsterName))
+			log = append(log, bl.rollText+" "+b.t("combat.player_miss", foe.Name))
 		default:
-			b.Monster.HP = max(0, b.Monster.HP-bl.damage)
+			foe.HP = max(0, foe.HP-bl.damage)
 			var msg string
 			switch {
 			case bl.crit:
-				msg = b.t("combat.player_crit", bl.damage, b.MonsterName)
+				msg = b.t("combat.player_crit", bl.damage, foe.Name)
 			case clubbed:
-				msg = b.t("combat.player_club", b.MonsterName, bl.damage)
+				msg = b.t("combat.player_club", foe.Name, bl.damage)
 			case kind == hero.Ranged:
-				msg = b.t("combat.player_shot", b.MonsterName, bl.damage)
+				msg = b.t("combat.player_shot", foe.Name, bl.damage)
 			case kind == hero.Magic:
-				msg = b.t("combat.player_spell", b.MonsterName, bl.damage)
+				msg = b.t("combat.player_spell", foe.Name, bl.damage)
 			default:
-				msg = b.t("combat.player_hit", b.MonsterName, bl.damage)
+				msg = b.t("combat.player_hit", foe.Name, bl.damage)
 			}
 			log = append(log, bl.rollText+" "+msg+b.reducedNote(bl))
+			if !foe.Alive() {
+				log = append(log, b.t("combat.monster_dead", foe.Name))
+			}
 		}
 	case Item:
 		if b.Potions <= 0 {
@@ -204,30 +256,75 @@ func (b *Battle) Act(a Action) []string {
 		return []string{b.t("combat.unknown_action")}
 	}
 
-	if b.Monster.HP <= 0 {
+	if b.FirstAlive() < 0 {
 		b.Result = Won
-		return append(log, b.t("combat.monster_dead", b.MonsterName))
+		return log
 	}
 
-	// Riposte du monstre.
-	bl := b.strike(b.Monster, b.Player.Def, b.Player.Reduction)
+	// Riposte de chaque monstre vivant.
+	for _, foe := range b.Foes {
+		if !foe.Alive() {
+			continue
+		}
+		var died bool
+		if log, died = b.foeStrikes(foe, log); died {
+			return log
+		}
+	}
+	b.Round++
+	return log
+}
+
+// foeStrikes résout l'attaque d'un monstre contre le joueur. Renvoie le journal complété et si le joueur est mort
+// (le combat est alors perdu).
+func (b *Battle) foeStrikes(foe Foe, log []string) ([]string, bool) {
+	bl := b.strike(foe.Fighter, b.Player.Def, b.Player.Reduction)
 	switch {
 	case !bl.hit:
-		log = append(log, bl.rollText+" "+b.t("combat.monster_miss", b.MonsterName))
+		log = append(log, bl.rollText+" "+b.t("combat.monster_miss", foe.Name))
 	default:
 		b.Player.HP = max(0, b.Player.HP-bl.damage)
-		msg := b.t("combat.monster_hit", b.MonsterName, bl.damage)
+		msg := b.t("combat.monster_hit", foe.Name, bl.damage)
 		if bl.crit {
-			msg = b.t("combat.monster_crit", b.MonsterName, bl.damage)
+			msg = b.t("combat.monster_crit", foe.Name, bl.damage)
 		}
 		log = append(log, bl.rollText+" "+msg+b.reducedNote(bl))
 	}
 	if b.Player.HP <= 0 {
 		b.Result = Lost
-		log = append(log, b.t("combat.you_died"))
-		return log
+		return append(log, b.t("combat.you_died")), true
 	}
-	b.Round++
+	return log, false
+}
+
+// Start tire l'initiative (d20 + modificateur) du joueur et de chaque monstre. Les monstres qui devancent le joueur
+// (strictement: à égalité, le joueur commence) frappent avant son premier tour, du plus rapide au plus lent. À
+// appeler une fois, au début du combat. Renvoie les lignes de journal.
+func (b *Battle) Start() []string {
+	type roll struct{ idx, total int }
+	pr := b.rng.IntN(20) + 1
+	playerTotal := pr + b.Player.Init
+	var foes []string
+	var faster []roll
+	for i, f := range b.Foes {
+		r := b.rng.IntN(20) + 1 + f.Init
+		foes = append(foes, fmt.Sprintf("%s %d", f.Name, r))
+		if r > playerTotal {
+			faster = append(faster, roll{i, r})
+		}
+	}
+	log := []string{b.t("combat.init", playerTotal, pr, b.Player.Init, strings.Join(foes, ", "))}
+	if len(faster) == 0 {
+		return append(log, b.t("combat.init_you"))
+	}
+	slices.SortStableFunc(faster, func(x, y roll) int { return y.total - x.total })
+	log = append(log, b.t("combat.init_foes"))
+	for _, f := range faster {
+		var died bool
+		if log, died = b.foeStrikes(b.Foes[f.idx], log); died {
+			break
+		}
+	}
 	return log
 }
 

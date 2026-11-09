@@ -330,7 +330,7 @@ func combatMsg(t *testing.T, c protocol.Combat) eventMsg {
 func startCombat(t *testing.T, m Model, log ...string) Model {
 	t.Helper()
 	tm, _ := m.Update(combatMsg(t, protocol.Combat{
-		Monster: "wolf", MonsterHP: 16, MonsterMaxHP: 16, PlayerHP: 30, PlayerMaxHP: 30, Potions: 2, Log: log,
+		Enemies: []protocol.Enemy{{Kind: "wolf", Name: "Loup", HP: 16, MaxHP: 16, Def: 11, Hit: 3, Dmg: "1d6+1"}}, PlayerHP: 30, PlayerMaxHP: 30, Potions: 2, Log: log,
 	}))
 	return tm.(Model)
 }
@@ -433,7 +433,7 @@ func TestCombatOverNeedsDismissal(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
 	m = startCombat(t, m)
 	tm, _ := m.Update(combatMsg(t, protocol.Combat{
-		Monster: "wolf", Round: 2, MonsterHP: 0, MonsterMaxHP: 16, PlayerHP: 20, PlayerMaxHP: 30,
+		Enemies: []protocol.Enemy{{Kind: "wolf", Name: "Loup", HP: 0, MaxHP: 16}}, Round: 2, PlayerHP: 20, PlayerMaxHP: 30,
 		Over: true, Result: protocol.ResultWon, Log: []string{"Le Loup est vaincu !", "+10 XP."},
 	}))
 	m = tm.(Model)
@@ -468,7 +468,7 @@ func TestCombatOverNeedsDismissal(t *testing.T) {
 func TestCombatLogAccumulatesAndResets(t *testing.T) {
 	m := playingModel(t, 110, 34)
 	m = startCombat(t, m, "Vous attaquez le Loup !")
-	tm, _ := m.Update(combatMsg(t, protocol.Combat{Monster: "wolf", MonsterHP: 11, MonsterMaxHP: 16, PlayerHP: 26, PlayerMaxHP: 30, Round: 1,
+	tm, _ := m.Update(combatMsg(t, protocol.Combat{Enemies: []protocol.Enemy{{Kind: "wolf", Name: "Loup", HP: 11, MaxHP: 16}}, PlayerHP: 26, PlayerMaxHP: 30, Round: 1,
 		Log: []string{"Vous frappez: 5 dégâts.", "Le Loup vous attaque: 4 dégâts."}}))
 	m = tm.(Model)
 	if len(m.combatLog) != 3 {
@@ -476,7 +476,7 @@ func TestCombatLogAccumulatesAndResets(t *testing.T) {
 	}
 
 	// Un nouveau combat (le précédent étant terminé) repart d'un journal vide.
-	tm, _ = m.Update(combatMsg(t, protocol.Combat{Monster: "wolf", Over: true, Result: protocol.ResultFled, Log: []string{"Vous prenez la fuite !"}}))
+	tm, _ = m.Update(combatMsg(t, protocol.Combat{Enemies: []protocol.Enemy{{Kind: "wolf", Name: "Loup", HP: 5, MaxHP: 16}}, Over: true, Result: protocol.ResultFled, Log: []string{"Vous prenez la fuite !"}}))
 	m = tm.(Model)
 	m = startCombat(t, m, "Un Loup vous attaque !")
 	if len(m.combatLog) != 1 || m.combatLog[0] != "Un Loup vous attaque !" {
@@ -488,7 +488,7 @@ func TestCombatLogIsBounded(t *testing.T) {
 	m := playingModel(t, 110, 34)
 	m = startCombat(t, m)
 	for i := 0; i < 100; i++ {
-		tm, _ := m.Update(combatMsg(t, protocol.Combat{Monster: "wolf", Log: []string{"x"}}))
+		tm, _ := m.Update(combatMsg(t, protocol.Combat{Enemies: []protocol.Enemy{{Kind: "wolf", Name: "Loup", HP: 5, MaxHP: 16}}, Log: []string{"x"}}))
 		m = tm.(Model)
 	}
 	if len(m.combatLog) != maxCombatLog {
@@ -1171,6 +1171,89 @@ func TestCtrlArrowsResizeChat(t *testing.T) {
 		}
 		if lines := strings.Split(ansi.Strip(s.View().Content), "\n"); len(lines) > sz[1] {
 			t.Errorf("%v: %d lignes > hauteur", sz, len(lines))
+		}
+	}
+}
+
+// packCombat est un combat contre un rat, un loup et un yéti (le plus fort).
+func packCombat(over bool) protocol.Combat {
+	return protocol.Combat{
+		Enemies: []protocol.Enemy{
+			{Kind: "rat", Name: "Rat", HP: 8, MaxHP: 8, Def: 8, Hit: 1, Dmg: "1d4"},
+			{Kind: "wolf", Name: "Loup", HP: 16, MaxHP: 16, Def: 11, Hit: 3, Dmg: "1d6+1"},
+			{Kind: "yeti", Name: "Yéti", HP: 34, MaxHP: 34, Def: 12, Hit: 5, Dmg: "2d6"},
+		},
+		Boss: 2, PlayerHP: 30, PlayerMaxHP: 30, Potions: 2, Over: over,
+	}
+}
+
+func TestMultiCombatTargetsAndShowsEveryEnemy(t *testing.T) {
+	m, out := withConn(playingModel(t, 120, 40))
+	tm, _ := m.Update(combatMsg(t, packCombat(false)))
+	m = tm.(Model)
+	if m.combatTarget != 2 {
+		t.Fatalf("la cible par défaut est le plus fort: %d", m.combatTarget)
+	}
+	view := plainView(m)
+	for _, want := range []string{"Rat", "Loup", "Yéti", "› Yéti", "34/34"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("%q absent:\n%s", want, view)
+		}
+	}
+	m = press(m, "right") // 2 -> 0 (boucle)
+	if m.combatTarget != 0 {
+		t.Fatalf("combatTarget=%d, attendu 0", m.combatTarget)
+	}
+	m = press(m, "left") // 0 -> 2
+	m = press(m, "left") // 2 -> 1
+	if m.combatTarget != 1 {
+		t.Fatalf("combatTarget=%d, attendu 1", m.combatTarget)
+	}
+	m = press(m, "a")
+	var sent protocol.CombatAction
+	for len(out) > 0 {
+		env, _ := protocol.Decode(<-out)
+		if env.T == protocol.TCombatAction {
+			_ = env.Payload(&sent)
+		}
+	}
+	if sent.Action != "attack" || sent.Target != 1 {
+		t.Fatalf("action envoyée %+v, attendu attaque sur 1", sent)
+	}
+}
+
+func TestMultiCombatSkipsDeadTargets(t *testing.T) {
+	m := playingModel(t, 120, 40)
+	c := packCombat(false)
+	tm, _ := m.Update(combatMsg(t, c))
+	m = tm.(Model) // cible 2 (yéti)
+	c.Enemies[2].HP = 0
+	c.Boss = 1 // le plus fort vivant est maintenant le loup
+	tm, _ = m.Update(combatMsg(t, c))
+	m = tm.(Model)
+	if m.combatTarget != 1 {
+		t.Fatalf("la cible abattue doit passer au plus fort vivant: %d", m.combatTarget)
+	}
+	if m = press(m, "right"); m.combatTarget != 0 {
+		t.Fatalf("les morts sont sautés: %d", m.combatTarget)
+	}
+	if m = press(m, "right"); m.combatTarget != 1 {
+		t.Fatalf("les morts sont sautés: %d", m.combatTarget)
+	}
+}
+
+func TestMultiCombatFitsEverySize(t *testing.T) {
+	for _, sz := range [][2]int{{60, 20}, {80, 24}, {110, 34}, {200, 60}} {
+		m := playingModel(t, sz[0], sz[1])
+		tm, _ := m.Update(combatMsg(t, packCombat(false)))
+		lines := strings.Split(plainView(tm.(Model)), "\n")
+		if len(lines) > sz[1] {
+			t.Errorf("%v: %d lignes > hauteur", sz, len(lines))
+		}
+		for i, l := range lines {
+			if w := ansi.StringWidth(l); w > sz[0] {
+				t.Errorf("%v ligne %d: largeur %d > %d", sz, i, w, sz[0])
+			}
 		}
 	}
 }

@@ -134,7 +134,7 @@ func TestPersistOnFightEnd(t *testing.T) {
 	r.g.Persist = sv.persist
 	r.engage()
 	before := len(sv.calls)
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 
 	if len(sv.calls) != before+1 {
 		t.Fatalf("%d sauvegardes à la fin du combat, attendu 1", len(sv.calls)-before)
@@ -152,7 +152,7 @@ func TestPersistNotCalledDuringFightTurns(t *testing.T) {
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
 	r.engage()
 	for i := 0; i < 3; i++ {
-		r.g.act(r.p, combat.Attack)
+		r.g.act(r.p, combat.Attack, 0)
 	}
 	if len(sv.calls) != 0 {
 		t.Fatalf("%d sauvegardes pendant un combat en cours, attendu 0", len(sv.calls))
@@ -256,7 +256,7 @@ func TestSaveThenRestoreRoundTrip(t *testing.T) {
 func TestWinCountsKillsAndBossKills(t *testing.T) {
 	r := newRig(t, weak(testRat))
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.stats.Kills != 1 || r.p.stats.BossKills != 0 || r.p.stats.Deaths != 0 {
 		t.Fatalf("après une victoire ordinaire: %+v", r.p.stats)
 	}
@@ -265,7 +265,7 @@ func TestWinCountsKillsAndBossKills(t *testing.T) {
 	boss.HP = 1
 	r = newRig(t, boss)
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.stats.Kills != 1 || r.p.stats.BossKills != 1 {
 		t.Fatalf("après la victoire sur le seigneur: %+v", r.p.stats)
 	}
@@ -275,7 +275,7 @@ func TestLossAndFleeRecord(t *testing.T) {
 	r := newRig(t, deadly(testRat))
 	r.p.hp = 1
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.stats.Deaths != 1 || r.p.stats.Kills != 0 {
 		t.Fatalf("après une défaite: %+v", r.p.stats)
 	}
@@ -284,7 +284,7 @@ func TestLossAndFleeRecord(t *testing.T) {
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
 	r.engage()
 	for i := 0; i < 200 && r.p.fight != nil; i++ {
-		r.g.act(r.p, combat.Flee)
+		r.g.act(r.p, combat.Flee, 0)
 	}
 	if r.p.stats.Deaths != 0 || r.p.stats.Kills != 0 {
 		t.Fatalf("une fuite ne doit rien compter: %+v", r.p.stats)

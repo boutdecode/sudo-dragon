@@ -216,7 +216,7 @@ func TestGoldRewardRange(t *testing.T) {
 func TestWinGivesGoldAndSaysSo(t *testing.T) {
 	r := newRig(t, weak(testRat))
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 
 	if r.p.stats.Gold < testRat.XP/2 || r.p.stats.Gold > testRat.XP {
 		t.Fatalf("or = %d, attendu entre %d et %d", r.p.stats.Gold, testRat.XP/2, testRat.XP)
@@ -230,7 +230,7 @@ func TestLosingOrFleeingGivesNoGold(t *testing.T) {
 	r := newRig(t, deadly(testRat))
 	r.p.hp = 1
 	r.engage()
-	r.g.act(r.p, combat.Attack) // perdu
+	r.g.act(r.p, combat.Attack, 0) // perdu
 	if r.p.stats.Gold != 0 {
 		t.Fatalf("or = %d après une défaite", r.p.stats.Gold)
 	}
@@ -240,7 +240,7 @@ func TestGoldIsCappedOnWin(t *testing.T) {
 	r := newRig(t, weak(testRat))
 	r.p.stats.Gold = combat.MaxGold
 	r.engage()
-	r.g.act(r.p, combat.Attack)
+	r.g.act(r.p, combat.Attack, 0)
 	if r.p.stats.Gold != combat.MaxGold {
 		t.Fatalf("or = %d, plafond %d", r.p.stats.Gold, combat.MaxGold)
 	}
