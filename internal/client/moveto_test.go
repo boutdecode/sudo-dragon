@@ -89,3 +89,12 @@ func TestFindPathCostPrefersRoad(t *testing.T) {
 		t.Fatalf("une route trop éloignée ne doit pas causer de détour (len=%d)", len(far))
 	}
 }
+
+// Une longue marche sans aucune route doit quand même aboutir.
+func TestFindWalkPathLongOffRoad(t *testing.T) {
+	m := Model{world: world.New(1)}
+	free := func(p world.Pos) bool { return p.X >= -5 && p.X <= 400 && p.Y >= -5 && p.Y <= 400 }
+	if m.findWalkPath(world.Pos{}, world.Pos{X: 300, Y: 300}, free) == nil {
+		t.Fatal("marche hors route de 300 cases introuvable")
+	}
+}

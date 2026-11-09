@@ -14,7 +14,7 @@ type pathNode struct {
 type pathHeap []pathNode
 
 func (h pathHeap) Len() int           { return len(h) }
-func (h pathHeap) Less(i, j int) bool { return h[i].f < h[j].f }
+func (h pathHeap) Less(i, j int) bool { return h[i].f < h[j].f || (h[i].f == h[j].f && h[i].g > h[j].g) }
 func (h pathHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 func (h *pathHeap) Push(x any)        { *h = append(*h, x.(pathNode)) }
 func (h *pathHeap) Pop() any          { o := *h; n := len(o); x := o[n-1]; *h = o[:n-1]; return x }
@@ -42,6 +42,9 @@ const (
 	roadStepCost = 2
 	offRoadCost  = 3
 	walkMaxNodes = 60000 // la heuristique est moins serrée avec des coûts: on explore plus
+	// fallbackMaxNodes borne la recherche sans préférence de route, utilisée
+	// quand la recherche pondérée échoue (longues marches hors route).
+	fallbackMaxNodes = 250000
 )
 
 // findWalkPath cherche un chemin de /moveto qui préfère les routes.
@@ -52,7 +55,11 @@ func (m Model) findWalkPath(from, to world.Pos, free func(world.Pos) bool) []wor
 		}
 		return offRoadCost
 	}
-	return findPathCost(from, to, free, cost, roadStepCost, walkMaxNodes)
+	if path := findPathCost(from, to, free, cost, roadStepCost, walkMaxNodes); path != nil {
+		return path
+	}
+	// Budget dépassé (longue marche hors route): chemin le plus court, sans route.
+	return findPath(from, to, free, fallbackMaxNodes)
 }
 
 // findPathCost est findPath avec un coût d'entrée par case. minStep est le coût
