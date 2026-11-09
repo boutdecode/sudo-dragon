@@ -10,6 +10,10 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
 - **Contrées** : pays nommés aux frontières irrégulières (Voronoi), noms selon le terrain dominant, en français et en anglais.
+- **Routes entre lieux** (`roads.go`) : deux régions voisines (côte à côte, pas en diagonale) qui ont chacune un lieu sont reliées par une route.
+  - Tracé par A* sur le terrain brut, confiné aux deux régions, donc identique quel que soit l'ordre de génération.
+  - Les routes s'arrêtent au bord d'un lieu et rejoignent son chemin intérieur ; elles ne touchent jamais son emprise.
+  - Pont sur l'eau peu profonde (tuile `Road`) ; jamais d'eau profonde ni de montagne. Coût croissant selon le terrain (plaine < forêt < collines < neige).
 - **Zones sûres** : village ou ville plus 3 cases de marge. Pas de monstres, pas de poursuite, régénération de 1 PV par seconde.
 
 ## Déplacement et exploration
@@ -172,7 +176,6 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 ## En cours et limites
 
-- **Routes entre lieux** (`internal/world/roads.go`) : en cours, non commité (A* entre régions voisines, ponts sur eau peu profonde, jamais sur eau profonde ni montagne).
 - Pas de compétences ni de sorts à apprendre : la magie est un style d'attaque lié à l'arme.
 - Pas de reconnexion automatique après une coupure.
 - Un seul processus serveur, sans montée en charge horizontale.
