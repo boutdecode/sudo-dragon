@@ -127,12 +127,12 @@ func TestWaresListAndReset(t *testing.T) {
 	}
 	key := world.NPCKey{Region: world.RegionPos{X: 2, Y: -1}, Index: 7}
 	if err := st.PutWares(ctx, gear.Wares{NPC: key, Specialty: "haches", Version: 1, CreatedAt: time.Now(),
-		Items: []gear.Item{{ID: 1, Name: "Hache en fer", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 40}}}); err != nil {
+		Items: []gear.Item{{ID: 1, Name: "Hache en fer", Slot: gear.Weapon, Tier: 1, Family: "axe", Quality: 1, Price: 40}}}); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
 	_ = runWaresList(ctx, st, &out)
-	for _, want := range []string{"vendeur 2,-1,7", "haches", "Hache en fer", "ATQ 2"} {
+	for _, want := range []string{"vendeur 2,-1,7", "haches", "Hache en fer", "1d6+1"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("liste sans %q:\n%s", want, out.String())
 		}

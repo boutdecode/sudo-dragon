@@ -9,7 +9,7 @@ import (
 
 func TestNewStats(t *testing.T) {
 	s := NewStats()
-	if s.Level != 1 || s.XP != 0 || s.MaxHP <= 0 || s.Atk <= 0 || s.Potions != startPotions {
+	if s.Level != 1 || s.XP != 0 || s.MaxHP <= 0 || s.Defense() != 10 || s.Potions != startPotions {
 		t.Fatalf("fiche de départ inattendue: %+v", s)
 	}
 	if s.XPToNext() != 10 {
@@ -22,11 +22,11 @@ func TestAddXPLevelsUpAndCarriesOver(t *testing.T) {
 	if n := s.AddXP(4, nil); n != 0 || s.Level != 1 || s.XP != 4 {
 		t.Fatalf("pas de niveau attendu: %+v (niveaux gagnés %d)", s, n)
 	}
-	hp, atk, def := s.MaxHP, s.Atk, s.Def
+	hp := s.MaxHP
 	if n := s.AddXP(8, nil); n != 1 || s.Level != 2 || s.XP != 2 {
 		t.Fatalf("niveau 2 avec reliquat 2 attendu: %+v (niveaux gagnés %d)", s, n)
 	}
-	if s.MaxHP != hp+7 || s.Atk != atk+atkPerLevel || s.Def != def+defPerLevel {
+	if s.MaxHP != hp+7 {
 		t.Fatalf("gains de niveau incorrects: %+v", s)
 	}
 }
@@ -80,7 +80,7 @@ func TestAddPotionsCap(t *testing.T) {
 func TestFighterFromStats(t *testing.T) {
 	s := NewStats()
 	f := s.Fighter(7)
-	if f.HP != 7 || f.MaxHP != s.MaxHP || f.Atk != s.Atk || f.Def != s.Def {
+	if f.HP != 7 || f.MaxHP != s.MaxHP || f.Def != s.Defense() || f.Dmg != BareHands {
 		t.Fatalf("conversion incorrecte: %+v", f)
 	}
 }
@@ -217,5 +217,18 @@ func TestStatsForClampsHitPointsAndMana(t *testing.T) {
 	}
 	if s := StatsFor(3, 0, 0, hero.Mage, hero.Default(), 1); s.MaxHP != 3 {
 		t.Fatalf("PV plancher: %d", s.MaxHP)
+	}
+}
+
+func TestDefenseIsTenPlusAgilityModifier(t *testing.T) {
+	sc := hero.Default()
+	sc[hero.AGI] = 16 // +3
+	if d := NewStatsFor(hero.Rogue, sc).Defense(); d != 13 {
+		t.Fatalf("DEF = %d", d)
+	}
+	sc[hero.AGI] = 6 // −2
+	f := NewStatsFor(hero.Rogue, sc).Fighter(5)
+	if f.Def != 8 || f.Dmg != BareHands {
+		t.Fatalf("combattant: %+v", f)
 	}
 }

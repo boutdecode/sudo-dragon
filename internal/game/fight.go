@@ -2,6 +2,7 @@ package game
 
 import (
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
@@ -45,7 +46,7 @@ func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	f := &fight{p: p, m: m, lastAct: g.tick}
 	f.b = combat.New(
 		p.fighter(), p.stats.Potions,
-		combat.Fighter{HP: m.sp.HP, MaxHP: m.sp.HP, Atk: m.sp.Atk, Def: m.sp.Def},
+		m.sp.fighter(),
 		m.sp.name(p.lang), g.rng,
 	)
 	f.b.Lang = p.lang
@@ -194,6 +195,8 @@ func (g *Game) sendFight(f *fight, log []string) {
 		MonsterMaxHP: b.Monster.MaxHP,
 		PlayerHP:     b.Player.HP,
 		PlayerMaxHP:  b.Player.MaxHP,
+		PlayerDef:    b.Player.Def,
+		MonsterDef:   b.Monster.Def,
 		PlayerMana:   b.Player.Mana,
 		PlayerMaxMP:  b.Player.MaxMana,
 		Style:        string(b.Player.Kind.OrMelee()),
@@ -206,10 +209,10 @@ func (g *Game) sendFight(f *fight, log []string) {
 
 // statsOf construit la fiche réseau d'un joueur.
 func statsOf(p *player) protocol.Stats {
-	atkBonus, defBonus := p.gearBonus()
+	f := p.fighter()
 	return protocol.Stats{
 		Level: p.stats.Level, XP: p.stats.XP, XPNext: p.stats.XPToNext(),
-		HP: p.hp, MaxHP: p.stats.MaxHP, Atk: p.stats.Atk + atkBonus, Def: p.stats.Def + defBonus,
+		HP: p.hp, MaxHP: p.stats.MaxHP, Def: f.Def, Hit: f.Hit, Dmg: f.Dmg.WithBonus(f.DmgMod).String(),
 		Potions: p.stats.Potions, Gold: p.stats.Gold,
 		Mana: p.mana, MaxMana: p.stats.MaxMana,
 	}
@@ -218,11 +221,16 @@ func statsOf(p *player) protocol.Stats {
 // fighter convertit le joueur en combattant, équipement porté compris.
 func (p *player) fighter() combat.Fighter {
 	f := p.stats.Fighter(p.hp)
-	atk, def := p.gearBonus()
-	f.Atk += atk
-	f.Def += def
-	f.Kind = p.weaponKind()
-	f.Mod = p.stats.Mod(f.Kind)
+	eq := p.inv.Equipped()
+	f.Def += eq.Defense()
+	f.Reduction = eq.Reduction()
+	if w := eq.Weapon; w != nil {
+		f.Dmg, f.Kind = w.Damage(), w.Kind.OrMelee()
+	}
+	f.Hit = p.stats.Mod(f.Kind)
+	f.DmgMod = f.Hit
+	f.MeleeHit = p.stats.Mod(hero.Melee)
+	f.MeleeMod = f.MeleeHit
 	f.Mana, f.MaxMana = p.mana, p.stats.MaxMana
 	return f
 }

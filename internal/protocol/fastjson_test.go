@@ -25,7 +25,7 @@ func randSnapshot(r *rand.Rand) *Snapshot {
 		Self: ent(),
 		Stats: Stats{
 			Level: r.IntN(60), XP: r.IntN(900), XPNext: r.IntN(900), HP: r.IntN(500),
-			MaxHP: r.IntN(500), Atk: r.IntN(200), Def: r.IntN(200), Potions: r.IntN(10),
+			MaxHP: r.IntN(500), Def: r.IntN(200), Hit: r.IntN(20) - 5, Dmg: []string{"1d4", "2d6+3", "5d12+5", "1d4-1", "\"q\\n"}[r.IntN(5)], Potions: r.IntN(10),
 			Gold: r.IntN(1_000_000),
 		},
 		Online: r.IntN(500),

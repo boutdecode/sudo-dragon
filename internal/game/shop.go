@@ -1,6 +1,7 @@
 package game
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -117,16 +118,19 @@ func (p *player) weaponKind() hero.Kind {
 	return hero.Melee
 }
 
-// gearBonus renvoie les bonus d'attaque et de défense de l'équipement porté.
-func (p *player) gearBonus() (atk, def int) { return p.inv.Equipped().Bonus() }
-
 func (g *Game) itemInfo(l i18n.Lang, p *player, it gear.Item) protocol.ItemInfo {
 	info := protocol.ItemInfo{
-		ID: it.ID, Name: it.Name, Desc: it.Desc, Slot: string(it.Slot), Kind: string(it.Kind), Tier: it.Tier, Atk: it.Atk, Def: it.Def,
+		ID: it.ID, Name: it.Name, Desc: it.Desc, Slot: string(it.Slot), Kind: string(it.Kind), Tier: it.Tier, Family: it.Family, Def: it.Def,
 		MinLevel: it.MinLevel(), Sell: it.SellPrice(), Worn: p.inv.IsWorn(it.ID),
 	}
 	if s := g.World.StructureOfRegion(it.Origin.Region); s != nil && it.Origin.Index >= 0 && it.Origin.Index < len(s.NPCs) {
 		info.Origin = s.NPCs[it.Origin.Index].NameIn(l)
+	}
+	if d := it.Damage(); !d.IsZero() {
+		info.Dice = d.String()
+	}
+	if r := it.Reduction(); !r.IsZero() {
+		info.Reduction = r.String()
 	}
 	return info
 }
@@ -136,8 +140,8 @@ func (g *Game) sendBag(p *player) {
 	if p.sendBagMsg == nil {
 		return
 	}
-	atk, def := p.gearBonus()
-	b := protocol.Bag{Items: make([]protocol.ItemInfo, 0, len(p.inv.Items)), Capacity: gear.BagCapacity, AtkBonus: atk, DefBonus: def,
+	eq := p.inv.Equipped()
+	b := protocol.Bag{Items: make([]protocol.ItemInfo, 0, len(p.inv.Items)), Capacity: gear.BagCapacity, DefBonus: eq.Defense(), Reduction: eq.Reduction().String(),
 		Class: string(p.stats.Class), Scores: p.stats.Scores[:], Style: string(p.weaponKind()), HitDie: p.stats.Class.HitDie(),
 		Kills: p.stats.Kills, BossKills: p.stats.BossKills, Deaths: p.stats.Deaths}
 	for _, it := range p.inv.Items {
@@ -157,17 +161,23 @@ func (g *Game) gearChanged(p *player) {
 func (g *Game) itemDetail(l i18n.Lang, p *player, it gear.Item) string {
 	cur := p.inv.Equipped().Get(it.Slot)
 	if it.Slot == gear.Weapon {
-		delta := it.Atk
+		avg, delta := it.Damage().Avg(), it.Damage().Avg()
 		if cur != nil {
-			delta -= cur.Atk
+			delta -= cur.Damage().Avg()
+		} else {
+			delta -= combat.BareHands.Avg()
 		}
-		return i18n.T(l, "gear.detail.atk", it.Atk, delta, it.MinLevel())
+		return i18n.T(l, "gear.detail.atk", it.Damage().String(), i18n.T(l, "gear.family."+it.Family), avg, delta, it.MinLevel())
 	}
 	delta := it.Def
 	if cur != nil {
 		delta -= cur.Def
 	}
-	return i18n.T(l, "gear.detail.def", i18n.T(l, "gear.slot."+string(it.Slot)), it.Def, delta, it.MinLevel())
+	red := ""
+	if r := it.Reduction(); !r.IsZero() {
+		red = i18n.T(l, "gear.detail.red", r.String())
+	}
+	return i18n.T(l, "gear.detail.def", i18n.T(l, "gear.slot."+string(it.Slot)), it.Def, delta, red, it.MinLevel())
 }
 
 // shopOffers construit les offres d'un vendeur : l'étalage, puis la revente.
@@ -304,7 +314,11 @@ func (g *Game) gearAct(id int, action string, itemID int64, slot string) {
 				return
 			}
 			if err := p.inv.Equip(itemID, p.stats.Level); err != nil {
-				p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "gear.level_too_low", it.Name, it.MinLevel()))
+				key := "gear.level_too_low"
+				if errors.Is(err, gear.ErrTwoHanded) {
+					key = "gear.two_handed"
+				}
+				p.gearNotices = append(p.gearNotices, i18n.T(p.lang, key, it.Name, it.MinLevel()))
 				g.sendBag(p)
 				return
 			}

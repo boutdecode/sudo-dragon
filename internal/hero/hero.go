@@ -223,15 +223,50 @@ func (k Kind) Stat() Ability {
 // SpellCost est la mana dépensée par une attaque magique.
 const SpellCost = 2
 
-// Précision du joueur : base, pas par point de modificateur, bornes.
+// Size est la taille d'une créature : elle fixe sa DEF de base.
+type Size string
+
 const (
-	baseAccuracy = 0.85
-	accuracyStep = 0.05
+	Small  Size = "small"  // petites créatures
+	Medium Size = "medium" // humanoïdes et créatures moyennes (les joueurs)
+	Large  Size = "large"  // grandes créatures
 )
 
-// Accuracy est la chance de toucher pour un modificateur d'attaque donné.
-func Accuracy(mod int) float64 {
-	return max(0.40, min(0.95, baseAccuracy+accuracyStep*float64(mod)))
+// DefBase est la DEF de base d'une taille (8, 10 ou 12) ; une taille inconnue vaut moyenne.
+func DefBase(s Size) int {
+	switch s {
+	case Small:
+		return 8
+	case Large:
+		return 12
+	}
+	return 10
+}
+
+// DefenseBonus est le bonus de DEF de l'agilité (le modificateur d'AGI).
+func (s Scores) DefenseBonus() int { return s.Mod(AGI) }
+
+// Hits indique si un jet de d20 touche : le 20 naturel touche toujours, le 1 naturel échoue toujours,
+// sinon il faut faire strictement plus que la DEF avec le bonus.
+func Hits(roll, bonus, def int) bool {
+	switch roll {
+	case 20:
+		return true
+	case 1:
+		return false
+	}
+	return roll+bonus > def
+}
+
+// HitChance est la probabilité (0 à 1) de toucher une DEF avec un bonus, selon Hits.
+func HitChance(bonus, def int) float64 {
+	n := 0
+	for r := 1; r <= 20; r++ {
+		if Hits(r, bonus, def) {
+			n++
+		}
+	}
+	return float64(n) / 20
 }
 
 // PriceAdjust est l'ajustement des prix (en %) selon le modificateur de CHA : −2 % par point

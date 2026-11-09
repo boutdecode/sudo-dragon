@@ -2,6 +2,7 @@ package game
 
 import (
 	"context"
+	"github.com/kevin/ascii-adventure/internal/dice"
 	"testing"
 	"time"
 
@@ -85,10 +86,10 @@ func TestJoinClampsCorruptSavedState(t *testing.T) {
 	}
 
 	// Une fiche incohérente (niveau 0, XP/potions hors bornes) est ramenée dans les bornes.
-	bad := Saved{Stats: combat.Stats{Level: 0, XP: -5, Potions: 500, MaxHP: 99999, Atk: 99999}, HP: 5, Pos: pos}
+	bad := Saved{Stats: combat.Stats{Level: 0, XP: -5, Potions: 500, MaxHP: 99999}, HP: 5, Pos: pos}
 	p := g.joinWith("bad", func(protocol.Snapshot) {}, &bad)
-	if p.stats.Level != 1 || p.stats.MaxHP == 99999 || p.stats.Atk == 99999 || p.stats.Potions != combat.MaxPotions || p.stats.XP != 0 {
-		t.Fatalf("fiche non assainie (le client ne doit pas pouvoir imposer MaxHP/Atk): %+v", p.stats)
+	if p.stats.Level != 1 || p.stats.MaxHP == 99999 || p.stats.Potions != combat.MaxPotions || p.stats.XP != 0 {
+		t.Fatalf("fiche non assainie (le client ne doit pas pouvoir imposer MaxHP): %+v", p.stats)
 	}
 }
 
@@ -161,7 +162,7 @@ func TestPersistNotCalledDuringFightTurns(t *testing.T) {
 // deadlyButSlow: un monstre qui dure sans faire mourir le joueur de test.
 func deadlyButSlow() species {
 	s := testRat
-	s.HP, s.Atk = 100000, 1
+	s.HP, s.Hit, s.Dmg = 100000, 0, dice.D(1, 1, 0)
 	return s
 }
 

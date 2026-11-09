@@ -256,6 +256,11 @@ var migrations = []string{
 	`ALTER TABLE characters ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN mana INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE items ADD COLUMN kind TEXT NOT NULL DEFAULT ''`,
+	// 15: combat par dés. Un objet a une famille (type de dégâts ou d'armure) et une qualité (bonus aux dégâts
+	// d'une arme) ; la colonne atk n'est plus utilisée. Les anciens objets (famille vide) sont convertis à la
+	// lecture par gear.Sanitize.
+	`ALTER TABLE items ADD COLUMN family TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE items ADD COLUMN quality INTEGER NOT NULL DEFAULT 0`,
 }
 
 // migrate applique les migrations manquantes, chacune dans sa transaction.

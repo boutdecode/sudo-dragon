@@ -18,8 +18,8 @@ func saveGear(tx *sql.Tx, account string, inv gear.Inventory) error {
 		return err
 	}
 	stmt, err := tx.Prepare(`INSERT INTO items(account, id, slot, name, descr, tier, atk, def, price,
-			origin_rx, origin_ry, origin_idx, worn, kind)
-		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?`)
+			origin_rx, origin_ry, origin_idx, worn, kind, family, quality)
+		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?`)
 	if err != nil {
 		return err
 	}
@@ -32,8 +32,8 @@ func saveGear(tx *sql.Tx, account string, inv gear.Inventory) error {
 		if inv.IsWorn(it.ID) {
 			worn = 1
 		}
-		if _, err := stmt.Exec(it.ID, string(it.Slot), it.Name, it.Desc, it.Tier, it.Atk, it.Def, it.Price,
-			it.Origin.Region.X, it.Origin.Region.Y, it.Origin.Index, worn, string(it.Kind), account); err != nil {
+		if _, err := stmt.Exec(it.ID, string(it.Slot), it.Name, it.Desc, it.Tier, 0, it.Def, it.Price,
+			it.Origin.Region.X, it.Origin.Region.Y, it.Origin.Index, worn, string(it.Kind), it.Family, it.Quality, account); err != nil {
 			return err
 		}
 	}
@@ -42,7 +42,7 @@ func saveGear(tx *sql.Tx, account string, inv gear.Inventory) error {
 
 // loadGear relit le sac d'un compte ; les valeurs lues sont revalidées par gear.SanitizeInventory.
 func (s *Store) loadGear(account string) (gear.Inventory, error) {
-	rows, err := s.db.Query(`SELECT id, slot, name, descr, tier, atk, def, price, origin_rx, origin_ry, origin_idx, worn, kind
+	rows, err := s.db.Query(`SELECT id, slot, name, descr, tier, atk, def, price, origin_rx, origin_ry, origin_idx, worn, kind, family, quality
 		FROM items WHERE account = ? ORDER BY id`, account)
 	if err != nil {
 		return gear.Inventory{}, err
@@ -52,9 +52,10 @@ func (s *Store) loadGear(account string) (gear.Inventory, error) {
 	for rows.Next() {
 		var it gear.Item
 		var slot, kind string
+		var unusedAtk int
 		var worn int
-		if err := rows.Scan(&it.ID, &slot, &it.Name, &it.Desc, &it.Tier, &it.Atk, &it.Def, &it.Price,
-			&it.Origin.Region.X, &it.Origin.Region.Y, &it.Origin.Index, &worn, &kind); err != nil {
+		if err := rows.Scan(&it.ID, &slot, &it.Name, &it.Desc, &it.Tier, &unusedAtk, &it.Def, &it.Price,
+			&it.Origin.Region.X, &it.Origin.Region.Y, &it.Origin.Index, &worn, &kind, &it.Family, &it.Quality); err != nil {
 			return gear.Inventory{}, err
 		}
 		it.Slot, it.Kind = gear.Slot(slot), hero.Kind(kind)

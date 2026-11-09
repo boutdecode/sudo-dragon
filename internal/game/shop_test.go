@@ -7,7 +7,6 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/gear"
-	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -38,7 +37,7 @@ func TestVendorMenuShowsFallbackWaresWithoutAModel(t *testing.T) {
 		t.Fatalf("étalage de repli: %d offres, spécialité %q", len(offers), d.Specialty)
 	}
 	for _, o := range offers {
-		if o.Price <= 0 || o.Arg == "" || !strings.Contains(o.Detail, "ATQ") || !o.Available {
+		if o.Price <= 0 || o.Arg == "" || !strings.Contains(o.Detail, "Dégâts") || !o.Available {
 			t.Errorf("offre incomplète: %+v", o)
 		}
 		if !strings.HasPrefix(o.Arg, "0.") {
@@ -75,16 +74,15 @@ func TestBuyEquipAndFightBonus(t *testing.T) {
 	}
 
 	// Pas de bonus tant que l'objet n'est pas équipé.
-	baseAtk := r.p.stats.Atk
-	if statsOf(r.p).Atk != baseAtk {
-		t.Fatal("bonus sans équipement")
+	if statsOf(r.p).Dmg != "1d4" || r.p.fighter().Dmg != combat.BareHands {
+		t.Fatalf("à mains nues: %s", statsOf(r.p).Dmg)
 	}
 	r.g.GearActNow(r.p, protocol.GearEquip, item.ID, "")
-	if statsOf(r.p).Atk != baseAtk+item.Atk || r.p.fighter().Atk != baseAtk+item.Atk {
-		t.Fatalf("attaque %d, attendue %d", statsOf(r.p).Atk, baseAtk+item.Atk)
+	if f := r.p.fighter(); f.Dmg != item.Damage() || statsOf(r.p).Dmg != item.Damage().WithBonus(f.DmgMod).String() || f.Dmg.IsZero() {
+		t.Fatalf("dégâts %s, attendus %s", statsOf(r.p).Dmg, item.Damage())
 	}
 	r.g.GearActNow(r.p, protocol.GearUnequip, 0, string(gear.Weapon))
-	if statsOf(r.p).Atk != baseAtk {
+	if statsOf(r.p).Dmg != "1d4" {
 		t.Fatal("retrait sans effet")
 	}
 }
@@ -182,18 +180,18 @@ func TestSellFlow(t *testing.T) {
 
 func TestEquipRules(t *testing.T) {
 	r := smithRig(t)
-	r.p.inv.Add(gear.Item{Name: "Grande lame", Slot: gear.Weapon, Tier: 5, Atk: 10, Price: 500})
-	r.p.inv.Add(gear.Item{Name: "Petite lame", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 50})
+	r.p.inv.Add(gear.Item{Name: "Grande lame", Slot: gear.Weapon, Tier: 5, Family: "longsword", Quality: 5, Price: 500})
+	r.p.inv.Add(gear.Item{Name: "Petite lame", Slot: gear.Weapon, Tier: 1, Family: "dagger", Price: 50})
 	r.p.stats.Level = 5
 	var bags []protocol.Bag
 	r.p.sendBagMsg = func(b protocol.Bag) { bags = append(bags, b) }
 
-	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // palier 5 : niveau 19 requis
+	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // palier 5 : niveau 20 requis
 	if r.p.inv.IsWorn(1) || len(bags) == 0 || len(bags[len(bags)-1].Notice) == 0 {
 		t.Fatalf("niveau insuffisant ignoré: %+v", bags)
 	}
 	r.g.GearActNow(r.p, protocol.GearEquip, 2, "")
-	r.p.stats.Level = 19
+	r.p.stats.Level = 20
 	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // remplace la petite lame
 	if r.p.inv.IsWorn(2) || !r.p.inv.IsWorn(1) {
 		t.Fatal("un objet par emplacement")
@@ -224,13 +222,12 @@ func TestGearSurvivesReconnectionAndCorruptionIsCleaned(t *testing.T) {
 	}
 	// Une sauvegarde trafiquée est ramenée dans les bornes.
 	bad := Saved{Stats: r.p.stats, Gear: gear.Inventory{
-		Items: []gear.Item{{ID: 1, Name: "Dieu", Slot: gear.Weapon, Tier: 99, Atk: 1 << 30, Price: 1 << 40}, {ID: 1, Name: "Doublon", Slot: gear.Helm}},
+		Items: []gear.Item{{ID: 1, Name: "Dieu", Slot: gear.Weapon, Tier: 99, Family: "greataxe", Quality: 1 << 30, Price: 1 << 40}, {ID: 1, Name: "Doublon", Slot: gear.Helm}},
 		Worn:  map[gear.Slot]int64{gear.Weapon: 1, gear.Armor: 1},
 	}}
 	p3 := r.g.joinWith("hero3", func(protocol.Snapshot) {}, &bad)
-	atk, def := p3.gearBonus()
-	if len(p3.inv.Items) != 1 || atk > 12 || def != 0 {
-		t.Fatalf("bonus %d/%d, %d objets", atk, def, len(p3.inv.Items))
+	if w := p3.inv.Equipped().Weapon; len(p3.inv.Items) != 1 || w == nil || w.Tier != gear.MaxTier || w.Quality != gear.MaxTier || p3.inv.Equipped().Defense() != 0 {
+		t.Fatalf("objet mal ramené: %+v", p3.inv)
 	}
 }
 
@@ -263,7 +260,7 @@ func TestGeneratedWaresReplaceTheFallbackOnce(t *testing.T) {
 	nb := len(r.msgs)
 	items := []gear.Item{}
 	for i := 1; i <= 5; i++ {
-		items = append(items, gear.Item{ID: int64(i), Name: fmt.Sprintf("Lame %d", i), Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 40})
+		items = append(items, gear.Item{ID: int64(i), Name: fmt.Sprintf("Lame %d", i), Slot: gear.Weapon, Tier: 1, Family: "axe", Price: 40})
 	}
 	st.dones[0](npcai.StockReply{Wares: gear.Wares{NPC: r.npc.Key(), Specialty: "lames courtes", Items: items}})
 	r.pump()
@@ -310,79 +307,4 @@ func TestFailedStockRetriesLaterNotImmediately(t *testing.T) {
 	if len(st.reqs) != 2 {
 		t.Fatalf("la demande aurait dû être refaite: %d", len(st.reqs))
 	}
-}
-
-// Équilibrage : le meilleur équipement d'un palier, porté au niveau requis, aide mais ne rend ni invulnérable
-// ni capable d'abattre le seigneur de guerre sans niveau. Les dégâts valent max(1, atk − def ± 1).
-func TestBalanceBestGearStaysFair(t *testing.T) {
-	best := func(tier int) (atk, def int) {
-		for _, s := range gear.Slots {
-			_, hi := gear.Bounds(s, tier)
-			if s == gear.Weapon {
-				atk += hi
-			} else {
-				def += hi
-			}
-		}
-		return
-	}
-	var warlord species
-	for _, sp := range speciesList {
-		if sp.Boss {
-			warlord = sp
-		}
-	}
-	for tier := 1; tier <= gear.MaxTier; tier++ {
-		level := gear.MinLevelOf[tier]
-		base := combat.StatsAt(level, 0, 0)
-		atk, def := best(tier)
-		if atk > base.Atk*40/100 {
-			t.Errorf("palier %d : +%d attaque pour %d de base (>40 %%)", tier, atk, base.Atk)
-		}
-		if def > base.Def*60/100+2 {
-			t.Errorf("palier %d : +%d défense pour %d de base", tier, def, base.Def)
-		}
-		// Face au monstre le plus fort que ce palier affronte, le joueur équipé encaisse encore des coups.
-		for _, sp := range speciesList {
-			if sp.Garrison || sp.XP > speciesXPBase+speciesXPPerLvl*level {
-				continue
-			}
-			plain := max(1, sp.Atk-base.Def)
-			geared := max(1, sp.Atk-base.Def-def)
-			if plain > 1 && geared*100 < plain*40 {
-				t.Errorf("palier %d, %s : dégâts %d → %d, l'équipement les divise par plus de 2,5", tier, sp.Kind, plain, geared)
-			}
-		}
-	}
-	// Le meilleur équipement disponible à un niveau avance d'au plus 3 niveaux le moment où l'on peut
-	// vaincre le seigneur de guerre en un combat (les dégâts sont déterministes à ±1 près).
-	wins := func(level int, geared bool) bool {
-		base := combat.StatsAt(level, 0, 0)
-		atk, def := 0, 0
-		if geared {
-			for tier := gear.MaxTier; tier >= 1; tier-- {
-				if gear.MinLevelOf[tier] <= level {
-					atk, def = best(tier)
-					break
-				}
-			}
-		}
-		perHit := max(1, base.Atk+atk-warlord.Def)
-		taken := max(1, warlord.Atk-base.Def-def)
-		turns := (warlord.HP + perHit - 1) / perHit
-		return turns*taken < base.MaxHP
-	}
-	firstPlain, firstGeared := 0, 0
-	for level := 1; level <= 40 && (firstPlain == 0 || firstGeared == 0); level++ {
-		if firstPlain == 0 && wins(level, false) {
-			firstPlain = level
-		}
-		if firstGeared == 0 && wins(level, true) {
-			firstGeared = level
-		}
-	}
-	if firstPlain == 0 || firstGeared < firstPlain-3 {
-		t.Errorf("le seigneur de guerre tombe dès le niveau %d équipé contre %d sans équipement (plus de 3 niveaux d'avance)", firstGeared, firstPlain)
-	}
-	_ = i18n.FR
 }

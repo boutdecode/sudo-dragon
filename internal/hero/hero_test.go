@@ -105,9 +105,6 @@ func TestManaAndCombatKnobs(t *testing.T) {
 	if Ranged.Stat() != AGI || Magic.Stat() != INT || Kind("").Stat() != STR || Kind("x").OrMelee() != Melee {
 		t.Fatal("styles")
 	}
-	if Accuracy(10) != 0.95 || Accuracy(-10) != 0.40 || Accuracy(0) != 0.85 {
-		t.Fatal("précision")
-	}
 	if AdjustPrice(100, 3) != 94 || AdjustPrice(100, -5) != 110 || AdjustPrice(1, 5) != 1 || AdjustPrice(0, 5) != 0 {
 		t.Fatal("prix")
 	}
@@ -129,4 +126,26 @@ func FuzzSanitize(f *testing.F) {
 			t.Fatalf("PV %d < niveau %d", got, level)
 		}
 	})
+}
+
+func TestDefenseAndHitRules(t *testing.T) {
+	if DefBase(Small) != 8 || DefBase(Medium) != 10 || DefBase(Large) != 12 || DefBase("") != 10 {
+		t.Fatal("DEF de base")
+	}
+	s := Default()
+	s[AGI] = 14
+	if s.DefenseBonus() != 2 {
+		t.Fatal("bonus d'AGI")
+	}
+	// Il faut faire strictement plus que la DEF.
+	if Hits(10, 0, 10) || !Hits(11, 0, 10) || !Hits(8, 3, 10) || Hits(7, 3, 10) {
+		t.Fatal("seuil de touche")
+	}
+	if !Hits(20, -10, 30) || Hits(1, 30, 5) {
+		t.Fatal("20 et 1 naturels")
+	}
+	// DEF 10, bonus 0 : 11 à 20 touchent => 50 % ; bonus +5 : 6 à 20 => 75 %.
+	if HitChance(0, 10) != 0.5 || HitChance(5, 10) != 0.75 || HitChance(-20, 10) != 0.05 || HitChance(30, 10) != 0.95 {
+		t.Fatalf("probabilités: %v %v %v %v", HitChance(0, 10), HitChance(5, 10), HitChance(-20, 10), HitChance(30, 10))
+	}
 }

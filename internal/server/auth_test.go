@@ -227,7 +227,7 @@ func TestSavedCharacterIsRestoredOnLogin(t *testing.T) {
 	if got.Gold != 250 {
 		t.Fatalf("or restauré = %d, attendu 250", got.Gold)
 	}
-	if got.Level != 5 || got.XP != 3 || got.Potions != 4 || got.MaxHP != want.MaxHP || got.Atk != want.Atk || got.Def != want.Def {
+	if got.Level != 5 || got.XP != 3 || got.Potions != 4 || got.MaxHP != want.MaxHP || got.Def != want.Defense() {
 		t.Fatalf("fiche restaurée: %+v, attendu niveau 5 / %+v", got, want)
 	}
 	if got.HP < 20 || got.HP > 21 { // +1 PV possible par régénération

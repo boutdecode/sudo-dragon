@@ -10,7 +10,7 @@ Interface avec [Bubble Tea](https://charm.land/) et Lip Gloss ; serveur autorita
 │"""""""."""""".""."."'""""""..~~~~~~~~~~~~~~~~~~~││Sol  Plaine             │
 │""".""""""""""r"""""""""".'""",.~~-~~~~~~~~~~~~~~││Niv 1   XP 4/10         │
 │""""""""'"'""."".""""'"'""'""".,.~~~~~~~~~~~~~~~~││PV ########## 30/30     │
-│"""""""""""""""@""""""""""""""..~~--~~~~~~~~~~~~~││Atq 6  Déf 2  Pot 2     │
+│"""""""""""""""@""""""""""""""..~~--~~~~~~~~~~~~~││Déf 11 Dég 1d6 Pot 2    │
 ╰───────────────────────────────────────────────╯╰────────────────────────╯
 * hero a rejoint le monde
 Entrée: chat (/help) · flèches/ZQSD/hjkl: bouger · Ctrl+C: quitter
@@ -78,30 +78,35 @@ Un joueur avance de 5 cases par seconde ; tous les monstres sont plus lents, on 
 | `/help` | rappel des commandes |
 
 **Combattre** : marchez sur un monstre pour l'attaquer, ou laissez-le vous toucher. L'écran de combat propose :
-`A` attaquer (frapper, tirer ou lancer un sort selon l'arme) · `D` défendre (dégâts réduits de moitié) · `I` boire une potion (+15 PV) · `F` fuir (une chance sur deux).
+`A` attaquer (frapper, tirer ou lancer un sort selon l'arme) · `D` défendre (+4 DEF jusqu'à la riposte) · `I` boire une potion (+15 PV) · `F` fuir (une chance sur deux).
 Les touches `1` à `4` font la même chose. Après la victoire, `Entrée` ferme l'écran.
 
-- Vainqueur : de l'XP, et 30 % de chances de trouver une potion. Chaque niveau lance le dé de vie de la classe (+ bonus de CON), donne +2 attaque et +1 défense, et restaure tous les PV et la mana.
+- Vainqueur : de l'XP, et 30 % de chances de trouver une potion. Chaque niveau lance le dé de vie de la classe (+ bonus de CON) et restaure tous les PV et la mana ; il ne change ni le toucher ni les dégâts, qui viennent des caractéristiques et de l'équipement.
 - Vaincu : vous réapparaissez au point de départ avec tous vos PV, en perdant 25 % de l'XP du niveau (jamais de niveau).
 - Les PV remontent d'un point toutes les 3 secondes hors combat.
 - Pendant un combat, vous et votre adversaire restez sur place, hors d'atteinte des autres, et apparaissez en rouge pour les autres joueurs.
   Un joueur inactif depuis 60 secondes est considéré comme ayant fui.
 
-| Monstre | Glyphe | Habitat | PV | Atq | Déf | XP | Détection |
-|---|---|---|---|---|---|---|---|
-| Rat | `r` | plaine | 8 | 3 | 0 | 4 | 5 cases |
-| Crabe | `c` | plage | 12 | 4 | 3 | 6 | 3 cases |
-| Loup | `w` | forêt | 16 | 6 | 1 | 10 | 9 cases |
-| Gobelin | `g` | collines | 22 | 7 | 2 | 15 | 8 cases |
-| Yéti | `Y` | neige | 34 | 10 | 4 | 30 | 7 cases |
-| Squelette | `S` | forteresse | 36 | 10 | 4 | 25 | 7 cases |
-| Chevalier | `K` | forteresse | 60 | 14 | 8 | 50 | 7 cases |
-| Seigneur de guerre | `B` | forteresse | 180 | 22 | 12 | 250 | 6 cases |
+| Monstre | Glyphe | Habitat | PV | DEF | Toucher | Dégâts | Réduction | XP | Détection |
+|---|---|---|---|---|---|---|---|---|---|
+| Rat | `r` | plaine | 8 | 8 | +1 | 1d4 | – | 4 | 5 cases |
+| Crabe | `c` | plage | 12 | 8 | +2 | 1d6 | 1d4 | 6 | 3 cases |
+| Loup | `w` | forêt | 16 | 11 | +3 | 1d6+1 | – | 10 | 9 cases |
+| Gobelin | `g` | collines | 22 | 10 | +3 | 1d8 | – | 15 | 8 cases |
+| Yéti | `Y` | neige | 34 | 12 | +5 | 2d6 | 1d4 | 30 | 7 cases |
+| Squelette | `S` | forteresse | 36 | 10 | +4 | 2d6 | 1d4 | 25 | 7 cases |
+| Chevalier | `K` | forteresse | 90 | 12 | +7 | 2d8 | 1d8 | 50 | 7 cases |
+| Seigneur de guerre | `B` | forteresse | 180 | 13 | +8 | 3d10+3 | 2d6 | 250 | 6 cases |
+
+**Règles de combat** : chaque créature a une **DEF** (8 pour une petite créature, 10 pour un humanoïde ou une créature moyenne, 12 pour une grande, plus le modificateur d'AGI). Pour toucher, on lance un **d20** et on ajoute
+son modificateur (FOR en mêlée, AGI à distance, INT en magie) : il faut faire **strictement plus** que la DEF de la cible. Un 20 naturel touche toujours et **double les dés** de dégâts (pas les bonus) ; un 1 naturel rate toujours.
+Les dégâts sont ceux de l'arme (`x d y + z`) plus le modificateur de caractéristique, **moins les dés de réduction de l'armure** de la cible (au moins 1 si le coup touche). Le journal de combat montre le jet, la DEF visée et la réduction.
+Sans mana, une arme magique sert de gourdin (1d4 + FOR).
 
 Un monstre vaincu laisse de l'or : entre la moitié et la totalité de son XP.
 
-Un personnage débute niveau 1 avec ses PV de classe (voir « Caractéristiques et classes »), 6 d'attaque, 2 de défense, 2 potions et aucun or ; il faut `10 × niveau` XP pour passer au niveau suivant.
-Un débutant bat un rat ou un loup, mais pas un yéti : il faut progresser (c'est vérifié par un test d'équilibrage).
+Un personnage débute niveau 1 avec ses PV de classe (voir « Caractéristiques et classes »), sa DEF de 10 + modificateur d'AGI, son **arme de départ** (épée courte du guerrier, arc court du gredin, bâton du magicien : 1d6), 2 potions et aucun or ; il faut `10 × niveau` XP pour passer au niveau suivant.
+Un guerrier débutant bat un rat ou un loup, mais pas un yéti : il faut progresser et s'équiper (c'est vérifié par un test d'équilibrage ; le gredin et surtout le magicien, plus fragiles, évitent le loup).
 
 ## Régions et contrées
 
@@ -201,23 +206,28 @@ Vous pouvez **relancer 3 fois en tout** (une caractéristique à la fois, touche
 
 - **PV** : niveau 1 = dé maximal + modificateur de CON ; chaque niveau suivant = dé lancé + modificateur de CON (au moins 1). Les PV maximaux sont enregistrés.
 - **Mana** = base de classe + 2 par niveau + niveau × modificateur de SAG. Un sort coûte 2 mana ; elle revient avec les PV (repos, soigneur, montée de niveau).
-- **Style d'attaque = arme portée** : épée, hache… (mêlée, FOR) ; arc, arbalète (distance, AGI) ; bâton, baguette (magie, INT, 2 mana par sort). À mains nues : mêlée. Le modificateur s'ajoute aux dégâts, et la chance de toucher
-  vaut 85 % + 5 % par point de modificateur (bornée à 40-95 %). Les monstres touchent toujours.
+- **Style d'attaque = arme portée** : épée, hache… (mêlée, FOR) ; arc, arbalète (distance, AGI) ; bâton, baguette (magie, INT, 2 mana par sort). À mains nues : mêlée. Le modificateur s'ajoute au jet de toucher et aux dégâts.
 - **Charisme** : ±2 % par point de modificateur sur les prix des PNJ (bornés à ±10 %, après la réduction de réputation).
 - Les personnages créés avant cette version gardent niveau, or, quêtes et sac, mais repassent par la création à leur prochaine connexion ; leurs PV sont relancés niveau par niveau.
 - La touche `C` ouvre la **fiche de personnage** : classe, niveau, PV, mana, attaque et défense (avec la part de l'équipement), style et chance de toucher, effet du charisme, or, position, palmarès, caractéristiques détaillées, équipement porté et réputation. Un résumé des caractéristiques reste dans le panneau latéral.
 
 ## Équipement et forges
 
-Quatre emplacements : **arme** (bonus d'attaque), **armure**, **bouclier** et **casque** (bonus de défense). Les objets ont un palier de 1 à 5 qui fixe leurs plafonds de bonus et le **niveau requis**
-(1, 4, 8, 13, 19). Le **sac** (touche `I`, 24 objets) garde tout ce qu'on achète : `E` équipe ou retire l'objet choisi, un objet par emplacement, impossible en plein combat. Le panneau latéral et le
-combat utilisent les caractéristiques effectives. Un objet porté ne se revend pas ; la revente rapporte 40 % du prix.
+Quatre emplacements : **arme**, **armure**, **bouclier** et **casque**. Les objets ont un **palier** (= **rang**) de 1 à 5, qui est aussi le **niveau requis** (1, 5, 10, 15, 20).
+
+- **Arme** : dégâts `x d y + z` avec **x = rang** (1 dé au rang 1, 2 au rang 2…), **y = famille** (type de dégâts) et **z = qualité** (0 jusqu'au rang). Familles : coupant d4 (dague, lance, baguette), tranchant d6 (épées, hache, arc court, bâton),
+  contondant d8 (masse, arbalète), **deux mains** d12 (espadon, grande hache). L'arc court, l'arbalète et le bâton se portent à deux mains. Le style (mêlée, distance, magie) découle de la famille.
+- **Armure** : bonus de DEF **et** dés de réduction (rang × d4 légère, d6 intermédiaire ou d8 lourde, retirés à chaque coup reçu). **Bouclier** et **casque** : bonus de DEF seulement.
+- Une arme à **deux mains** interdit le bouclier (et inversement).
+
+Le **sac** (touche `I`, 24 objets) garde tout ce qu'on achète : `E` équipe ou retire l'objet choisi, un objet par emplacement, impossible en plein combat. Le panneau latéral, la fiche et le combat utilisent les valeurs effectives.
+Un objet porté ne se revend pas ; la revente rapporte 40 % du prix.
 
 **Vendeurs** : chaque ville a un **forgeron** (armes, `F`) et un **armurier** (armures, boucliers, casques, `R`) ; chaque village n'a que l'un des deux ; les forteresses aucun. Achat par les chiffres `1`-`9`,
 revente par `V`. La réputation du lieu réduit aussi les prix de l'équipement.
 
-**Spécialité et étalage générés** : à la première visite, le modèle de langage invente en JSON la spécialité du vendeur et 6 à 8 objets (noms, descriptions, palier, bonus, prix). **Le serveur décide** : emplacement
-vendu, palier au plus 3 en village et 5 en ville, bonus et prix ramenés dans des bornes calculées d'après le palier, textes nettoyés et modérés, au moins 4 objets valides sinon l'étalage est écarté. L'étalage
+**Spécialité et étalage générés** : à la première visite, le modèle de langage invente en JSON la spécialité du vendeur et 6 à 8 objets (noms, descriptions, palier, **famille**, qualité, bonus de DEF, prix). **Le serveur décide** : emplacement
+vendu, palier au plus 3 en village et 5 en ville, famille parmi celles de l'emplacement (les dés ne sont jamais choisis par le modèle), qualité, DEF et prix ramenés dans des bornes calculées d'après le palier, textes nettoyés et modérés, au moins 4 objets valides sinon l'étalage est écarté. L'étalage
 est enregistré (`npc_wares`) et identique pour tous les joueurs ; aucun texte de joueur n'entre dans cette demande. Sans clé Mistral, ou tant que l'étalage n'est pas prêt, un **assortiment de repli**
 déterministe est proposé : le jeu est complet sans IA. Un objet acheté est copié en entier dans le sac et ne change plus.
 

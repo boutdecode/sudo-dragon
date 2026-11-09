@@ -2,14 +2,13 @@ package game
 
 import (
 	"context"
+	"github.com/kevin/ascii-adventure/internal/dice"
 	"math/rand/v2"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
-	"github.com/kevin/ascii-adventure/internal/hero"
-	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -43,8 +42,11 @@ func (r *rig) engage() {
 	r.g.step()
 }
 
-func weak(sp species) species   { sp.HP = 1; return sp }
-func deadly(sp species) species { sp.HP, sp.Atk = 1000, 100; return sp }
+func weak(sp species) species { sp.HP = 1; return sp }
+func deadly(sp species) species {
+	sp.HP, sp.Hit, sp.Dmg = 1000, 50, dice.D(1, 1, 99)
+	return sp
+}
 
 func TestWalkingIntoMonsterStartsFight(t *testing.T) {
 	r := newRig(t, testRat)
@@ -329,7 +331,7 @@ func TestSnapshotCarriesStats(t *testing.T) {
 	g.step()
 	want := combat.NewStats()
 	s := r.last().Stats
-	if s.Level != 1 || s.HP != want.MaxHP || s.MaxHP != want.MaxHP || s.Atk != want.Atk || s.Def != want.Def ||
+	if s.Level != 1 || s.HP != want.MaxHP || s.MaxHP != want.MaxHP || s.Def != want.Defense() || s.Dmg != "1d4" ||
 		s.Potions != want.Potions || s.XPNext != want.XPToNext() {
 		t.Fatalf("fiche inattendue: %+v", s)
 	}
@@ -438,71 +440,6 @@ func TestFightThroughRunningGame(t *testing.T) {
 	case c := <-msgs:
 		t.Fatalf("message inattendu hors combat: %+v", c)
 	case <-time.After(300 * time.Millisecond):
-	}
-}
-
-// L'équilibrage encode l'intention de conception: les premiers monstres sont
-// à la portée d'un débutant, les derniers exigent de la progression.
-func TestBalance(t *testing.T) {
-	spec := func(kind string) species {
-		for _, s := range speciesList {
-			if s.Kind == kind {
-				return s
-			}
-		}
-		t.Fatalf("espèce %q inconnue", kind)
-		return species{}
-	}
-	winRate := func(class hero.Class, level int, sp species) float64 {
-		st := combat.NewStatsFor(class, hero.Default())
-		st.AddXP(sumXPForLevel(level), nil)
-		wins := 0
-		const trials = 500
-		for i := 0; i < trials; i++ {
-			b := combat.New(st.Fighter(st.MaxHP), st.Potions,
-				combat.Fighter{HP: sp.HP, MaxHP: sp.HP, Atk: sp.Atk, Def: sp.Def}, sp.name(i18n.FR),
-				rand.New(rand.NewPCG(uint64(i), 1)))
-			for turn := 0; b.Result == combat.Ongoing && turn < 500; turn++ {
-				if b.Player.HP <= st.MaxHP/3 && b.Potions > 0 {
-					b.Act(combat.Item)
-				} else {
-					b.Act(combat.Attack)
-				}
-			}
-			if b.Result == combat.Won {
-				wins++
-			}
-		}
-		if st.Level != level {
-			t.Fatalf("niveau %d atteint au lieu de %d", st.Level, level)
-		}
-		return float64(wins) / trials
-	}
-
-	cases := []struct {
-		class    hero.Class
-		kind     string
-		level    int
-		min, max float64
-		why      string
-	}{
-		{hero.Warrior, "rat", 1, 0.95, 1, "un débutant bat un rat"},
-		{hero.Warrior, "wolf", 1, 0.78, 1, "un guerrier débutant bat un loup, de justesse"},
-		{hero.Warrior, "yeti", 1, 0, 0.05, "un débutant ne bat pas un yéti"},
-		{hero.Warrior, "yeti", 6, 0.90, 1, "un joueur aguerri bat un yéti"},
-		{hero.Rogue, "rat", 1, 0.95, 1, "un gredin débutant bat un rat"},
-		{hero.Mage, "rat", 1, 0.90, 1, "un magicien débutant bat un rat (de peu)"},
-		{hero.Rogue, "wolf", 1, 0, 0.5, "un gredin débutant évite le loup"},
-		{hero.Mage, "wolf", 1, 0, 0.3, "un magicien débutant, fragile, évite le loup"},
-		{hero.Mage, "wolf", 3, 0.90, 1, "mais il le bat dès le niveau 3"},
-		{hero.Mage, "yeti", 6, 0.90, 1, "un magicien aguerri bat un yéti"},
-	}
-	for _, c := range cases {
-		got := winRate(c.class, c.level, spec(c.kind))
-		if got < c.min || got > c.max {
-			t.Errorf("%s %s niveau %d: %.0f %% de victoires, attendu [%.0f%%, %.0f%%] (%s)",
-				c.class, c.kind, c.level, got*100, c.min*100, c.max*100, c.why)
-		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kevin/ascii-adventure/internal/dice"
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -22,6 +23,11 @@ func cleanItem(it protocol.ItemInfo) protocol.ItemInfo {
 	it.Name = textsafe.Clean(it.Name, gear.MaxName)
 	it.Desc = textsafe.Clean(it.Desc, gear.MaxDesc)
 	it.Origin = textsafe.Clean(it.Origin, 60)
+	it.Dice, it.Reduction = cleanDice(it.Dice), cleanDice(it.Reduction)
+	it.Family = textsafe.Clean(it.Family, 20)
+	if _, ok := gear.FamilyByID(gear.Slot(it.Slot), it.Family); !ok {
+		it.Family = gear.DefaultFamily(gear.Slot(it.Slot), hero.Kind(it.Kind))
+	}
 	if it.Slot == string(gear.Weapon) {
 		it.Kind = string(hero.Kind(it.Kind).OrMelee())
 	} else {
@@ -76,7 +82,10 @@ func (m Model) wornIn(slot gear.Slot) (protocol.ItemInfo, bool) {
 // bonusText résume les bonus d'un objet.
 func (m Model) bonusText(it protocol.ItemInfo) string {
 	if it.Slot == string(gear.Weapon) {
-		return m.t("bag.item.atk", it.Atk) + " · " + m.t("hero.kind."+it.Kind)
+		return m.t("bag.item.atk", it.Dice, m.t("gear.family."+it.Family)) + " · " + m.t("hero.kind."+it.Kind)
+	}
+	if it.Reduction != "" {
+		return m.t("bag.item.def", it.Def) + " · " + m.t("bag.item.red", it.Reduction)
 	}
 	return m.t("bag.item.def", it.Def)
 }
@@ -154,7 +163,7 @@ func (m Model) inventoryView(w, h int) string {
 		}
 		detail = append(detail, " "+dimStyle.Render(m.t("bag.item.sell", it.Sell)))
 		if cur, ok := m.wornIn(gear.Slot(it.Slot)); ok && !it.Worn {
-			diff := it.Atk - cur.Atk + it.Def - cur.Def
+			diff := itemPower(it) - itemPower(cur)
 			style := ui.OK
 			if diff < 0 {
 				style = errStyle
@@ -187,4 +196,24 @@ func (m Model) scoresLine() string {
 		parts = append(parts, fmt.Sprintf("%s%d", m.t("hero.ability."+a.Key()), m.bag.Scores[a]))
 	}
 	return " " + strings.Join(parts[:3], " ") + "\n " + strings.Join(parts[3:], " ")
+}
+
+// cleanDice ne garde qu'une notation de dés valide reçue du serveur ("" sinon).
+func cleanDice(s string) string {
+	if d, ok := dice.Parse(s); ok && !d.IsZero() {
+		return d.String()
+	}
+	return ""
+}
+
+// itemPower compare deux objets du même emplacement: dégâts moyens, réduction moyenne et DEF (1 point de DEF vaut 4).
+func itemPower(it protocol.ItemInfo) int {
+	p := 4 * it.Def
+	if d, ok := dice.Parse(it.Dice); ok {
+		p += d.Avg()
+	}
+	if d, ok := dice.Parse(it.Reduction); ok {
+		p += d.Avg()
+	}
+	return p
 }

@@ -117,7 +117,7 @@ func toSaved(c store.Character) *game.Saved {
 		Mana:       c.Mana,
 		Pos:        world.Pos{X: c.X, Y: c.Y},
 		LLMConsent: c.LLMConsent,
-		Quests:     c.Quests, Rep: c.Rep, Gear: c.Gear,
+		Quests:     c.Quests, Rep: c.Rep, Gear: c.Gear, GearDirty: c.GearDirty,
 	}
 }
 
@@ -308,9 +308,12 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		return fail("srv.err.server")
 	}
 	if needsCreation(ch) {
-		if ch, err = s.runCreation(ctx, conn, name, ch); err != nil {
+		if ch, err = s.runCreation(ctx, conn, name, lang, ch); err != nil {
 			return nil, err
 		}
+	} else {
+		// Personnage créé avant les armes à dés: il reçoit son arme de départ s'il n'en a aucune.
+		ensureStarter(ch, lang)
 	}
 	saved = toSaved(*ch)
 

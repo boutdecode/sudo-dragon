@@ -86,17 +86,18 @@ type Monster struct {
 
 // Stats est la fiche du joueur local, envoyée dans chaque instantané.
 type Stats struct {
-	Level   int `json:"lvl"`
-	XP      int `json:"xp"`
-	XPNext  int `json:"xpn"`
-	HP      int `json:"hp"`
-	MaxHP   int `json:"mhp"`
-	Atk     int `json:"atk"`
-	Def     int `json:"def"`
-	Potions int `json:"pot"`
-	Gold    int `json:"gold"`
-	Mana    int `json:"mp"`
-	MaxMana int `json:"mmp"`
+	Level   int    `json:"lvl"`
+	XP      int    `json:"xp"`
+	XPNext  int    `json:"xpn"`
+	HP      int    `json:"hp"`
+	MaxHP   int    `json:"mhp"`
+	Def     int    `json:"def"`
+	Hit     int    `json:"hit"`
+	Dmg     string `json:"dmg"` // dés de l'arme portée et modificateur, ex. "2d6+3"
+	Potions int    `json:"pot"`
+	Gold    int    `json:"gold"`
+	Mana    int    `json:"mp"`
+	MaxMana int    `json:"mmp"`
 }
 
 // Snapshot décrit ce qu'un joueur voit à un tick donné. Il n'est envoyé que
@@ -133,6 +134,8 @@ type Combat struct {
 	MonsterMaxHP int      `json:"mmhp"`
 	PlayerHP     int      `json:"php"`
 	PlayerMaxHP  int      `json:"pmhp"`
+	PlayerDef    int      `json:"pdef"`
+	MonsterDef   int      `json:"mdef"`
 	PlayerMana   int      `json:"pmp"`
 	PlayerMaxMP  int      `json:"pmmp"`
 	Style        string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic
@@ -206,18 +209,20 @@ type NPCOffer struct {
 
 // ItemInfo est un objet d'équipement tel que le joueur le voit.
 type ItemInfo struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	Desc     string `json:"desc,omitempty"`
-	Slot     string `json:"slot"`           // weapon, armor, shield, helm
-	Kind     string `json:"kind,omitempty"` // style d'une arme: melee, ranged, magic
-	Tier     int    `json:"tier"`
-	Atk      int    `json:"atk,omitempty"`
-	Def      int    `json:"def,omitempty"`
-	MinLevel int    `json:"lvl"`
-	Sell     int    `json:"sell"` // prix de revente
-	Worn     bool   `json:"worn,omitempty"`
-	Origin   string `json:"origin,omitempty"` // nom du vendeur d'origine
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Desc      string `json:"desc,omitempty"`
+	Slot      string `json:"slot"`           // weapon, armor, shield, helm
+	Kind      string `json:"kind,omitempty"` // style d'une arme: melee, ranged, magic
+	Tier      int    `json:"tier"`
+	Family    string `json:"family,omitempty"`
+	Dice      string `json:"dice,omitempty"`      // dégâts d'une arme, ex. "2d6+1"
+	Reduction string `json:"reduction,omitempty"` // dés retirés aux dégâts reçus (armure)
+	Def       int    `json:"def,omitempty"`       // bonus de DEF
+	MinLevel  int    `json:"lvl"`
+	Sell      int    `json:"sell"` // prix de revente
+	Worn      bool   `json:"worn,omitempty"`
+	Origin    string `json:"origin,omitempty"` // nom du vendeur d'origine
 }
 
 // Create est le tirage proposé pendant la création du personnage: le serveur lance les dés, le client
@@ -252,11 +257,11 @@ type CreateAction struct {
 
 // Bag est le sac d'équipement, envoyé à la connexion et à chaque changement.
 type Bag struct {
-	Notice   []string   `json:"notice,omitempty"` // lignes à ajouter au journal
-	Items    []ItemInfo `json:"items"`            // tout le sac, objets portés compris (Worn)
-	Capacity int        `json:"cap"`
-	AtkBonus int        `json:"atk"` // bonus total de l'équipement porté
-	DefBonus int        `json:"def"`
+	Notice    []string   `json:"notice,omitempty"` // lignes à ajouter au journal
+	Items     []ItemInfo `json:"items"`            // tout le sac, objets portés compris (Worn)
+	Capacity  int        `json:"cap"`
+	DefBonus  int        `json:"def"`       // bonus de DEF total de l'équipement porté
+	Reduction string     `json:"reduction"` // dés de réduction de l'armure portée ("0" sans armure)
 
 	// Fiche de création (voir internal/hero) : base, six caractéristiques (FOR AGI INT CON SAG CHA),
 	// style de l'arme portée et dé de vie.

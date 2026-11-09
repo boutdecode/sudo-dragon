@@ -21,10 +21,10 @@ func bagMsg(t *testing.T, b protocol.Bag) eventMsg {
 
 func sampleBag() protocol.Bag {
 	return protocol.Bag{
-		Capacity: 24, AtkBonus: 4, DefBonus: 1,
+		Capacity: 24, DefBonus: 1,
 		Items: []protocol.ItemInfo{
-			{ID: 1, Name: "Épée longue en acier", Desc: "Une lame bien équilibrée.", Slot: "weapon", Tier: 2, Atk: 4, MinLevel: 4, Sell: 40, Worn: true, Origin: "Forgeron Hubert"},
-			{ID: 2, Name: "Hache en fer", Slot: "weapon", Tier: 1, Atk: 2, MinLevel: 1, Sell: 20},
+			{ID: 1, Name: "Épée longue en acier", Desc: "Une lame bien équilibrée.", Slot: "weapon", Tier: 2, Family: "longsword", Dice: "2d6+2", Kind: "melee", MinLevel: 5, Sell: 40, Worn: true, Origin: "Forgeron Hubert"},
+			{ID: 2, Name: "Hache en fer", Slot: "weapon", Tier: 1, Family: "axe", Dice: "1d6", Kind: "melee", MinLevel: 1, Sell: 20},
 			{ID: 3, Name: "Casque en cuivre", Slot: "helm", Tier: 1, Def: 1, MinLevel: 1, Sell: 12, Worn: true},
 		},
 	}
@@ -56,14 +56,14 @@ func TestBagScreenShowsWornItemsAndDetail(t *testing.T) {
 	m := withGear(t, playingModel(t, 120, 36))
 	m = press(m, "i")
 	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"Équipé", "Arme:", "Épée longue en acier", "Casque:", "Casque en cuivre", "Sac (3/24)", "Hache en fer", "Attaque +4", "Niveau requis : 4", "Forgeron Hubert"} {
+	for _, want := range []string{"Équipé", "Arme:", "Épée longue en acier", "Casque:", "Casque en cuivre", "Sac (3/24)", "Hache en fer", "Dégâts 2d6+2 (tranchant)", "Niveau requis : 5", "Forgeron Hubert"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("sac sans %q:\n%s", want, view)
 		}
 	}
 	m = press(m, "down")
 	view = ansi.Strip(m.View().Content)
-	if !strings.Contains(view, "Par rapport à l'objet porté : -2") {
+	if !strings.Contains(view, "Par rapport à l'objet porté : -6") {
 		t.Errorf("comparaison avec l'objet porté absente:\n%s", view)
 	}
 }

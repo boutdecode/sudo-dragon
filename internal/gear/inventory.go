@@ -23,6 +23,7 @@ var (
 	ErrNoSuchItem  = errors.New("objet inconnu")
 	ErrLevelTooLow = errors.New("niveau insuffisant")
 	ErrWorn        = errors.New("objet équipé")
+	ErrTwoHanded   = errors.New("arme à deux mains et bouclier incompatibles")
 )
 
 // Inventory est le sac d'un joueur et ce qu'il porte. Worn associe un emplacement à l'identifiant de
@@ -91,6 +92,11 @@ func (inv *Inventory) Equip(id int64, level int) error {
 	if level < it.MinLevel() {
 		return ErrLevelTooLow
 	}
+	// Une arme à deux mains ne se porte pas avec un bouclier.
+	eq := inv.Equipped()
+	if (it.Slot == Shield && eq.Weapon != nil && eq.Weapon.TwoHanded()) || (it.Slot == Weapon && it.TwoHanded() && eq.Shield != nil) {
+		return ErrTwoHanded
+	}
 	if inv.Worn == nil {
 		inv.Worn = map[Slot]int64{}
 	}
@@ -148,6 +154,17 @@ func SanitizeInventory(in Inventory) Inventory {
 				out.Worn = map[Slot]int64{}
 			}
 			out.Worn[slot] = id
+		}
+	}
+	return out
+}
+
+// SanitizeItems revalide des objets relus d'une base (étalage enregistré), en gardant leurs identifiants.
+func SanitizeItems(in []Item) []Item {
+	out := make([]Item, 0, len(in))
+	for _, it := range in {
+		if clean, ok := Sanitize(it); ok {
+			out = append(out, clean)
 		}
 	}
 	return out

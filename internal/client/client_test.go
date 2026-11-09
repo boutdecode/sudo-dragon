@@ -529,12 +529,12 @@ func TestStatsShownInSidePanel(t *testing.T) {
 	m := playingModel(t, 110, 34)
 	data, _ := protocol.Encode(protocol.TSnapshot, protocol.Snapshot{
 		Tick: 2, Self: protocol.Entity{ID: 1, Name: "bob", X: 5, Y: 5},
-		Stats: protocol.Stats{Level: 3, XP: 7, XPNext: 30, HP: 20, MaxHP: 42, Atk: 10, Def: 4, Potions: 2, Gold: 120},
+		Stats: protocol.Stats{Level: 3, XP: 7, XPNext: 30, HP: 20, MaxHP: 42, Def: 12, Dmg: "1d6+2", Potions: 2, Gold: 120},
 	})
 	env, _ := protocol.Decode(data)
 	tm, _ := m.Update(eventMsg{Event{Env: env}})
 	out := ansi.Strip(tm.(Model).View().Content)
-	for _, want := range []string{"Niv 3", "XP 7/30", "20/42", "Atq 10", "Déf 4", "Pot 2", "Or  120"} {
+	for _, want := range []string{"Niv 3", "XP 7/30", "20/42", "Déf 12", "Dég 1d6+2", "Pot 2", "Or  120"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("fiche sans %q", want)
 		}

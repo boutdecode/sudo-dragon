@@ -18,9 +18,9 @@ func sheetModel(lang i18n.Lang, w, h int) Model {
 	m.state, m.hasSnap = statePlaying, true
 	m.world = world.New(1)
 	m.snap = protocol.Snapshot{Self: protocol.Entity{Name: "alice", X: 12, Y: -3},
-		Stats: protocol.Stats{Level: 4, XP: 7, XPNext: 40, HP: 20, MaxHP: 30, Atk: 14, Def: 6, Potions: 2, Gold: 120, Mana: 3, MaxMana: 8}}
-	m.bag = protocol.Bag{Class: "mage", Scores: []int{8, 12, 17, 10, 14, 6}, Style: "magic", AtkBonus: 4, DefBonus: 2, Kills: 31, BossKills: 1, Deaths: 3,
-		Items: []protocol.ItemInfo{{ID: 1, Name: "Bâton de chêne", Slot: "weapon", Kind: "magic", Worn: true, Atk: 4}}}
+		Stats: protocol.Stats{Level: 4, XP: 7, XPNext: 40, HP: 20, MaxHP: 30, Def: 13, Hit: 3, Dmg: "2d6+3", Potions: 2, Gold: 120, Mana: 3, MaxMana: 8}}
+	m.bag = protocol.Bag{Class: "mage", Scores: []int{8, 12, 17, 10, 14, 6}, Style: "magic", DefBonus: 2, Reduction: "2d8", Kills: 31, BossKills: 1, Deaths: 3,
+		Items: []protocol.ItemInfo{{ID: 1, Name: "Bâton de chêne", Slot: "weapon", Kind: "magic", Worn: true, Dice: "1d6+1", Family: "staff"}}}
 	m.quests = protocol.Quests{Standing: []protocol.Standing{{Place: "Valdurne", Tier: "Connu", Points: 4}}}
 	return m
 }
@@ -30,13 +30,13 @@ func TestSheetShowsEverythingAndInventoryNoLongerShowsAbilities(t *testing.T) {
 		m := sheetModel(lang, 120, 40)
 		m.sheet = true
 		out := ansi.Strip(m.sheetView(116, 30))
-		for _, want := range []string{"alice", "d6", "20/30", "3/8", "17 (+3)", "6 (-2)", "12, -3", "Valdurne", "Bâton de chêne", "31", "95 %", "+4 %"} {
+		for _, want := range []string{"alice", "d6", "20/30", "3/8", "17 (+3)", "6 (-2)", "12, -3", "Valdurne", "Bâton de chêne", "31", "65 %", "+4 %"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%s: fiche sans %q", lang, want)
 			}
 		}
 		inv := ansi.Strip(m.inventoryView(116, 30))
-		for _, bad := range []string{"FOR", "STR", "(+3)", "d6"} {
+		for _, bad := range []string{"FOR", "STR", "(+3)", "Palmarès", "Record"} {
 			if strings.Contains(inv, bad) {
 				t.Errorf("%s: l'inventaire montre encore %q", lang, bad)
 			}

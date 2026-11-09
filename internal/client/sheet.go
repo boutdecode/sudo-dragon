@@ -9,6 +9,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
+	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
@@ -53,16 +54,18 @@ func (m Model) sheetLeft(w int) []string {
 
 	style := hero.Kind(m.bag.Style).OrMelee()
 	var atkMod int
-	var chaMod = 0
+	var chaMod, agiMod = 0, 0
 	if len(m.bag.Scores) == int(hero.NumAbilities) {
+		agiMod = hero.Mod(m.bag.Scores[hero.AGI])
 		atkMod = hero.Mod(m.bag.Scores[style.Stat()])
 		chaMod = hero.Mod(m.bag.Scores[hero.CHA])
 	}
 	lines = append(lines, "",
-		row(m.t("sheet.attack"), fmt.Sprintf("%d  %s", st.Atk, dimStyle.Render(m.t("sheet.gear_bonus", m.bag.AtkBonus)))),
-		row(m.t("sheet.defense"), fmt.Sprintf("%d  %s", st.Def, dimStyle.Render(m.t("sheet.gear_bonus", m.bag.DefBonus)))),
+		row(m.t("sheet.defense"), fmt.Sprintf("%d  %s", st.Def, dimStyle.Render(m.t("sheet.def_detail", st.Def-m.bag.DefBonus-agiMod, agiMod, m.bag.DefBonus)))),
 		row(m.t("sheet.style"), fmt.Sprintf("%s (%s %+d)", m.t("hero.kind."+string(style)), m.t("hero.ability."+style.Stat().Key()), atkMod)),
-		row(m.t("sheet.accuracy"), fmt.Sprintf("%d %%", int(hero.Accuracy(atkMod)*100+0.5))),
+		row(m.t("sheet.accuracy"), m.t("sheet.hit_detail", st.Hit, int(hero.HitChance(st.Hit, hero.DefBase(hero.Medium))*100+0.5))),
+		row(m.t("sheet.attack"), textsafe.Clean(st.Dmg, 16)),
+		row(m.t("sheet.reduction"), reductionText(m.bag.Reduction)),
 		row(m.t("sheet.prices"), fmt.Sprintf("%+d %%  %s", hero.PriceAdjust(chaMod), dimStyle.Render("("+m.t("hero.impression."+hero.Impression(chaMod))+")"))),
 		"",
 		row(m.t("sheet.gold"), goldStyle.Render(fmt.Sprintf("%d", st.Gold))),
@@ -107,4 +110,12 @@ func (m Model) sheetRight(w int) []string {
 	}
 	lines = append(lines, "", " "+goldStyle.Render(m.t("quest.hud", open, ready)))
 	return lines
+}
+
+// reductionText présente les dés de réduction de l'armure ("—" sans armure).
+func reductionText(r string) string {
+	if r = cleanDice(r); r == "" {
+		return dimStyle.Render("—")
+	}
+	return "−" + r
 }

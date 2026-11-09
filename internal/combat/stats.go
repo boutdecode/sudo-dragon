@@ -3,6 +3,7 @@ package combat
 import (
 	"math/rand/v2"
 
+	"github.com/kevin/ascii-adventure/internal/dice"
 	"github.com/kevin/ascii-adventure/internal/hero"
 )
 
@@ -11,12 +12,11 @@ type Stats struct {
 	Level, XP int
 	MaxHP     int // somme des dés de vie lancés (voir hero), stockée: elle ne se recalcule pas
 	MaxMana   int
-	Atk, Def  int
 	Potions   int
 	Gold      int
 
-	// Base et caractéristiques tirées à la création. Les modificateurs s'ajoutent à Atk
-	// (selon le style de l'arme) ; CON et SAG ont déjà servi à fixer MaxHP et MaxMana.
+	// Base et caractéristiques tirées à la création. FOR, AGI et INT donnent le bonus de toucher et de
+	// dégâts (selon le style de l'arme), AGI la DEF ; CON et SAG ont déjà servi à fixer MaxHP et MaxMana.
 	Class  hero.Class
 	Scores hero.Scores
 
@@ -33,13 +33,11 @@ const MaxGold = 999_999
 
 // Valeurs de départ et gains par niveau.
 const (
-	startAtk     = 6
-	startDef     = 2
 	startPotions = 2
-
-	atkPerLevel = 2
-	defPerLevel = 1
 )
+
+// BareHands sont les dégâts à mains nues (avant le modificateur de FOR).
+var BareHands = dice.D(1, 4, 0)
 
 // NewStats renvoie un personnage de niveau 1: guerrier aux caractéristiques neutres (10).
 func NewStats() Stats { return NewStatsFor(hero.Warrior, hero.Default()) }
@@ -53,12 +51,15 @@ func NewStatsFor(class hero.Class, scores hero.Scores) Stats {
 	scores = scores.Sanitize()
 	return Stats{
 		Level: 1, MaxHP: hero.FirstHP(class, scores), MaxMana: hero.MaxMana(class, scores, 1),
-		Atk: startAtk, Def: startDef, Potions: startPotions, Class: class, Scores: scores,
+		Potions: startPotions, Class: class, Scores: scores,
 	}
 }
 
 // Mod renvoie le modificateur d'attaque du style k (FOR, AGI ou INT).
 func (s Stats) Mod(k hero.Kind) int { return s.Scores.Mod(k.OrMelee().Stat()) }
+
+// Defense est la DEF d'un personnage sans équipement: 10 (taille moyenne) plus le modificateur d'AGI.
+func (s Stats) Defense() int { return hero.DefBase(hero.Medium) + s.Scores.DefenseBonus() }
 
 // averageHP est le gain de PV « moyen » d'un niveau (la moitié du dé, plus un, plus le mod de CON).
 func (s Stats) averageHP() int {
@@ -82,8 +83,6 @@ func (s *Stats) AddXP(n int, rng *rand.Rand) (levels int) {
 			s.MaxHP += s.averageHP()
 		}
 		s.MaxMana = hero.MaxMana(s.Class, s.Scores, s.Level)
-		s.Atk += atkPerLevel
-		s.Def += defPerLevel
 		levels++
 	}
 	return levels
@@ -131,7 +130,8 @@ func (s *Stats) AddPotions(n int) int {
 
 // Fighter convertit la fiche en combattant avec hp points de vie actuels.
 func (s Stats) Fighter(hp int) Fighter {
-	return Fighter{HP: hp, MaxHP: s.MaxHP, Atk: s.Atk, Def: s.Def, Kind: hero.Melee, Mod: s.Mod(hero.Melee)}
+	m := s.Mod(hero.Melee)
+	return Fighter{HP: hp, MaxHP: s.MaxHP, Def: s.Defense(), Hit: m, Dmg: BareHands, DmgMod: m, Kind: hero.Melee}
 }
 
 // StatsAt reconstruit la fiche d'un guerrier aux caractéristiques neutres à partir de son
@@ -151,8 +151,6 @@ func StatsFor(level, xp, potions int, class hero.Class, scores hero.Scores, maxH
 	s.Level = level
 	s.MaxHP = hero.SanitizeHP(maxHP, s.Class, s.Scores, level)
 	s.MaxMana = hero.MaxMana(s.Class, s.Scores, level)
-	s.Atk = startAtk + (level-1)*atkPerLevel
-	s.Def = startDef + (level-1)*defPerLevel
 	s.Potions = max(0, min(potions, MaxPotions))
 	s.XP = max(0, min(xp, s.XPToNext()-1))
 	return s

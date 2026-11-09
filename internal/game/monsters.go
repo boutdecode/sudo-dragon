@@ -3,6 +3,9 @@ package game
 import (
 	"slices"
 
+	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/dice"
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -15,9 +18,15 @@ type species struct {
 	MoveEvery int        // ticks entre deux pas (un joueur: MoveCooldown)
 	Aggro     int        // rayon de détection en tuiles (Chebyshev)
 
-	// Caractéristiques de combat et récompense.
-	HP, Atk, Def int
-	XP           int
+	// Fiche de combat (voir internal/combat): DEF = base de la taille + DexMod, toucher = d20 + Hit,
+	// dégâts Dmg moins les dés de Reduction de l'adversaire. Et la récompense.
+	HP        int
+	Size      hero.Size
+	DexMod    int
+	Hit       int
+	Dmg       dice.Dice
+	Reduction dice.Dice
+	XP        int
 
 	// Garrison: n'apparaît que dans une forteresse (jamais selon le biome).
 	// Boss: monstre unique d'une forteresse, au butin amélioré.
@@ -28,16 +37,16 @@ type species struct {
 // Tous les monstres sont plus lents qu'un joueur (MoveEvery > MoveCooldown):
 // on peut toujours leur échapper en courant.
 var speciesList = []species{
-	{Kind: "rat", Habitat: world.Plain, MoveEvery: 6, Aggro: 5, HP: 8, Atk: 3, Def: 0, XP: 4},
-	{Kind: "crab", Habitat: world.Sand, MoveEvery: 5, Aggro: 3, HP: 12, Atk: 4, Def: 3, XP: 6},
-	{Kind: "wolf", Habitat: world.Forest, MoveEvery: 3, Aggro: 9, HP: 16, Atk: 6, Def: 1, XP: 10},
-	{Kind: "goblin", Habitat: world.Hills, MoveEvery: 4, Aggro: 8, HP: 22, Atk: 7, Def: 2, XP: 15},
-	{Kind: "yeti", Habitat: world.Snow, MoveEvery: 4, Aggro: 7, HP: 34, Atk: 10, Def: 4, XP: 30},
+	{Kind: "rat", Habitat: world.Plain, MoveEvery: 6, Aggro: 5, HP: 8, Size: hero.Small, Hit: 1, Dmg: dice.D(1, 4, 0), XP: 4},
+	{Kind: "crab", Habitat: world.Sand, MoveEvery: 5, Aggro: 3, HP: 12, Size: hero.Small, Hit: 2, Dmg: dice.D(1, 6, 0), Reduction: dice.D(1, 4, 0), XP: 6},
+	{Kind: "wolf", Habitat: world.Forest, MoveEvery: 3, Aggro: 9, HP: 16, Size: hero.Medium, DexMod: 1, Hit: 3, Dmg: dice.D(1, 6, 1), XP: 10},
+	{Kind: "goblin", Habitat: world.Hills, MoveEvery: 4, Aggro: 8, HP: 22, Size: hero.Medium, Hit: 3, Dmg: dice.D(1, 8, 0), XP: 15},
+	{Kind: "yeti", Habitat: world.Snow, MoveEvery: 4, Aggro: 7, HP: 34, Size: hero.Large, Hit: 5, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 30},
 
 	// Garnisons de forteresse: sans habitat, voir garrison.go.
-	{Kind: "skeleton", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 36, Atk: 10, Def: 4, XP: 25},
-	{Kind: "knight", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 60, Atk: 14, Def: 8, XP: 50},
-	{Kind: "warlord", Garrison: true, Boss: true, MoveEvery: 5, Aggro: 6, HP: 180, Atk: 22, Def: 12, XP: 250},
+	{Kind: "skeleton", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 36, Size: hero.Medium, Hit: 4, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 25},
+	{Kind: "knight", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 90, Size: hero.Medium, DexMod: 2, Hit: 7, Dmg: dice.D(2, 8, 0), Reduction: dice.D(1, 8, 0), XP: 50},
+	{Kind: "warlord", Garrison: true, Boss: true, MoveEvery: 5, Aggro: 6, HP: 180, Size: hero.Large, DexMod: 1, Hit: 8, Dmg: dice.D(3, 10, 3), Reduction: dice.D(2, 6, 0), XP: 250},
 }
 
 var speciesByTile = func() map[world.Tile][]species {
@@ -69,6 +78,11 @@ func SpeciesName(l i18n.Lang, kind string) string {
 		}
 	}
 	return ""
+}
+
+// fighter convertit l'espèce en combattant (PV pleins).
+func (s species) fighter() combat.Fighter {
+	return combat.Fighter{HP: s.HP, MaxHP: s.HP, Def: hero.DefBase(s.Size) + s.DexMod, Hit: s.Hit, Dmg: s.Dmg, Reduction: s.Reduction, Kind: hero.Melee}
 }
 
 // name renvoie le nom de l'espèce dans la langue l (clé "monster.<kind>").

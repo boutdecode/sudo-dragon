@@ -109,38 +109,56 @@ func TestGeneratedShopBuyEquipAndPersistEndToEnd(t *testing.T) {
 		}
 	}
 
+	// Un personnage de départ porte déjà l'arme de sa classe: elle est dans le sac avant tout achat.
+	const starter = 1
+	worn := 2 // arme de départ et armure
+	if slot == "weapon" {
+		worn = 1 // l'arme achetée remplace celle de départ
+	}
 	p.act(protocol.NPCBuyItem, offers[2].Arg)
-	b := p.bag("achat", func(b protocol.Bag) bool { return len(b.Items) == 1 })
-	it := b.Items[0]
-	bonus := it.Atk + it.Def
-	if it.Name != "Pièce trois" || bonus <= 0 || bonus > 12 || it.Slot != slot || it.Tier != 2 {
+	b := p.bag("achat", func(b protocol.Bag) bool { return len(b.Items) == starter+1 })
+	it := b.Items[starter]
+	if it.Name != "Pièce trois" || it.Slot != slot || it.Tier != 2 {
 		t.Fatalf("objet acheté: %+v", it)
 	}
-	if b.AtkBonus+b.DefBonus != 0 {
+	if slot == "weapon" {
+		// Rang 2 : deux dés, famille par défaut (épée courte, d6), qualité plafonnée au palier malgré le million proposé.
+		if it.Dice != "2d6+2" || it.Family != "shortsword" {
+			t.Fatalf("arme achetée: %+v", it)
+		}
+	} else if it.Def < 1 || it.Def > 2 || it.Reduction != "2d6" || it.Family != "medium" {
+		t.Fatalf("armure achetée: %+v", it)
+	}
+	if b.DefBonus != 0 {
 		t.Fatal("bonus avant d'équiper")
 	}
 
 	send(t, p.c, protocol.TGearAction, protocol.GearAction{Action: protocol.GearEquip, ID: it.ID})
-	b = p.bag("équipement", func(b protocol.Bag) bool { return len(b.Items) == 1 && b.Items[0].Worn })
-	if b.AtkBonus+b.DefBonus != bonus {
-		t.Fatalf("bonus %d/%d, attendu %d", b.AtkBonus, b.DefBonus, bonus)
-	}
-	if field == "atk" {
-		p.untilStat("attaque", func(s protocol.Stats) int { return s.Atk }, 14+bonus)
+	b = p.bag("équipement", func(b protocol.Bag) bool { return len(b.Items) == starter+1 && b.Items[starter].Worn })
+	if slot == "weapon" {
+		p.untilStat("dégâts", func(s protocol.Stats) int {
+			if s.Dmg == "2d6+2" {
+				return 1
+			}
+			return 0
+		}, 1)
 	} else {
-		p.untilStat("défense", func(s protocol.Stats) int { return s.Def }, 6+bonus)
+		if b.DefBonus != it.Def || b.Reduction != "2d6" {
+			t.Fatalf("armure portée: bonus %d, réduction %s", b.DefBonus, b.Reduction)
+		}
+		p.untilStat("défense", func(s protocol.Stats) int { return s.Def }, 10+it.Def)
 	}
 
 	// Sac et équipement survivent à la déconnexion et au redémarrage de la session.
 	waitUntil(t, "sac enregistré", func() bool {
 		ch, _ := e.be.LoadCharacter("aldric")
-		return ch != nil && len(ch.Gear.Items) == 1 && len(ch.Gear.Worn) == 1
+		return ch != nil && len(ch.Gear.Items) == starter+1 && len(ch.Gear.Worn) == worn
 	})
 	p.c.Close(websocket.StatusNormalClosure, "")
 	ch, _ := e.be.LoadCharacter("aldric")
 	p2 := e.joinChar(t, "aldric", spots[0], *ch)
-	b = p2.bag("reconnexion", func(b protocol.Bag) bool { return len(b.Items) == 1 })
-	if !b.Items[0].Worn || b.AtkBonus+b.DefBonus != bonus {
+	b = p2.bag("reconnexion", func(b protocol.Bag) bool { return len(b.Items) == starter+1 })
+	if !b.Items[starter].Worn || b.DefBonus != it.Def {
 		t.Fatalf("après reconnexion: %+v", b)
 	}
 	// L'étalage généré est enregistré : un second joueur le voit sans nouvel appel au modèle.
@@ -154,7 +172,7 @@ func gearSlotAndField(k world.NPCKind) (string, string) {
 	if k == world.NPCArmorer {
 		return "armor", "def"
 	}
-	return "weapon", "atk"
+	return "weapon", "quality"
 }
 
 func buyArgs(d protocol.NPCDialog) (out []string) {

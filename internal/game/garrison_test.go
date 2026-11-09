@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
-	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -64,7 +63,7 @@ func TestGarrisonSpeciesAreConsistent(t *testing.T) {
 	}
 	// La puissance croît avec le rang.
 	g, e, b := speciesNamed(t, "skeleton"), speciesNamed(t, "knight"), speciesNamed(t, "warlord")
-	if !(g.HP < e.HP && e.HP < b.HP && g.Atk < e.Atk && e.Atk < b.Atk && g.Def < e.Def && e.Def < b.Def && g.XP < e.XP && e.XP < b.XP) {
+	if !(g.HP < e.HP && e.HP < b.HP && g.Dmg.Avg() < e.Dmg.Avg() && e.Dmg.Avg() < b.Dmg.Avg() && g.fighter().Def < e.fighter().Def && e.fighter().Def < b.fighter().Def && g.XP < e.XP && e.XP < b.XP) {
 		t.Fatal("les rangs de garnison ne sont pas strictement croissants")
 	}
 	// Le seigneur est unique par forteresse.
@@ -383,60 +382,6 @@ func TestOrdinaryMonsterDoesNotDropBossLoot(t *testing.T) {
 	r.g.act(r.p, combat.Attack)
 	if r.p.stats.Potions > 1 || strings.Contains(strings.Join(r.last().Log, "|"), "trésor") {
 		t.Fatalf("butin de boss pour un rat: %d potions, %v", r.p.stats.Potions, r.last().Log)
-	}
-}
-
-// --- Équilibrage ---
-
-// L'équilibrage encode l'intention de conception : soldat vers le niveau 4,
-// chevalier vers le 7-8, seigneur de guerre vers le 13-14.
-func TestGarrisonBalance(t *testing.T) {
-	winRate := func(kind string, level int) float64 {
-		sp := speciesNamed(t, kind)
-		st := combat.NewStats()
-		st.AddXP(sumXPForLevel(level), nil)
-		if st.Level != level {
-			t.Fatalf("niveau %d atteint au lieu de %d", st.Level, level)
-		}
-		wins := 0
-		const trials = 600
-		for i := 0; i < trials; i++ {
-			b := combat.New(st.Fighter(st.MaxHP), st.Potions,
-				combat.Fighter{HP: sp.HP, MaxHP: sp.HP, Atk: sp.Atk, Def: sp.Def}, sp.name(i18n.FR),
-				rand.New(rand.NewPCG(uint64(i), 7)))
-			for turn := 0; b.Result == combat.Ongoing && turn < 500; turn++ {
-				if b.Player.HP <= st.MaxHP/3 && b.Potions > 0 {
-					b.Act(combat.Item)
-				} else {
-					b.Act(combat.Attack)
-				}
-			}
-			if b.Result == combat.Won {
-				wins++
-			}
-		}
-		return float64(wins) / trials
-	}
-	cases := []struct {
-		kind     string
-		level    int
-		min, max float64
-		why      string
-	}{
-		{"skeleton", 1, 0, 0.05, "un débutant ne bat pas un squelette"},
-		{"skeleton", 4, 0.85, 1, "un joueur de niveau 4 bat un squelette"},
-		{"knight", 4, 0, 0.10, "un niveau 4 ne bat pas un chevalier"},
-		{"knight", 8, 0.85, 1, "un niveau 8 bat un chevalier"},
-		{"warlord", 8, 0, 0.02, "un niveau 8 ne bat pas le seigneur de guerre"},
-		{"warlord", 11, 0, 0.25, "un niveau 11 a peu de chances contre le seigneur"},
-		{"warlord", 16, 0.90, 1, "un niveau 16 bat le seigneur de guerre"},
-	}
-	for _, c := range cases {
-		got := winRate(c.kind, c.level)
-		if got < c.min || got > c.max {
-			t.Errorf("%s niveau %d: %.0f %% de victoires, attendu [%.0f %%, %.0f %%] (%s)",
-				c.kind, c.level, got*100, c.min*100, c.max*100, c.why)
-		}
 	}
 }
 

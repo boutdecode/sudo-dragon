@@ -27,7 +27,7 @@ func stockJSON(items ...map[string]any) llm.Response {
 }
 
 func item(name string, tier int) map[string]any {
-	return map[string]any{"slot": "weapon", "name": name, "desc": "Une lame.", "tier": tier, "atk": 3, "price": 90}
+	return map[string]any{"slot": "weapon", "name": name, "desc": "Une lame.", "tier": tier, "family": "longsword", "quality": 1, "price": 90}
 }
 
 func (r *rig) stock(req StockRequest) StockReply {
@@ -47,6 +47,14 @@ func TestStockPromptHasNoPlayerTextAndLists(t *testing.T) {
 		if !strings.Contains(sys, want) {
 			t.Errorf("prompt d'étalage sans %q", want)
 		}
+	}
+	for _, fam := range []string{"weapon: dagger", "shortsword", "greatsword", "crossbow", `"family"`, `"quality"`} {
+		if !strings.Contains(sys, fam) {
+			t.Errorf("prompt d'étalage sans %q", fam)
+		}
+	}
+	if strings.Contains(sys, `"atk"`) {
+		t.Error("le prompt ne doit plus demander d'attaque chiffrée")
 	}
 	if strings.Contains(sys, "DONNÉES") {
 		t.Error("aucune donnée de joueur ne doit entrer dans la demande d'étalage")
@@ -69,11 +77,11 @@ func TestStockIsValidatedModeratedStoredAndGeneratedOnce(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	for i, it := range rep.Wares.Items {
-		if it.ID != int64(i+1) || it.Slot != gear.Weapon || it.Tier > 3 || it.Atk <= 0 {
+		if it.ID != int64(i+1) || it.Slot != gear.Weapon || it.Tier > 3 || it.Family != "longsword" || it.Damage().IsZero() {
 			t.Errorf("objet %d: %+v", i, it)
 		}
-		if _, hi := gear.Bounds(gear.Weapon, it.Tier); it.Atk > hi {
-			t.Errorf("bonus %d au-delà du plafond", it.Atk)
+		if _, hi := gear.Bounds(gear.Weapon, it.Tier); it.Quality > hi {
+			t.Errorf("qualité %d au-delà du plafond", it.Quality)
 		}
 	}
 	// Enregistré : un second appel relit la base sans interroger le modèle.
@@ -142,8 +150,8 @@ func TestStockWithTheModelDown(t *testing.T) {
 }
 
 func TestParseStockIsTolerant(t *testing.T) {
-	sp, props, ok := parseStock("```json\n{\"specialty\":\"haches\",\"items\":[{\"slot\":\"weapon\",\"name\":\"Hache\",\"tier\":\"2\",\"atk\":\"4\",\"price\":null},{\"name\":5}]}\n```")
-	if !ok || sp != "haches" || len(props) != 2 || props[0].Tier != 2 || props[0].Atk != 4 {
+	sp, props, ok := parseStock("```json\n{\"specialty\":\"haches\",\"items\":[{\"slot\":\"weapon\",\"name\":\"Hache\",\"tier\":\"2\",\"quality\":\"4\",\"family\":\"axe\",\"price\":null},{\"name\":5}]}\n```")
+	if !ok || sp != "haches" || len(props) != 2 || props[0].Tier != 2 || props[0].Quality != 4 || props[0].Family != "axe" {
 		t.Fatalf("%q %+v %v", sp, props, ok)
 	}
 	for _, bad := range []string{"", "rien", `{"items":[]}`, `{"items":"non"}`} {
@@ -154,11 +162,11 @@ func TestParseStockIsTolerant(t *testing.T) {
 }
 
 func TestStockPromptAsksForWeaponStyleAndParsesIt(t *testing.T) {
-	if sys := BuildStockMessages(smithReq())[0].Content; !strings.Contains(sys, "melee|ranged|magic") {
+	if sys := BuildStockMessages(smithReq())[0].Content; !strings.Contains(sys, "family") {
 		t.Error("le prompt d'étalage doit demander le style des armes")
 	}
-	_, props, ok := parseStock(`{"specialty":"arcs","items":[{"slot":"weapon","name":"Arc","tier":1,"atk":2,"price":30,"kind":"ranged"}]}`)
-	if !ok || len(props) != 1 || props[0].Kind != "ranged" {
+	_, props, ok := parseStock(`{"specialty":"arcs","items":[{"slot":"weapon","name":"Arc","tier":1,"family":"crossbow","price":30,"kind":"ranged"}]}`)
+	if !ok || len(props) != 1 || props[0].Family != "crossbow" {
 		t.Fatalf("%+v %v", props, ok)
 	}
 }
@@ -167,7 +175,7 @@ func TestStaleStockIsRegeneratedButStillServedWhenTheModelIsDown(t *testing.T) {
 	r := newRig(t, Config{})
 	r.svc.wares = r.be.Store
 	old := gear.Wares{NPC: smithReq().NPC.Key(), Specialty: "anciennes lames", Version: 1,
-		Items: []gear.Item{{ID: 1, Name: "Vieille épée", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 30}}}
+		Items: []gear.Item{{ID: 1, Name: "Vieille épée", Slot: gear.Weapon, Tier: 1, Family: "dagger", Price: 30}}}
 	if err := r.be.Store.PutWares(context.Background(), old); err != nil {
 		t.Fatal(err)
 	}

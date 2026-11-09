@@ -21,10 +21,10 @@ func hash(k world.NPCKey, salt uint64) uint64 {
 }
 
 // namesPerSlot est le nombre de noms de base du catalogue pour chaque emplacement.
-var namesPerSlot = map[Slot]int{Weapon: 10, Armor: 5, Shield: 4, Helm: 4}
+var namesPerSlot = map[Slot]int{Weapon: 12, Armor: 5, Shield: 4, Helm: 4}
 
-// weaponNames range les noms d'armes par style : 0-5 mêlée, 6-7 distance, 8-9 magie.
-var weaponNames = map[hero.Kind][2]int{hero.Melee: {0, 6}, hero.Ranged: {6, 8}, hero.Magic: {8, 10}}
+// weaponNames range les noms d'armes par style (indices de gear.name.weapon.N).
+var weaponNames = map[hero.Kind][]int{hero.Melee: {0, 1, 2, 3, 4, 5, 10, 11}, hero.Ranged: {6, 7}, hero.Magic: {8, 9}}
 
 // weaponKinds : les armes du repli tournent entre les trois styles.
 var weaponKinds = [...]hero.Kind{hero.Melee, hero.Ranged, hero.Magic}
@@ -58,31 +58,57 @@ func Fallback(npc world.NPCKey, ctx Context, l i18n.Lang) Wares {
 		slot := ctx.Slots[i%len(ctx.Slots)]
 		tier := 1 + i*maxTier/n
 		var name string
-		lo, span := 0, namesPerSlot[slot]
+		idx := make([]int, namesPerSlot[slot]) // indices de noms utilisables pour cet emplacement
+		for j := range idx {
+			idx[j] = j
+		}
 		var kind hero.Kind
 		if slot == Weapon {
 			kind = weaponKinds[i%len(weaponKinds)]
-			r := weaponNames[kind]
-			lo, span = r[0], r[1]-r[0]
+			idx = weaponNames[kind]
 		}
+		span := len(idx)
 		base := int(hash(npc, uint64(10+i)) % uint64(span))
+		pick := idx[base]
 		for try := 0; try < span; try++ {
-			name = itemName(l, slot, lo+(base+try)%span, tier)
+			pick = idx[(base+try)%span]
+			name = itemName(l, slot, pick, tier)
 			if !used[name] {
 				break
 			}
 		}
 		used[name] = true
+		it := Item{ID: int64(i + 1), Name: name, Desc: i18n.T(l, "gear.desc.fallback"), Slot: slot, Tier: tier, Origin: npc}
 		_, hi := Bounds(slot, tier)
-		it := Item{ID: int64(i + 1), Name: name, Desc: i18n.T(l, "gear.desc.fallback"), Slot: slot, Tier: tier, Kind: kind, Origin: npc}
-		if slot == Weapon {
-			it.Atk = hi
-		} else {
+		switch slot {
+		case Weapon:
+			it.Family, it.Quality = weaponNameFamilies[pick], tier/2
+		case Armor:
+			it.Family, it.Def = armorNameFamilies[pick], hi
+		default:
 			it.Def = hi
 		}
-		lo, up := PriceBounds(tier, hi)
+		it = shape(it, kind)
+		lo, up := PriceBounds(tier, it.Power())
 		it.Price = (lo + up) / 2
 		w.Items = append(w.Items, it)
 	}
 	return w
+}
+
+// Starter est l'arme de départ d'un personnage de la classe donnée: épée courte, arc court ou bâton de
+// rang 1, qualité 0. Elle n'a ni identifiant ni vendeur d'origine.
+func Starter(l i18n.Lang, class hero.Class) Item {
+	pick := 0 // épée courte
+	switch class {
+	case hero.Rogue:
+		pick = 6 // arc court
+	case hero.Mage:
+		pick = 8 // bâton
+	}
+	it := Item{Name: itemName(l, Weapon, pick, 1), Desc: i18n.T(l, "gear.desc.starter"), Slot: Weapon, Tier: 1, Family: weaponNameFamilies[pick]}
+	it = shape(it, hero.Melee)
+	lo, up := PriceBounds(1, it.Power())
+	it.Price = (lo + up) / 2
+	return it
 }

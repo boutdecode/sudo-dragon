@@ -81,14 +81,15 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 
 	var sc hero.Scores
 	copy(sc[:], last.Scores)
+	// Le personnage est enregistré au départ du joueur, avec son arme de départ équipée (bâton du magicien).
+	c.Close(websocket.StatusNormalClosure, "")
 	waitUntil(t, "personnage créé enregistré", func() bool {
 		ch, _ := be.LoadCharacter("alice")
-		return ch != nil && ch.Class == "mage" && hero.Scores(ch.Scores) == sc && ch.MaxHP == hero.FirstHP(hero.Mage, sc) && ch.Potions == 2 && ch.Level == 1
+		return ch != nil && ch.Class == "mage" && hero.Scores(ch.Scores) == sc && ch.MaxHP == hero.FirstHP(hero.Mage, sc) && ch.Potions == 2 && ch.Level == 1 &&
+			len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "staff" && ch.Gear.Worn["weapon"] == ch.Gear.Items[0].ID
 	})
 
 	// Le même compte ne repasse plus par la création.
-	c.Close(websocket.StatusNormalClosure, "")
-	waitSavedOnLeave(t, be, "alice")
 	c2, w := signInEventually(t, url, "alice")
 	defer c2.Close(websocket.StatusNormalClosure, "")
 	if w.Name != "alice" {
@@ -122,9 +123,11 @@ func TestExistingCharacterWithoutSheetKeepsItsProgress(t *testing.T) {
 	waitSavedOnLeave(t, be, "alice")
 
 	sp := spawn()
-	old := store.Character{Level: 6, XP: 4, Potions: 3, HP: 20, X: sp.X, Y: sp.Y, Gold: 250, Kills: 12,
-		Quests: []quest.Quest{{ID: 2, Title: "Les loups", State: quest.Active, Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}}}, QuestsDirty: true}
-	be.SaveCharacter("alice", old) // sans fiche: la création est à faire
+	giver, _ := giverSpots(t)
+	q := quest.Quest{ID: 2, Giver: giver.Key(), Title: "Les loups", Story: "x", State: quest.Active, Tier: 1,
+		Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}, Reward: quest.Reward{Gold: 5}, CreatedAt: time.Now()}
+	old := store.Character{Level: 6, XP: 4, Potions: 3, HP: 20, X: sp.X, Y: sp.Y, Gold: 250, Kills: 12, Quests: []quest.Quest{q}, QuestsDirty: true, GearDirty: true} // GearDirty : vide le sac laissé par register
+	be.SaveCharacter("alice", old)                                                                                                                                    // sans fiche: la création est à faire
 
 	c := dial(t, url)
 	send(t, c, protocol.TLogin, signIn("alice", testPass))
@@ -148,8 +151,9 @@ func TestExistingCharacterWithoutSheetKeepsItsProgress(t *testing.T) {
 	if st.MaxHP < 6 || st.MaxHP > 8+4+5*(8+4) || st.HP != st.MaxHP {
 		t.Fatalf("PV recalculés: %d/%d", st.HP, st.MaxHP)
 	}
+	c.Close(websocket.StatusNormalClosure, "")
 	waitUntil(t, "fiche enregistrée avec la progression", func() bool {
 		ch, _ := be.LoadCharacter("alice")
-		return ch != nil && ch.Class == "rogue" && ch.Gold == 250 && len(ch.Quests) == 1 && ch.Kills == 12
+		return ch != nil && ch.Class == "rogue" && ch.Gold == 250 && len(ch.Quests) == 1 && ch.Kills == 12 && len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "shortbow"
 	})
 }

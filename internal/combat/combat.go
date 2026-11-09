@@ -6,6 +6,7 @@ package combat
 import (
 	"math/rand/v2"
 
+	"github.com/kevin/ascii-adventure/internal/dice"
 	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
@@ -60,23 +61,31 @@ func (r Result) String() string {
 
 // Réglages d'équilibrage.
 const (
-	HealAmount      = 15   // PV rendus par une potion
-	MaxPotions      = 9    // plafond de l'inventaire
-	fleeChance      = 0.5  // chance de réussir une fuite
-	playerCritRate  = 0.10 // coups critiques (dégâts x2)
-	monsterCritRate = 0.05
+	HealAmount   = 15  // PV rendus par une potion
+	MaxPotions   = 9   // plafond de l'inventaire
+	fleeChance   = 0.5 // chance de réussir une fuite
+	DefendBonus  = 4   // bonus de DEF de l'action Défendre, jusqu'à la riposte
+	critRoll     = 20  // le 20 naturel touche toujours et double les dés
+	fumbleRoll   = 1   // le 1 naturel rate toujours
+	minimumDamge = 1   // un coup qui touche inflige au moins ceci, réduction comprise
 )
 
-// Fighter est un combattant.
+// Fighter est un combattant. Toucher: d20 + Hit doit dépasser la DEF de l'adversaire. Dégâts: Dmg (dés et
+// qualité de l'arme) + DmgMod, moins les dés de Reduction de l'adversaire.
 type Fighter struct {
 	HP, MaxHP int
-	Atk, Def  int
+	Def       int       // DEF totale (taille, agilité, équipement)
+	Hit       int       // bonus au jet de toucher
+	Dmg       dice.Dice // dés de dégâts
+	DmgMod    int       // modificateur de caractéristique ajouté aux dégâts
+	Reduction dice.Dice // dés retirés aux dégâts reçus (armure)
 
-	// Style de l'arme (vide: mêlée), modificateur de la caractéristique qui le dirige, et mana
-	// (seuls les joueurs en ont). Les monstres frappent toujours, sans modificateur.
+	// Style de l'arme (vide: mêlée) et mana (seuls les joueurs en ont).
 	Kind          hero.Kind
-	Mod           int
 	Mana, MaxMana int
+
+	// Sans mana, une arme magique sert de gourdin: toucher et modificateur de FOR du porteur.
+	MeleeHit, MeleeMod int
 }
 
 // Battle est un duel entre un joueur et un monstre.
@@ -99,13 +108,45 @@ func New(player Fighter, potions int, monster Fighter, monsterName string, rng *
 
 func (b *Battle) t(key string, args ...any) string { return i18n.T(b.Lang, key, args...) }
 
-// damage calcule les dégâts d'une attaque: attaque moins défense, ±1, minimum 1.
-func (b *Battle) damage(atk, def int, critRate float64) (dmg int, crit bool) {
-	dmg = max(1, atk-def+b.rng.IntN(3)-1)
-	if b.rng.Float64() < critRate {
-		return dmg * 2, true
+// blow est le résultat d'une attaque.
+type blow struct {
+	roll      int // d20 naturel
+	total     int // d20 + bonus
+	hit, crit bool
+	damage    int // dégâts infligés (0 si raté)
+	reduced   int // part retirée par l'armure
+	targetDef int
+	rollText  string
+}
+
+// strike résout une attaque de att contre une cible de DEF def et de réduction red.
+func (b *Battle) strike(att Fighter, def int, red dice.Dice) blow {
+	r := b.rng.IntN(20) + 1
+	bl := blow{roll: r, total: r + att.Hit, targetDef: def}
+	bl.hit = hero.Hits(r, att.Hit, def)
+	bl.crit = bl.hit && r == critRoll
+	bl.rollText = b.t("combat.roll", r, att.Hit, bl.total, def)
+	if !bl.hit {
+		return bl
 	}
-	return dmg, false
+	var raw int
+	if bl.crit {
+		raw = att.Dmg.RollCrit(b.rng)
+	} else {
+		raw = att.Dmg.Roll(b.rng)
+	}
+	raw += att.DmgMod
+	bl.damage = max(minimumDamge, raw-red.Roll(b.rng))
+	bl.reduced = max(0, raw-bl.damage)
+	return bl
+}
+
+// with ajoute au message la part retirée par l'armure.
+func (b *Battle) reducedNote(bl blow) string {
+	if bl.reduced <= 0 {
+		return ""
+	}
+	return " " + b.t("combat.reduced", bl.reduced)
 }
 
 // Act résout un tour complet: l'action du joueur puis la riposte du monstre.
@@ -121,31 +162,38 @@ func (b *Battle) Act(a Action) []string {
 	switch a {
 	case Attack:
 		kind := b.Player.Kind.OrMelee()
+		att, clubbed := b.Player, false
 		if kind == hero.Magic {
-			if b.Player.Mana < hero.SpellCost {
-				return []string{b.t("combat.no_mana", hero.SpellCost)}
+			if att.Mana < hero.SpellCost { // sans mana: coup de l'arme tenue comme un gourdin
+				att.Hit, att.Dmg, att.DmgMod, clubbed = att.MeleeHit, BareHands, att.MeleeMod, true
+			} else {
+				b.Player.Mana -= hero.SpellCost
 			}
-			b.Player.Mana -= hero.SpellCost
 		}
-		if b.rng.Float64() >= hero.Accuracy(b.Player.Mod) {
-			log = append(log, b.t("combat.player_miss", b.MonsterName))
-			break
-		}
-		dmg, crit := b.damage(b.Player.Atk+b.Player.Mod, b.Monster.Def, playerCritRate)
-		b.Monster.HP = max(0, b.Monster.HP-dmg)
+		bl := b.strike(att, b.Monster.Def, b.Monster.Reduction)
 		switch {
-		case crit:
-			log = append(log, b.t("combat.player_crit", dmg, b.MonsterName))
-		case kind == hero.Ranged:
-			log = append(log, b.t("combat.player_shot", b.MonsterName, dmg))
-		case kind == hero.Magic:
-			log = append(log, b.t("combat.player_spell", b.MonsterName, dmg))
+		case !bl.hit:
+			log = append(log, bl.rollText+" "+b.t("combat.player_miss", b.MonsterName))
 		default:
-			log = append(log, b.t("combat.player_hit", b.MonsterName, dmg))
+			b.Monster.HP = max(0, b.Monster.HP-bl.damage)
+			var msg string
+			switch {
+			case bl.crit:
+				msg = b.t("combat.player_crit", bl.damage, b.MonsterName)
+			case clubbed:
+				msg = b.t("combat.player_club", b.MonsterName, bl.damage)
+			case kind == hero.Ranged:
+				msg = b.t("combat.player_shot", b.MonsterName, bl.damage)
+			case kind == hero.Magic:
+				msg = b.t("combat.player_spell", b.MonsterName, bl.damage)
+			default:
+				msg = b.t("combat.player_hit", b.MonsterName, bl.damage)
+			}
+			log = append(log, bl.rollText+" "+msg+b.reducedNote(bl))
 		}
 	case Defend:
 		defending = true
-		log = append(log, b.t("combat.defend"))
+		log = append(log, b.t("combat.defend", DefendBonus))
 	case Item:
 		if b.Potions <= 0 {
 			return []string{b.t("combat.no_potion")}
@@ -170,18 +218,21 @@ func (b *Battle) Act(a Action) []string {
 	}
 
 	// Riposte du monstre.
-	dmg, crit := b.damage(b.Monster.Atk, b.Player.Def, monsterCritRate)
+	def := b.Player.Def
 	if defending {
-		dmg = max(1, dmg/2)
+		def += DefendBonus
 	}
-	b.Player.HP = max(0, b.Player.HP-dmg)
+	bl := b.strike(b.Monster, def, b.Player.Reduction)
 	switch {
-	case crit:
-		log = append(log, b.t("combat.monster_crit", b.MonsterName, dmg))
-	case defending:
-		log = append(log, b.t("combat.monster_partial", b.MonsterName, dmg))
+	case !bl.hit:
+		log = append(log, bl.rollText+" "+b.t("combat.monster_miss", b.MonsterName))
 	default:
-		log = append(log, b.t("combat.monster_hit", b.MonsterName, dmg))
+		b.Player.HP = max(0, b.Player.HP-bl.damage)
+		msg := b.t("combat.monster_hit", b.MonsterName, bl.damage)
+		if bl.crit {
+			msg = b.t("combat.monster_crit", b.MonsterName, bl.damage)
+		}
+		log = append(log, bl.rollText+" "+msg+b.reducedNote(bl))
 	}
 	if b.Player.HP <= 0 {
 		b.Result = Lost

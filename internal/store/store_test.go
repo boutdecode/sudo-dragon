@@ -612,9 +612,9 @@ func TestGearRoundTripAndWares(t *testing.T) {
 	origin := world.NPCKey{Region: world.RegionPos{X: 2, Y: -1}, Index: 6}
 	inv := gear.Inventory{
 		Items: []gear.Item{
-			{ID: 1, Name: "Épée longue", Desc: "Bien équilibrée.", Slot: gear.Weapon, Tier: 2, Atk: 4, Price: 130, Kind: hero.Melee, Origin: origin},
+			{ID: 1, Name: "Épée longue", Desc: "Bien équilibrée.", Slot: gear.Weapon, Tier: 2, Family: "longsword", Quality: 1, Price: 130, Kind: hero.Melee, Origin: origin},
 			{ID: 2, Name: "Casque de fer", Slot: gear.Helm, Tier: 1, Def: 1, Price: 30, Origin: origin},
-			{ID: 3, Name: "Arc long", Slot: gear.Weapon, Tier: 1, Atk: 2, Price: 40, Kind: hero.Ranged, Origin: origin},
+			{ID: 3, Name: "Arc long", Slot: gear.Weapon, Tier: 1, Family: "shortbow", Price: 40, Kind: hero.Ranged, Origin: origin},
 		},
 		Worn: map[gear.Slot]int64{gear.Weapon: 1},
 	}

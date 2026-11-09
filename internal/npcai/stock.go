@@ -18,8 +18,9 @@ import (
 // de joueur n'entre dans cette demande.
 
 // StockVersion identifie la version du prompt d'étalage (enregistrée avec l'assortiment).
-// La version 2 ajoute le style des armes (mêlée, distance, magie) : les étalages plus anciens sont régénérés.
-const StockVersion = 2
+// La version 3 passe au combat par dés (famille et qualité des armes, réduction des armures) : les étalages plus
+// anciens sont régénérés.
+const StockVersion = 3
 
 const (
 	stockMaxTokens = 900
@@ -73,7 +74,13 @@ func BuildStockMessages(req StockRequest) []llm.Message {
 		slots[i] = string(s)
 	}
 	b.WriteString("\n")
-	b.WriteString(i18n.T(l, "prompt.stock.rules", strings.Join(slots, ", "), req.Context.MaxTier, req.Context.MaxTier))
+	var fams []string
+	for _, sl := range req.Context.Slots {
+		if f := gear.Families(sl); len(f) > 0 {
+			fams = append(fams, string(sl)+": "+strings.Join(f, ", "))
+		}
+	}
+	b.WriteString(i18n.T(l, "prompt.stock.rules", strings.Join(slots, ", "), req.Context.MaxTier, req.Context.MaxTier, strings.Join(fams, " ; ")))
 	b.WriteString("\n\n")
 	b.WriteString(i18n.T(l, "prompt.stock.format"))
 	return []llm.Message{
@@ -87,8 +94,9 @@ type rawStockItem struct {
 	Name  flexString `json:"name"`
 	Desc  flexString `json:"desc"`
 	Tier  flexInt    `json:"tier"`
-	Atk   flexInt    `json:"atk"`
 	Def   flexInt    `json:"def"`
+	Fam   flexString `json:"family"`
+	Qual  flexInt    `json:"quality"`
 	Price flexInt    `json:"price"`
 	Kind  flexString `json:"kind"`
 }
@@ -111,7 +119,7 @@ func parseStock(content string) (specialty string, props []gear.Proposal, ok boo
 	for _, it := range raw.Items {
 		props = append(props, gear.Proposal{
 			Slot: string(it.Slot), Name: string(it.Name), Desc: string(it.Desc),
-			Tier: int(it.Tier), Atk: int(it.Atk), Def: int(it.Def), Price: int(it.Price), Kind: string(it.Kind),
+			Tier: int(it.Tier), Family: string(it.Fam), Quality: int(it.Qual), Def: int(it.Def), Price: int(it.Price), Kind: string(it.Kind),
 		})
 	}
 	return textsafe.Clean(string(raw.Specialty), maxSpecialty), props, true
@@ -163,6 +171,7 @@ func (s *Service) processStock(parent context.Context, req StockRequest) StockRe
 		if w, ok, err := s.wares.GetWares(ctx, key); err != nil {
 			s.log.Warn("lecture de l'assortiment", "err", err)
 		} else if ok && len(w.Items) > 0 {
+			w.Items = gear.SanitizeItems(w.Items) // objets d'une ancienne version: convertis
 			if w.Version >= StockVersion {
 				return StockReply{Wares: w, FromStore: true}
 			}

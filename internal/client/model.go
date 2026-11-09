@@ -18,6 +18,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
+	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -996,7 +997,7 @@ func (m Model) sidePanel() string {
 		m.t("hud.level_xp", st.Level, st.XP, st.XPNext),
 		"    " + ui.FlatBar(st.XP, st.XPNext, 10, ui.ColOK),
 		m.t("hud.hp") + ui.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
-		dimStyle.Render(m.t("hud.stats", st.Atk, st.Def, st.Potions)),
+		dimStyle.Render(m.t("hud.stats", st.Def, textsafe.Clean(st.Dmg, 16), st.Potions)),
 		" " + goldStyle.Render(m.t("hud.gold", st.Gold)),
 	}
 	if st.MaxMana > 0 {
@@ -1106,9 +1107,9 @@ func (m Model) combatView(w, h int) string {
 	iw, ih := leftW-2, midH-2
 
 	barW := max(4, min(30, iw-12))
-	monsterLines := []string{" " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr)).Render(name),
+	monsterLines := []string{" " + lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr)).Render(name) + " " + dimStyle.Render(m.t("fight.def", c.MonsterDef)),
 		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.MonsterHP, c.MonsterMaxHP, barW), c.MonsterHP, c.MonsterMaxHP)}
-	playerLines := []string{m.t("fight.you"),
+	playerLines := []string{m.t("fight.you") + " " + dimStyle.Render(m.t("fight.def", c.PlayerDef)),
 		fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)}
 	if c.PlayerMaxMP > 0 {
 		playerLines = append(playerLines, fmt.Sprintf(" %s %3d/%d %s", ui.Bar(c.PlayerMana, c.PlayerMaxMP, barW), c.PlayerMana, c.PlayerMaxMP, dimStyle.Render(m.t("hud.mana_short"))))

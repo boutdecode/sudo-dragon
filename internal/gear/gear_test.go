@@ -14,19 +14,23 @@ func ctx(slots ...Slot) Context {
 }
 
 func TestValidWeaponAndArmor(t *testing.T) {
-	w, err := Validate(Proposal{Slot: "weapon", Name: "Épée longue", Desc: "Une lame bien équilibrée.", Tier: 2, Atk: 4, Def: 99, Price: 130}, ctx(Weapon))
+	w, err := Validate(Proposal{Slot: "weapon", Name: "Épée longue", Desc: "Une lame bien équilibrée.", Tier: 2, Family: "longsword", Quality: 2, Def: 99, Price: 130}, ctx(Weapon))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Slot != Weapon || w.Atk != 4 || w.Def != 0 || w.Tier != 2 || w.Origin.Index != 4 {
+	if w.Slot != Weapon || w.Quality != 2 || w.Def != 0 || w.Tier != 2 || w.Origin.Index != 4 || w.Kind != hero.Melee {
 		t.Fatalf("%+v", w)
 	}
-	a, err := Validate(Proposal{Slot: " ARMOR ", Name: "Cotte de mailles", Tier: 3, Atk: 50, Def: 2, Price: 1}, ctx(Armor, Shield))
+	// Rang 2, tranchant (d6), qualité 2 : 2d6+2.
+	if got := w.Damage().String(); got != "2d6+2" {
+		t.Fatalf("dégâts %s", got)
+	}
+	a, err := Validate(Proposal{Slot: " ARMOR ", Name: "Cotte de mailles", Tier: 3, Family: "medium", Quality: 50, Def: 2, Price: 1}, ctx(Armor, Shield))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Atk != 0 || a.Def != 2 || a.Price < 5 {
-		t.Fatalf("%+v", a)
+	if a.Quality != 0 || a.Def != 2 || a.Price < 5 || a.Reduction().String() != "3d6" || !a.Damage().IsZero() {
+		t.Fatalf("%+v réduction %s", a, a.Reduction())
 	}
 }
 
@@ -34,19 +38,19 @@ func TestEveryStatIsClamped(t *testing.T) {
 	for _, slot := range Slots {
 		for tier := 1; tier <= MaxTier; tier++ {
 			for _, v := range []int{-5, 0, 1, 1 << 30} {
-				it, err := Validate(Proposal{Slot: string(slot), Name: "x", Tier: tier, Atk: v, Def: v, Price: v}, Context{Slots: Slots, MaxTier: MaxTier})
+				it, err := Validate(Proposal{Slot: string(slot), Name: "x", Tier: tier, Quality: v, Def: v, Price: v}, Context{Slots: Slots, MaxTier: MaxTier})
 				if err != nil {
 					t.Fatal(err)
 				}
 				lo, hi := Bounds(slot, tier)
 				main := it.Def
 				if slot == Weapon {
-					main = it.Atk
+					main = it.Quality
 				}
 				if main < lo || main > hi {
 					t.Errorf("%s palier %d, valeur %d : bonus %d hors de [%d, %d]", slot, tier, v, main, lo, hi)
 				}
-				plo, phi := PriceBounds(tier, main)
+				plo, phi := PriceBounds(tier, it.Power())
 				if it.Price < plo || it.Price > phi {
 					t.Errorf("prix %d hors de [%d, %d]", it.Price, plo, phi)
 				}
@@ -56,12 +60,12 @@ func TestEveryStatIsClamped(t *testing.T) {
 }
 
 func TestTierIsBoundedByThePlace(t *testing.T) {
-	it, err := Validate(Proposal{Slot: "weapon", Name: "Épée du roi", Tier: 5, Atk: 99, Price: 99999}, ctx(Weapon))
+	it, err := Validate(Proposal{Slot: "weapon", Name: "Épée du roi", Tier: 5, Quality: 99, Price: 99999}, ctx(Weapon))
 	if err != nil || it.Tier != 3 {
 		t.Fatalf("%+v %v", it, err)
 	}
-	if _, hi := Bounds(Weapon, 3); it.Atk > hi {
-		t.Fatalf("bonus %d au-delà du plafond du palier 3", it.Atk)
+	if _, hi := Bounds(Weapon, 3); it.Quality > hi {
+		t.Fatalf("qualité %d au-delà du plafond du palier 3", it.Quality)
 	}
 	low, _ := Validate(Proposal{Slot: "weapon", Name: "x", Tier: -3}, ctx(Weapon))
 	if low.Tier != 1 {
@@ -95,25 +99,111 @@ func TestTextIsSanitized(t *testing.T) {
 	}
 }
 
-func TestEquippedBonus(t *testing.T) {
+func TestEquippedDefenseAndReduction(t *testing.T) {
 	var e Equipped
-	w, a := &Item{Slot: Weapon, Atk: 5}, &Item{Slot: Armor, Def: 3}
+	w, a := &Item{Slot: Weapon, Tier: 2, Family: "mace", Quality: 1}, &Item{Slot: Armor, Tier: 3, Family: "heavy", Def: 3}
 	e.Set(Weapon, w)
 	e.Set(Armor, a)
 	e.Set(Helm, &Item{Slot: Helm, Def: 1})
-	if atk, def := e.Bonus(); atk != 5 || def != 4 {
-		t.Fatalf("bonus %d/%d", atk, def)
+	if e.Defense() != 4 || e.Reduction().String() != "3d8" {
+		t.Fatalf("DEF %d, réduction %s", e.Defense(), e.Reduction())
 	}
-	e.Set(Weapon, nil)
-	if atk, _ := e.Bonus(); atk != 0 || e.Get(Weapon) != nil || e.Get(Armor) != a {
+	if w.Damage().String() != "2d8+1" {
+		t.Fatalf("masse de rang 2: %s", w.Damage())
+	}
+	e.Set(Armor, nil)
+	if !e.Reduction().IsZero() || e.Get(Weapon) != w || e.Get(Armor) != nil {
 		t.Fatal("retrait")
 	}
 }
 
+func TestFamiliesFixTheDie(t *testing.T) {
+	want := map[string]int{"dagger": 4, "spear": 4, "shortsword": 6, "longsword": 6, "axe": 6, "mace": 8, "greatsword": 12, "greataxe": 12, "shortbow": 6, "crossbow": 8, "wand": 4, "staff": 6}
+	for id, die := range want {
+		f, ok := FamilyByID(Weapon, id)
+		if !ok || f.Die != die {
+			t.Errorf("%s: %+v %v", id, f, ok)
+		}
+	}
+	for id, die := range map[string]int{"light": 4, "medium": 6, "heavy": 8} {
+		if f, ok := FamilyByID(Armor, id); !ok || f.Die != die {
+			t.Errorf("armure %s: %+v", id, f)
+		}
+	}
+	if _, ok := FamilyByID(Shield, "light"); ok {
+		t.Error("un bouclier n'a pas de famille")
+	}
+	if len(weaponNameFamilies) != namesPerSlot[Weapon] || len(armorNameFamilies) != namesPerSlot[Armor] {
+		t.Fatal("chaque nom du catalogue doit avoir une famille")
+	}
+}
+
+func TestUnknownFamilyFallsBackToTheStyleDefault(t *testing.T) {
+	for _, c := range []struct{ fam, kind, want string }{{"railgun", "", "shortsword"}, {"", "ranged", "shortbow"}, {"LONGSWORD ", "magic", "longsword"}, {"nope", "magic", "staff"}} {
+		it, err := Validate(Proposal{Slot: "weapon", Name: "x", Tier: 1, Family: c.fam, Kind: c.kind}, ctx(Weapon))
+		if err != nil || it.Family != c.want {
+			t.Errorf("%+v: famille %q (%v), attendu %q", c, it.Family, err, c.want)
+		}
+	}
+	if it, _ := Validate(Proposal{Slot: "armor", Name: "x", Tier: 1, Family: "weapon"}, ctx(Armor)); it.Family != "medium" {
+		t.Errorf("armure: %q", it.Family)
+	}
+	if it, _ := Validate(Proposal{Slot: "helm", Name: "x", Tier: 1, Family: "heavy"}, ctx(Helm)); it.Family != "" {
+		t.Errorf("un casque n'a pas de famille: %q", it.Family)
+	}
+}
+
+func TestTwoHandedWeaponsExcludeShields(t *testing.T) {
+	var inv Inventory
+	sword, _ := inv.Add(Item{Name: "Espadon", Slot: Weapon, Tier: 1, Family: "greatsword", Price: 50})
+	short, _ := inv.Add(Item{Name: "Épée", Slot: Weapon, Tier: 1, Family: "shortsword", Price: 50})
+	shield, _ := inv.Add(Item{Name: "Rondache", Slot: Shield, Tier: 1, Def: 1, Price: 50})
+	if err := inv.Equip(short.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := inv.Equip(shield.ID, 1); err != nil {
+		t.Fatalf("une épée courte se porte avec un bouclier: %v", err)
+	}
+	if err := inv.Equip(sword.ID, 1); err != ErrTwoHanded {
+		t.Fatalf("espadon avec bouclier: %v", err)
+	}
+	inv.Unequip(Shield)
+	if err := inv.Equip(sword.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := inv.Equip(shield.ID, 1); err != ErrTwoHanded {
+		t.Fatalf("bouclier avec espadon: %v", err)
+	}
+}
+
+func TestStarterWeaponsMatchTheClass(t *testing.T) {
+	for class, want := range map[hero.Class]struct {
+		kind hero.Kind
+		dice string
+	}{hero.Warrior: {hero.Melee, "1d6"}, hero.Rogue: {hero.Ranged, "1d6"}, hero.Mage: {hero.Magic, "1d6"}} {
+		for _, l := range []i18n.Lang{i18n.FR, i18n.EN} {
+			it := Starter(l, class)
+			clean, ok := Sanitize(Item{ID: 1, Name: it.Name, Slot: it.Slot, Tier: it.Tier, Family: it.Family, Price: it.Price, Kind: it.Kind})
+			if !ok || it.Kind != want.kind || it.Damage().String() != want.dice || it.MinLevel() != 1 || it.Name == "" || strings.HasPrefix(it.Name, "gear.") || clean.Family != it.Family {
+				t.Errorf("%s/%s: %+v", class, l, it)
+			}
+		}
+	}
+}
+
 func TestSanitizeBringsStoredItemsBack(t *testing.T) {
-	it, ok := Sanitize(Item{ID: 3, Slot: Weapon, Name: "Épée", Tier: 99, Atk: 9999, Def: 50, Price: 1 << 40})
-	if !ok || it.Tier != MaxTier || it.Atk != 12 || it.Def != 0 || it.Price > 10*12*6*3/2 {
+	it, ok := Sanitize(Item{ID: 3, Slot: Weapon, Name: "Épée", Tier: 99, Quality: 9999, Def: 50, Price: 1 << 40})
+	if _, phi := PriceBounds(MaxTier, it.Power()); !ok || it.Tier != MaxTier || it.Quality != MaxTier || it.Def != 0 || it.Price > phi {
 		t.Fatalf("%+v %v", it, ok)
+	}
+	// Un objet d'avant les familles (sans famille) reçoit la famille par défaut de son style.
+	old, ok := Sanitize(Item{ID: 4, Slot: Weapon, Name: "Arc", Tier: 2, Kind: hero.Ranged, Price: 50})
+	if !ok || old.Family != "shortbow" || old.Kind != hero.Ranged {
+		t.Fatalf("ancien objet: %+v", old)
+	}
+	oldArmor, ok := Sanitize(Item{ID: 5, Slot: Armor, Name: "Cotte", Tier: 2, Def: 2, Price: 50})
+	if !ok || oldArmor.Family != "medium" || oldArmor.Reduction().String() != "2d6" {
+		t.Fatalf("ancienne armure: %+v", oldArmor)
 	}
 	for _, bad := range []Item{{ID: 0, Slot: Weapon, Name: "x"}, {ID: 1, Slot: "ring", Name: "x"}, {ID: 1, Slot: Weapon, Name: " "}} {
 		if _, ok := Sanitize(bad); ok {
@@ -140,19 +230,19 @@ func FuzzValidate(f *testing.F) {
 	f.Add("weapon", "Épée", "d", 2, 3, 4, 50)
 	f.Add("armor", "\x1b[0m", "‮", -1, 1<<60, -1, 1<<30)
 	f.Fuzz(func(t *testing.T, slot, name, desc string, tier, atk, def, price int) {
-		it, err := Validate(Proposal{Slot: slot, Name: name, Desc: desc, Tier: tier, Atk: atk, Def: def, Price: price}, Context{Slots: Slots, MaxTier: MaxTier})
+		it, err := Validate(Proposal{Slot: slot, Name: name, Desc: desc, Tier: tier, Quality: atk, Def: def, Price: price, Family: desc}, Context{Slots: Slots, MaxTier: MaxTier})
 		if err != nil {
 			return
 		}
 		lo, hi := Bounds(it.Slot, it.Tier)
 		main := it.Def
 		if it.Slot == Weapon {
-			main = it.Atk
+			main = it.Quality
 		}
 		if main < lo || main > hi || it.Tier < 1 || it.Tier > MaxTier || it.Name == "" || strings.ContainsAny(it.Name+it.Desc, "\x1b\x00") {
 			t.Fatalf("objet incohérent: %+v", it)
 		}
-		if plo, phi := PriceBounds(it.Tier, main); it.Price < plo || it.Price > phi {
+		if plo, phi := PriceBounds(it.Tier, it.Power()); it.Price < plo || it.Price > phi {
 			t.Fatalf("prix hors bornes: %+v", it)
 		}
 	})
@@ -160,9 +250,12 @@ func FuzzValidate(f *testing.F) {
 
 func sample(id int64, slot Slot, tier int) Item {
 	it := Item{ID: id, Name: "Objet", Slot: slot, Tier: tier, Price: 50}
-	if slot == Weapon {
-		it.Atk = 2
-	} else {
+	switch slot {
+	case Weapon:
+		it.Family = "shortsword"
+	case Armor:
+		it.Family, it.Def = "medium", 1
+	default:
 		it.Def = 1
 	}
 	return it
@@ -178,12 +271,12 @@ func TestInventoryEquipRemoveAndCapacity(t *testing.T) {
 	if inv.Equip(sword.ID, 5) != ErrLevelTooLow || inv.Equip(99, 50) != ErrNoSuchItem {
 		t.Fatal("niveau ou objet inconnu")
 	}
-	if err := inv.Equip(sword.ID, 8); err != nil {
+	if err := inv.Equip(sword.ID, 10); err != nil {
 		t.Fatal(err)
 	}
 	inv.Equip(helm.ID, 1)
-	if atk, def := inv.Equipped().Bonus(); atk != 2 || def != 1 {
-		t.Fatalf("bonus %d/%d", atk, def)
+	if inv.Equipped().Defense() != 1 || inv.Equipped().Weapon == nil {
+		t.Fatalf("équipement porté: %+v", inv.Equipped())
 	}
 	if _, err := inv.Remove(sword.ID); err != ErrWorn {
 		t.Fatalf("un objet équipé ne se retire pas du sac: %v", err)
@@ -197,7 +290,7 @@ func TestInventoryEquipRemoveAndCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	inv.Unequip(Weapon)
-	if atk, _ := inv.Equipped().Bonus(); atk != 0 {
+	if inv.Equipped().Weapon != nil {
 		t.Fatal("retrait")
 	}
 	for len(inv.Items) < BagCapacity {
@@ -267,8 +360,8 @@ func TestFallbackWaresAreDeterministicValidAndWithinCaps(t *testing.T) {
 				names[it.Name] = true
 				tiers[it.Tier] = true
 				// Un objet de repli respecte exactement les règles de Validate.
-				back, err := Validate(Proposal{Slot: string(it.Slot), Name: it.Name, Desc: it.Desc, Tier: it.Tier, Atk: it.Atk, Def: it.Def, Price: it.Price}, ctx)
-				if err != nil || back.Atk != it.Atk || back.Def != it.Def || back.Price != it.Price || back.Tier != it.Tier {
+				back, err := Validate(Proposal{Slot: string(it.Slot), Name: it.Name, Desc: it.Desc, Tier: it.Tier, Family: it.Family, Quality: it.Quality, Def: it.Def, Price: it.Price}, ctx)
+				if err != nil || back.Quality != it.Quality || back.Def != it.Def || back.Price != it.Price || back.Tier != it.Tier || back.Family != it.Family || it.Family == "" && it.Slot != Shield && it.Slot != Helm {
 					t.Errorf("objet de repli hors règles: %+v → %+v (%v)", it, back, err)
 				}
 				if it.Tier > ctx.MaxTier {
@@ -290,7 +383,7 @@ func TestFallbackWaresAreDeterministicValidAndWithinCaps(t *testing.T) {
 func TestWeaponKindIsValidatedAndOnlyForWeapons(t *testing.T) {
 	ctx := Context{Slots: Slots, MaxTier: 3}
 	for in, want := range map[string]hero.Kind{"ranged": hero.Ranged, " MAGIC ": hero.Magic, "melee": hero.Melee, "": hero.Melee, "laser": hero.Melee} {
-		it, err := Validate(Proposal{Slot: "weapon", Name: "Arme", Tier: 1, Atk: 2, Price: 30, Kind: in}, ctx)
+		it, err := Validate(Proposal{Slot: "weapon", Name: "Arme", Tier: 1, Quality: 1, Price: 30, Kind: in}, ctx)
 		if err != nil || it.Kind != want {
 			t.Errorf("style %q: %q (%v), attendu %q", in, it.Kind, err, want)
 		}
@@ -299,7 +392,7 @@ func TestWeaponKindIsValidatedAndOnlyForWeapons(t *testing.T) {
 	if err != nil || it.Kind != "" {
 		t.Fatalf("une armure n'a pas de style: %+v %v", it, err)
 	}
-	if s, ok := Sanitize(Item{ID: 1, Name: "x", Slot: Weapon, Tier: 1, Atk: 2, Price: 10, Kind: "x"}); !ok || s.Kind != hero.Melee {
+	if s, ok := Sanitize(Item{ID: 1, Name: "x", Slot: Weapon, Tier: 1, Quality: 1, Price: 10, Kind: "x"}); !ok || s.Kind != hero.Melee {
 		t.Fatalf("Sanitize: %+v", s)
 	}
 }

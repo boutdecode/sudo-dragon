@@ -320,6 +320,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 		p.consent = saved.LLMConsent
 		g.loadQuests(p, saved)
 		p.inv = gear.SanitizeInventory(saved.Gear)
+		p.gearDirty = saved.GearDirty // objets ajoutés avant la connexion (arme de départ): à écrire à la première sauvegarde
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		p.mana = max(0, min(saved.Mana, p.stats.MaxMana))
 		start = saved.Pos

@@ -93,7 +93,7 @@ func runWaresList(ctx context.Context, st *store.Store, w io.Writer) error {
 	for _, wr := range list {
 		fmt.Fprintf(w, "vendeur %d,%d,%d  « %s »  (%s)\n", wr.NPC.Region.X, wr.NPC.Region.Y, wr.NPC.Index, wr.Specialty, wr.CreatedAt.Local().Format(time.DateTime))
 		for _, it := range wr.Items {
-			fmt.Fprintf(w, "    %-8s palier %d  ATQ %d DÉF %d  %d or  %s\n", it.Slot, it.Tier, it.Atk, it.Def, it.Price, it.Name)
+			fmt.Fprintf(w, "    %-8s palier %d  %-10s %-8s qualité %d DÉF %d  %d or  %s\n", it.Slot, it.Tier, it.Family, it.Damage().String(), it.Quality, it.Def, it.Price, it.Name)
 		}
 	}
 	return nil
