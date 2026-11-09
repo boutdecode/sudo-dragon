@@ -1,0 +1,459 @@
+package client
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/ui"
+	"github.com/kevin/ascii-adventure/internal/world"
+)
+
+// Carte du monde (touche M) : vue d'ensemble du terrain déjà exploré. Le terrain est régénéré
+// localement depuis la graine ; seuls les blocs que le joueur a vus (fenêtre de vision du serveur)
+// sont dessinés, le reste apparaît comme « inexploré ».
+
+// mapZooms liste les échelles possibles : nombre de tuiles par cellule de carte.
+var mapZooms = [...]int{1, 2, 4, 8, 16}
+
+const (
+	defaultMapZoom = 8
+	exploreBlock   = 8 // côté, en tuiles, d'un bloc marqué comme exploré
+	maxMarkers     = 9
+	legendWidth    = 30
+	legendMinWidth = 90 // largeur d'écran minimale pour afficher la légende
+	landmarkRadius = 600
+)
+
+// mapState est l'état de la carte : curseur, échelle, repères posés et zones explorées.
+type mapState struct {
+	curX, curY int
+	zoom       int // tuiles par cellule ; 0 = défaut
+	markers    []world.Pos
+	explored   map[[2]int]struct{}
+	blink      bool // phase du clignotement du curseur
+	gen        int  // invalide les minuteurs d'une carte déjà fermée
+}
+
+const mapBlinkEvery = 500 * time.Millisecond
+
+// mapBlinkMsg fait basculer le curseur de la carte.
+type mapBlinkMsg struct{ gen int }
+
+func mapBlinkTick(gen int) tea.Cmd {
+	return tea.Tick(mapBlinkEvery, func(time.Time) tea.Msg { return mapBlinkMsg{gen} })
+}
+
+// updateMapBlink avance le clignotement tant que la carte reste ouverte.
+func (m Model) updateMapBlink(msg mapBlinkMsg) (Model, tea.Cmd) {
+	if !m.worldMap || msg.gen != m.wmap.gen {
+		return m, nil
+	}
+	m.wmap.blink = !m.wmap.blink
+	return m, mapBlinkTick(msg.gen)
+}
+
+func (s mapState) z() int {
+	if s.zoom == 0 {
+		return defaultMapZoom
+	}
+	return s.zoom
+}
+
+func fdiv(a, b int) int { return int(math.Floor(float64(a) / float64(b))) }
+
+func (s *mapState) isExplored(x, y int) bool {
+	_, ok := s.explored[[2]int{fdiv(x, exploreBlock), fdiv(y, exploreBlock)}]
+	return ok
+}
+
+// markExplored note comme explorés les blocs de la fenêtre de vision autour du joueur.
+func (m *Model) markExplored() {
+	if m.wmap.explored == nil {
+		m.wmap.explored = make(map[[2]int]struct{})
+	}
+	self := m.snap.Self
+	for by := fdiv(self.Y-protocol.ViewHalfH, exploreBlock); by <= fdiv(self.Y+protocol.ViewHalfH, exploreBlock); by++ {
+		for bx := fdiv(self.X-protocol.ViewHalfW, exploreBlock); bx <= fdiv(self.X+protocol.ViewHalfW, exploreBlock); bx++ {
+			m.wmap.explored[[2]int{bx, by}] = struct{}{}
+		}
+	}
+}
+
+func (m Model) openMap() (Model, tea.Cmd) {
+	m.worldMap = true
+	m.wmap.gen++
+	m.wmap.blink = true
+	m.wmap.curX, m.wmap.curY = m.snap.Self.X, m.snap.Self.Y
+	return m, mapBlinkTick(m.wmap.gen)
+}
+
+func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	z := m.wmap.z()
+	switch msg.String() {
+	case "esc", "m":
+		m.worldMap = false
+	case "up":
+		m.wmap.curY -= z
+	case "down":
+		m.wmap.curY += z
+	case "left":
+		m.wmap.curX -= z
+	case "right":
+		m.wmap.curX += z
+	case "+", "=":
+		m.wmap.zoom = stepZoom(z, -1)
+	case "-", "_":
+		m.wmap.zoom = stepZoom(z, +1)
+	case "0", " ", "space":
+		m.wmap.curX, m.wmap.curY = m.snap.Self.X, m.snap.Self.Y
+	case "w":
+		m.toggleMarker()
+	}
+	return m, nil
+}
+
+// stepZoom passe à l'échelle voisine (delta -1 = plus fin), bornée aux extrémités.
+func stepZoom(z, delta int) int {
+	for i, v := range mapZooms {
+		if v == z {
+			return mapZooms[max(0, min(len(mapZooms)-1, i+delta))]
+		}
+	}
+	return defaultMapZoom
+}
+
+// cellOf renvoie l'indice de la cellule (colonne ou ligne) qui contient la coordonnée p, la
+// cellule centrale étant centrée sur cur.
+func cellOf(p, cur, z, n int) int { return n/2 + fdiv(p-cur+z/2, z) }
+
+// toggleMarker pose un repère à l'emplacement du curseur, ou retire celui de la même cellule.
+func (m *Model) toggleMarker() {
+	z := m.wmap.z()
+	cx, cy := m.wmap.curX, m.wmap.curY
+	for i, p := range m.wmap.markers {
+		if cellOf(p.X, cx, z, 0) == 0 && cellOf(p.Y, cy, z, 0) == 0 {
+			m.wmap.markers = append(m.wmap.markers[:i:i], m.wmap.markers[i+1:]...)
+			return
+		}
+	}
+	if len(m.wmap.markers) < maxMarkers {
+		m.wmap.markers = append(m.wmap.markers[:len(m.wmap.markers):len(m.wmap.markers)], world.Pos{X: cx, Y: cy})
+	}
+}
+
+// Styles de la carte (couleurs alignées sur celles de render).
+func mfg(hex string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)) }
+
+const (
+	msUnknown = iota
+	msWater
+	msSand
+	msPlain
+	msForest
+	msHills
+	msMountain
+	msRoad
+	msWall
+	msVillage
+	msFort
+	msMarker
+	msOther
+	msSelf
+	numMapStyles
+)
+
+var mapStyles = [numMapStyles]lipgloss.Style{
+	msUnknown:  mfg(ui.ColFaint),
+	msWater:    mfg("#60a5fa"),
+	msSand:     mfg("#e5c07b"),
+	msPlain:    mfg("#4ade80"),
+	msForest:   mfg("#15803d").Bold(true),
+	msHills:    mfg("#b08968"),
+	msMountain: mfg("#9ca3af"),
+	msRoad:     mfg("#d9a441"),
+	msWall:     mfg("#cbd5e1"),
+	msVillage:  mfg(ui.ColAccent).Bold(true),
+	msFort:     mfg(ui.ColHP).Bold(true),
+	msMarker:   mfg("#f472b6").Bold(true),
+	msOther:    mfg("#22d3ee").Bold(true),
+	msSelf:     lipgloss.NewStyle().Background(lipgloss.Color(ui.ColAccent)).Foreground(lipgloss.Color(ui.ColInk)).Bold(true),
+}
+
+type mapCell struct {
+	r   string
+	st  int
+	rev bool // cellule du curseur, en vidéo inversée
+}
+
+// terrainCell choisit le glyphe d'une tuile.
+func terrainCell(t world.Tile) mapCell {
+	switch t {
+	case world.DeepWater, world.Water:
+		return mapCell{r: "~", st: msWater}
+	case world.Sand:
+		return mapCell{r: ".", st: msSand}
+	case world.Plain:
+		return mapCell{r: "\"", st: msPlain}
+	case world.Forest:
+		return mapCell{r: "^", st: msForest}
+	case world.Hills:
+		return mapCell{r: "n", st: msHills}
+	case world.Mountain, world.Snow:
+		return mapCell{r: "▲", st: msMountain}
+	case world.Road:
+		return mapCell{r: "=", st: msRoad}
+	case world.Floor:
+		return mapCell{r: ".", st: msWall}
+	case world.Door:
+		return mapCell{r: "+", st: msRoad}
+	default: // Wall
+		return mapCell{r: "#", st: msWall}
+	}
+}
+
+// mapGrid dessine la zone cols x rows centrée sur le curseur. Elle renvoie les lignes ANSI et le
+// nombre de cellules explorées / totales (pour la jauge).
+func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protocol.Entity, cols, rows int) (lines []string, explored, total int) {
+	z := st.z()
+	cx, cy := st.curX, st.curY
+	grid := make([]mapCell, cols*rows)
+	// Échantillons pris dans chaque cellule : le centre, ou quatre points au-delà de 1:1.
+	offs := []int{0}
+	if z > 1 {
+		offs = []int{-z / 4, z / 4}
+	}
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			total++
+			px, py := cx+(c-cols/2)*z, cy+(r-rows/2)*z
+			seen := false
+			counts := map[world.Tile]int{}
+			for _, oy := range offs {
+				for _, ox := range offs {
+					if st.isExplored(px+ox, py+oy) {
+						seen = true
+						counts[w.At(px+ox, py+oy)]++
+					}
+				}
+			}
+			if !seen {
+				grid[r*cols+c] = mapCell{r: "░", st: msUnknown}
+				continue
+			}
+			explored++
+			best, bestN := world.Tile(0), 0
+			for t := world.Tile(0); t < world.NumTiles; t++ {
+				if counts[t] > bestN {
+					best, bestN = t, counts[t]
+				}
+			}
+			grid[r*cols+c] = terrainCell(best)
+		}
+	}
+	put := func(p world.Pos, cell mapCell) {
+		c, r := cellOf(p.X, cx, z, cols), cellOf(p.Y, cy, z, rows)
+		if c >= 0 && c < cols && r >= 0 && r < rows {
+			grid[r*cols+c] = cell
+		}
+	}
+	radius := max(cols, rows)*z/2 + 1
+	for _, s := range w.StructuresNear(world.Pos{X: cx, Y: cy}, radius) {
+		ctr := s.Center()
+		if !st.isExplored(ctr.X, ctr.Y) {
+			continue
+		}
+		if s.Kind == world.KindFortress {
+			put(ctr, mapCell{r: "X", st: msFort})
+		} else {
+			put(ctr, mapCell{r: "H", st: msVillage})
+		}
+	}
+	for _, p := range st.markers {
+		put(p, mapCell{r: "*", st: msMarker})
+	}
+	for _, o := range others {
+		put(world.Pos{X: o.X, Y: o.Y}, mapCell{r: "@", st: msOther})
+	}
+	put(world.Pos{X: self.X, Y: self.Y}, mapCell{r: "@", st: msSelf})
+	if st.blink {
+		cc := &grid[(rows/2)*cols+cols/2]
+		cc.rev = true
+		if cc.st == msSelf {
+			cc.st = msOther // le « @ » du joueur change de couleur plutôt que de disparaître
+		}
+	}
+
+	lines = make([]string, rows)
+	for r := 0; r < rows; r++ {
+		var b strings.Builder
+		for c := 0; c < cols; {
+			first := grid[r*cols+c]
+			e := c
+			var run strings.Builder
+			for e < cols && grid[r*cols+e].st == first.st && grid[r*cols+e].rev == first.rev {
+				run.WriteString(grid[r*cols+e].r)
+				e++
+			}
+			style := mapStyles[first.st]
+			if first.rev {
+				style = style.Reverse(true)
+			}
+			b.WriteString(style.Render(run.String()))
+			c = e
+		}
+		lines[r] = b.String()
+	}
+	return lines, explored, total
+}
+
+// seedLabel écrit la graine sous la forme XXXX-XXXX.
+func seedLabel(seed int64) string {
+	u := uint64(seed)
+	return fmt.Sprintf("%04X-%04X", (u>>16)&0xFFFF, u&0xFFFF)
+}
+
+// arrowTo renvoie la flèche (8 directions) qui mène de (0,0) vers (dx, dy).
+func arrowTo(dx, dy int) string {
+	if dx == 0 && dy == 0 {
+		return "·"
+	}
+	arrows := [8]string{"→", "↘", "↓", "↙", "←", "↖", "↑", "↗"}
+	k := int(math.Round(math.Atan2(float64(dy), float64(dx))/(math.Pi/4))) % 8
+	if k < 0 {
+		k += 8
+	}
+	return arrows[k]
+}
+
+type landmark struct {
+	glyph  string
+	style  int
+	name   string
+	detail string
+	dist   float64
+	dx, dy int
+}
+
+// landmarks liste les lieux explorés proches et les repères posés, du plus proche du joueur au plus loin.
+func (m Model) landmarks() []landmark {
+	self := m.snap.Self
+	var out []landmark
+	add := func(l landmark, p world.Pos) {
+		l.dx, l.dy = p.X-self.X, p.Y-self.Y
+		l.dist = math.Hypot(float64(l.dx), float64(l.dy))
+		out = append(out, l)
+	}
+	for _, s := range m.world.StructuresNear(world.Pos{X: self.X, Y: self.Y}, landmarkRadius) {
+		ctr := s.Center()
+		if !m.wmap.isExplored(ctr.X, ctr.Y) {
+			continue
+		}
+		l := landmark{glyph: "H", style: msVillage, name: s.NameIn(m.lang), detail: m.t("place.kind." + s.Kind.String())}
+		if s.Kind == world.KindFortress {
+			l.glyph, l.style = "X", msFort
+		}
+		add(l, ctr)
+	}
+	for i, p := range m.wmap.markers {
+		add(landmark{glyph: "*", style: msMarker, name: m.t("map.marker", i+1)}, p)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].dist < out[j].dist })
+	return out
+}
+
+func (m Model) legendLines(rows int) []string {
+	entry := func(glyph string, st int, key string) string {
+		return " " + mapStyles[st].Render(glyph) + " " + m.t(key)
+	}
+	lines := []string{
+		entry("@", msSelf, "map.leg.you"),
+		entry("@", msOther, "map.leg.others"),
+		entry("H", msVillage, "map.leg.village"),
+		entry("X", msFort, "map.leg.fortress"),
+		entry("^", msForest, "map.leg.forest"),
+		entry("▲", msMountain, "map.leg.mountain"),
+		entry("~", msWater, "map.leg.water"),
+		entry("=", msRoad, "map.leg.road"),
+		entry("*", msMarker, "map.leg.marker"),
+		entry("░", msUnknown, "map.leg.unexplored"),
+	}
+	// Les repères occupent la place restante, deux lignes chacun.
+	if free := rows - len(lines) - 2; free >= 2 {
+		lm := m.landmarks()
+		if len(lm) > 0 {
+			lines = append(lines, "", " "+dimStyle.Render(m.t("map.landmarks")))
+			for _, l := range lm {
+				if len(lines)+2 > rows {
+					break
+				}
+				lines = append(lines,
+					" "+mapStyles[l.style].Render(l.glyph)+" "+l.name,
+					"   "+dimStyle.Render(arrowTo(l.dx, l.dy)+" "+m.t("map.dist", int(math.Round(l.dist)))+extra(l.detail)))
+			}
+		}
+	}
+	return lines
+}
+
+func extra(s string) string {
+	if s == "" {
+		return ""
+	}
+	return " · " + s
+}
+
+// mapView dessine la carte dans exactement w x h cellules : en-tête, carte et légende.
+func (m Model) mapView(w, h int) string {
+	showLegend := w >= legendMinWidth
+	mapW := w
+	if showLegend {
+		mapW = w - legendWidth
+	}
+	cols, rows := mapW-2, h-1-2
+	st := m.wmap
+	if st.explored == nil {
+		st.explored = map[[2]int]struct{}{}
+	}
+	lines, explored, total := mapGrid(m.world, &st, m.snap.Self, m.snap.Others, cols, rows)
+
+	// En-tête.
+	self := m.snap.Self
+	info := []string{}
+	if st.curX != self.X || st.curY != self.Y {
+		info = append(info, m.t("map.cursor", st.curX, st.curY))
+	}
+	info = append(info, m.t("map.you", self.X, self.Y), m.t("map.zoom", st.z()), m.t("map.seed", seedLabel(m.world.Seed)))
+	right := dimStyle.Render(strings.Join(info, " · "))
+	left := titleStyle.Render(m.t("map.title"))
+	gap := w - ansi.StringWidth(left) - ansi.StringWidth(right) - 2
+	header := " " + left
+	if gap > 0 {
+		header += strings.Repeat(" ", gap) + right
+	}
+	header = ui.Fit(header, w)
+
+	title := m.world.TerritoryAt(st.curX, st.curY).NameIn(m.lang)
+	body := ui.Panel(title, strings.Join(lines, "\n"), mapW, h-1)
+	if showLegend {
+		lrows := h - 1 - 2
+		leg := m.legendLines(lrows - 1)
+		for len(leg) < lrows-1 {
+			leg = append(leg, "")
+		}
+		pct := 0
+		if total > 0 {
+			pct = explored * 100 / total
+		}
+		leg = append(leg[:lrows-1], " "+dimStyle.Render(m.t("map.explored"))+" "+ui.FlatBar(explored, total, 8, ui.ColOK)+fmt.Sprintf(" %d %%", pct))
+		body = lipgloss.JoinHorizontal(lipgloss.Top, body, ui.Panel(m.t("map.legend"), strings.Join(leg, "\n"), legendWidth, h-1))
+	}
+	return header + "\n" + body
+}

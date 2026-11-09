@@ -138,6 +138,8 @@ type Model struct {
 
 	inventory bool // écran d'inventaire ouvert (touche i)
 	sheet     bool // fiche de personnage ouverte (touche c)
+	worldMap  bool // carte du monde ouverte (touche m)
+	wmap      mapState
 
 	// Création du personnage (état stateCreating).
 	create *createState
@@ -333,6 +335,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.sendPing()
 		return m, pingTick(m.conn)
 
+	case mapBlinkMsg:
+		return m.updateMapBlink(msg)
+
 	case walkTickMsg:
 		return m.updateWalk(msg)
 
@@ -368,6 +373,7 @@ func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.C
 	m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
 	m.locSeen, m.locInPlace = false, false
 	m.bag, m.bagSel, m.sheet = protocol.Bag{}, 0, false
+	m.worldMap, m.wmap = false, mapState{}
 	m.hasPing = false
 	m.walkGen++
 	m.walking, m.walkPath = false, nil
@@ -504,7 +510,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Une touche de déplacement, Échap, q ou i interrompt la marche automatique.
 	if !m.chatting && m.walking {
 		k := msg.String()
-		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" || k == "c" {
+		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" || k == "c" || k == "m" {
 			m.stopWalk("cli.moveto.interrupted")
 			if isDir || k == "esc" {
 				return m, nil
@@ -547,6 +553,12 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.sheet {
 		return m.updateSheetKey(msg)
+	}
+	if m.worldMap {
+		return m.updateMapKey(msg)
+	}
+	if msg.String() == "m" {
+		return m.openMap()
 	}
 	if msg.String() == "c" {
 		m.sheet = true
@@ -594,6 +606,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		if err := ev.Env.Payload(&s); err == nil {
 			m.snap, m.hasSnap = s, true
 			m.trackLocation()
+			m.markExplored()
 			m.snapCount++
 			if m.snapCount%unloadEach == 0 {
 				m.unloadWorld()
@@ -996,6 +1009,8 @@ func (m Model) viewPlaying() string {
 		top = m.inventoryView(fullW, mapH+2)
 	case m.sheet && m.combat == nil && m.npc == nil:
 		top = m.sheetView(fullW, mapH+2)
+	case m.worldMap && m.combat == nil && m.npc == nil:
+		top = m.mapView(fullW, mapH+2)
 	case m.combat != nil:
 		top = m.combatView(fullW, mapH+2)
 	case m.npc != nil:
@@ -1108,6 +1123,8 @@ func (m Model) helpLine() string {
 		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"e", m.t("key.equip")}, [2]string{"esc", m.t("key.close")})
 	case m.sheet:
 		return ui.KeyBar([2]string{"esc", m.t("key.close")})
+	case m.worldMap:
+		return ui.KeyBar([2]string{"↑↓←→", m.t("key.cursor")}, [2]string{"+ -", m.t("key.zoom")}, [2]string{"w", m.t("key.marker")}, [2]string{"0", m.t("key.recenter")}, [2]string{"esc", m.t("key.close")})
 	case m.chatting:
 		return ui.KeyBar([2]string{"↵", m.t("key.send")}, [2]string{"esc", m.t("key.cancel")})
 	case scroll > 0:
@@ -1119,7 +1136,7 @@ func (m Model) helpLine() string {
 	case m.combat != nil:
 		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}
-	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"c", m.t("key.sheet")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
+	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"c", m.t("key.sheet")}, [2]string{"m", m.t("key.map")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
 }
 
 func abs(a int) int {
