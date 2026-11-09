@@ -18,7 +18,6 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/render"
-	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -26,8 +25,10 @@ import (
 const (
 	minWidth   = 60
 	minHeight  = 20
-	sideWidth  = 24
-	chatLines  = 5
+	sideWidth  = 28
+	chatLines  = 5 // hauteur par défaut (et minimale) de la discussion
+	chatStep   = 3 // lignes gagnées ou perdues par ctrl+haut / ctrl+bas
+	minMapH    = 8 // hauteur de carte conservée quand la discussion grandit
 	maxChat    = 200
 	unloadEach = 100 // snapshots entre deux déchargements de chunks côté client
 
@@ -125,6 +126,7 @@ type Model struct {
 	snapCount  int
 	chat       []chatLine
 	chatScroll int // lignes de recul dans l'historique (0 = en bas)
+	chatH      int // hauteur voulue de la discussion (0 = chatLines), agrandie par ctrl+haut
 	chatInput  textinput.Model
 	chatting   bool
 
@@ -476,10 +478,19 @@ func dirOf(key string) (dx, dy int, ok bool) {
 func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "pgup":
-		m.scrollChat(chatLines - 1)
+		m.scrollChat(m.chatHeight() - 1)
 		return m, nil
 	case "pgdown":
-		m.scrollChat(-(chatLines - 1))
+		m.scrollChat(-(m.chatHeight() - 1))
+		return m, nil
+	case "ctrl+up":
+		m.chatH = m.chatHeight() + chatStep
+		m.chatH = m.chatHeight() // borne au plafond actuel
+		m.scrollChat(0)
+		return m, nil
+	case "ctrl+down":
+		m.chatH = max(chatLines, m.chatHeight()-chatStep)
+		m.scrollChat(0)
 		return m, nil
 	}
 
@@ -824,7 +835,16 @@ func (m *Model) addChat(l chatLine) {
 }
 
 // maxScroll est le recul maximal dans l'historique.
-func (m Model) maxScroll() int { return max(0, len(m.chat)-chatLines) }
+func (m Model) maxScroll() int { return max(0, len(m.chat)-m.chatHeight()) }
+
+// chatHeight est la hauteur de la discussion: celle voulue, bornée pour laisser minMapH lignes à la carte.
+func (m Model) chatHeight() int {
+	h := m.chatH
+	if h < chatLines {
+		h = chatLines
+	}
+	return max(chatLines, min(h, m.height-6-minMapH))
+}
 
 func (m *Model) scrollChat(delta int) {
 	m.chatScroll = max(0, min(m.chatScroll+delta, m.maxScroll()))
@@ -956,12 +976,12 @@ func (m Model) viewPlaying() string {
 		return m.t("client.loading")
 	}
 
-	// Hauteur: en-tête (1) + panneau central (mapH+2) + discussion (chatLines+2) + raccourcis (1).
+	// Hauteur: en-tête (1) + panneau central (mapH+2) + discussion (chatHeight+2) + raccourcis (1).
 	// L'interface occupe toute la fenêtre. Le terrain vient de la graine et peut
 	// dépasser la zone de vision du serveur; seules les entités (joueurs,
 	// monstres) sont limitées à cette zone.
 	mapW := m.width - sideWidth - 4
-	mapH := m.height - chatLines - 6
+	mapH := m.height - m.chatHeight() - 6
 	fullW := mapW + sideWidth + 4
 
 	self := m.snap.Self
@@ -1022,19 +1042,19 @@ func (m Model) sidePanel() string {
 	self := m.snap.Self
 	st := m.snap.Stats
 
+	// Trois jauges au même format : libellé, barre de 10 cases, valeur.
+	gauge := func(label, bar string, cur, maxV int) string {
+		return label + bar + fmt.Sprintf(" %d/%d", cur, maxV)
+	}
+	const barW = 10
 	lines := []string{
 		" " + nameStyle.Render(self.Name),
-		m.t("hud.level_xp", st.Level, st.XP, st.XPNext),
-		"    " + ui.FlatBar(st.XP, st.XPNext, 10, ui.ColOK),
-		m.t("hud.hp") + ui.Bar(st.HP, st.MaxHP, 10) + fmt.Sprintf(" %d/%d", st.HP, st.MaxHP),
-		dimStyle.Render(m.t("hud.stats", st.Def, textsafe.Clean(st.Dmg, 16), st.Potions)),
-		" " + goldStyle.Render(m.t("hud.gold", st.Gold)),
+		m.t("hud.level", st.Level),
+		gauge(m.t("hud.xp"), ui.FlatBar(st.XP, st.XPNext, barW, ui.ColGold), st.XP, st.XPNext),
+		gauge(m.t("hud.hp"), ui.Bar(st.HP, st.MaxHP, barW), st.HP, st.MaxHP),
 	}
 	if st.MaxMana > 0 {
-		lines = append(lines[:4], append([]string{m.t("hud.mana") + ui.Bar(st.Mana, st.MaxMana, 10) + fmt.Sprintf(" %d/%d", st.Mana, st.MaxMana)}, lines[4:]...)...)
-	}
-	if sc := m.scoresLine(); sc != "" {
-		lines = append(lines, dimStyle.Render(sc))
+		lines = append(lines, gauge(m.t("hud.mana"), ui.FlatBar(st.Mana, st.MaxMana, barW, ui.ColMana), st.Mana, st.MaxMana))
 	}
 	lines = append(lines, "",
 		" "+dimStyle.Render(m.t("hud.nearby", len(m.snap.Others))))
@@ -1053,22 +1073,20 @@ func (m Model) sidePanel() string {
 	if s := m.questSummary(); s != "" {
 		lines = append(lines, "", s)
 	}
-	lines = append(lines, "",
-		" "+dimStyle.Render(m.t("hud.seed"))+fmt.Sprintf("%d", m.self.Seed),
-	)
 	return strings.Join(lines, "\n")
 }
 
-// chatPanel dessine la discussion: chatLines lignes dans un cadre, la saisie
+// chatPanel dessine la discussion: chatHeight lignes dans un cadre, la saisie
 // remplaçant la dernière ligne pendant qu'on écrit.
 func (m Model) chatPanel(w int) string {
 	scroll := min(m.chatScroll, m.maxScroll())
 	end := len(m.chat) - scroll
-	start := max(0, end-chatLines)
+	ch := m.chatHeight()
+	start := max(0, end-ch)
 	visible := m.chat[start:end]
 
-	out := make([]string, 0, chatLines)
-	for len(out)+len(visible) < chatLines {
+	out := make([]string, 0, ch)
+	for len(out)+len(visible) < ch {
 		out = append(out, "")
 	}
 	for _, l := range visible {
@@ -1077,7 +1095,7 @@ func (m Model) chatPanel(w int) string {
 	if m.chatting {
 		out[len(out)-1] = " " + m.chatInput.View()
 	}
-	return ui.Panel(m.t("chat.title"), strings.Join(out, "\n"), w, chatLines+2)
+	return ui.Panel(m.t("chat.title"), strings.Join(out, "\n"), w, ch+2)
 }
 
 // helpLine est la barre de raccourcis, adaptée au contexte.
@@ -1101,7 +1119,7 @@ func (m Model) helpLine() string {
 	case m.combat != nil:
 		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}
-	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"c", m.t("key.sheet")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+c", m.t("key.quit")})
+	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"c", m.t("key.sheet")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
 }
 
 func abs(a int) int {

@@ -14,6 +14,7 @@ const (
 	ColHP     = "#ef6b5f"
 	ColOK     = "#7fcf8a"
 	ColGold   = "#e8c25a"
+	ColMana   = "#6aa8ef"
 	ColInk    = "#15131b"
 	ColKeyBg  = "#2a2636"
 	ColErr    = "#ff7a6e"

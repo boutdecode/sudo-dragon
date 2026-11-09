@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -534,9 +535,14 @@ func TestStatsShownInSidePanel(t *testing.T) {
 	env, _ := protocol.Decode(data)
 	tm, _ := m.Update(eventMsg{Event{Env: env}})
 	out := ansi.Strip(tm.(Model).View().Content)
-	for _, want := range []string{"Niv 3", "XP 7/30", "20/42", "Déf 12", "Dég 1d6+2", "Pot 2", "Or  120"} {
+	for _, want := range []string{"Niv 3", "XP", "7/30", "PV", "20/42"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("fiche sans %q", want)
+		}
+	}
+	for _, gone := range []string{"Déf 12", "Dég 1d6+2", "Pot 2", "Or  120"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("fiche avec %q", gone)
 		}
 	}
 }
@@ -1080,5 +1086,85 @@ func TestViewHasMargins(t *testing.T) {
 	// Trop petit pour des marges: elles disparaissent plutôt que de réduire l'intérieur.
 	if mx, my := playingModel(t, minWidth, minHeight).margins(); mx != 0 || my != 0 {
 		t.Errorf("marges %d,%d sur un terminal minimal", mx, my)
+	}
+}
+
+func TestSidePanelGauges(t *testing.T) {
+	m := playingModel(t, 120, 36)
+	m.snap.Stats = protocol.Stats{Level: 3, XP: 120, XPNext: 400, HP: 30, MaxHP: 40, Mana: 5, MaxMana: 12, Gold: 77, Def: 4, Dmg: "1d6"}
+	m.bag.Scores = []int{10, 11, 12, 13, 14, 15}
+	lines := strings.Split(ansi.Strip(m.sidePanel()), "\n")
+	for _, want := range []string{"XP", "PV", "PM"} {
+		n := 0
+		for _, l := range lines {
+			if strings.Contains(l, want) {
+				n++
+				if !strings.Contains(l, "█") && !strings.Contains(l, "░") {
+					t.Errorf("%s sans jauge sur sa ligne: %q", want, l)
+				}
+			}
+		}
+		if n != 1 {
+			t.Errorf("%s sur %d lignes", want, n)
+		}
+	}
+	for _, l := range []string{"120/400", "30/40", "5/12"} {
+		if !strings.Contains(ansi.Strip(m.sidePanel()), l) {
+			t.Errorf("valeur %s absente", l)
+		}
+	}
+	for _, gone := range []string{"77", "Déf", "FOR"} {
+		if strings.Contains(ansi.Strip(m.sidePanel()), gone) {
+			t.Errorf("%q ne devrait plus apparaître", gone)
+		}
+	}
+	m.snap.Stats.MaxMana = 0
+	if strings.Contains(ansi.Strip(m.sidePanel()), "PM") {
+		t.Error("PM sans mana")
+	}
+}
+
+func TestCtrlArrowsResizeChat(t *testing.T) {
+	m := playingModel(t, 120, 36)
+	for i := 0; i < 20; i++ {
+		m.addChat(chatLine{Channel: protocol.ChanLocal, From: "zoe", Text: fmt.Sprintf("msg%02d", i)})
+	}
+	count := func(m Model) int {
+		n := 0
+		for _, l := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+			if strings.Contains(l, "zoe: msg") {
+				n++
+			}
+		}
+		return n
+	}
+	send := func(m Model, code rune) Model {
+		tm, _ := m.Update(tea.KeyPressMsg{Code: code, Mod: tea.ModCtrl})
+		return tm.(Model)
+	}
+	if got := count(m); got != chatLines {
+		t.Fatalf("départ: %d lignes", got)
+	}
+	m = send(m, tea.KeyUp)
+	if got := count(m); got != chatLines+chatStep {
+		t.Fatalf("ctrl+haut: %d lignes", got)
+	}
+	m = send(m, tea.KeyDown)
+	m = send(m, tea.KeyDown) // ne descend pas sous le minimum
+	if got := count(m); got != chatLines {
+		t.Fatalf("ctrl+bas: %d lignes", got)
+	}
+	// Plafond: la carte garde minMapH lignes, et rien ne déborde, même sur un petit terminal.
+	for _, sz := range [][2]int{{80, 24}, {120, 36}, {60, 20}} {
+		s := playingModel(t, sz[0], sz[1])
+		for i := 0; i < 30; i++ {
+			s = send(s, tea.KeyUp)
+		}
+		if got := s.chatHeight(); got != max(chatLines, sz[1]-6-minMapH) {
+			t.Errorf("%v: plafond %d", sz, got)
+		}
+		if lines := strings.Split(ansi.Strip(s.View().Content), "\n"); len(lines) > sz[1] {
+			t.Errorf("%v: %d lignes > hauteur", sz, len(lines))
+		}
 	}
 }
