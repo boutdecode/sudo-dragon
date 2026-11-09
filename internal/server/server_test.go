@@ -105,10 +105,11 @@ func recvRaw(t *testing.T, c *websocket.Conn) protocol.Envelope {
 	return env
 }
 
-// recvType lit jusqu'à recevoir un message du type voulu.
+// recvType lit jusqu'à recevoir un message du type voulu (30 au plus: la connexion en envoie déjà une demi-douzaine,
+// bienvenue, quêtes, donjons, sac, puis des instantanés et l'écho du chat).
 func recvType(t *testing.T, c *websocket.Conn, typ string) protocol.Envelope {
 	t.Helper()
-	for range 10 {
+	for range 30 {
 		if env := recv(t, c); env.T == typ {
 			return env
 		}

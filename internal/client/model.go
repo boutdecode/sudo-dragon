@@ -68,8 +68,8 @@ const pingEvery = 5 * time.Second
 // Un tick de jeu dure 100 ms: 1 heure de jeu = 1 minute réelle. Le monde
 // démarre à 8 h du jour 1.
 const (
-	ticksPerGameHour = 600
-	startGameHour    = 8
+	ticksPerGameHour = protocol.TicksPerGameHour
+	startGameHour    = protocol.StartGameHour
 )
 
 // gameClock donne le jour (à partir de 1) et l'heure du jeu pour un tick.
@@ -142,7 +142,14 @@ type Model struct {
 	inventory bool // écran d'inventaire ouvert (touche i)
 	sheet     bool // fiche de personnage ouverte (touche c)
 	worldMap  bool // carte du monde ouverte (touche m)
-	wmap      mapState
+
+	// Donjon (voir dungeon.go): dmap est nil sur la carte principale.
+	zone protocol.Zone
+	// dungeons: entrées de donjon que le joueur a découvertes (envoyées par le serveur).
+	dungeons []protocol.DungeonInfo
+	dmap     *world.DungeonMap
+	dseen    map[world.Pos]bool // cases du donjon déjà vues
+	wmap     mapState
 
 	// Création du personnage (état stateCreating).
 	create *createState
@@ -371,6 +378,7 @@ func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.C
 	m.conn = conn
 	m.self = welcome
 	m.world = world.New(welcome.Seed)
+	m.zone, m.dmap, m.dseen, m.dungeons = protocol.Zone{}, nil, nil, nil
 	m.state = statePlaying
 	m.errMsg = ""
 	m.pass.Reset() // le mot de passe n'a plus de raison de rester en mémoire
@@ -621,12 +629,16 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		var s protocol.Snapshot
 		if err := ev.Env.Payload(&s); err == nil {
 			m.snap, m.hasSnap = s, true
-			m.trackLocation()
-			m.markExplored()
-			saveCmd = m.maybeSaveExplored()
-			m.snapCount++
-			if m.snapCount%unloadEach == 0 {
-				m.unloadWorld()
+			if m.dmap != nil {
+				m.revealAround() // sous terre: ni lieux, ni exploration du monde
+			} else {
+				m.trackLocation()
+				m.markExplored()
+				saveCmd = m.maybeSaveExplored()
+				m.snapCount++
+				if m.snapCount%unloadEach == 0 {
+					m.unloadWorld()
+				}
 			}
 		}
 	case protocol.TChat:
@@ -643,6 +655,16 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 	case protocol.TPong:
 		if !m.pingSent.IsZero() {
 			m.pingMS, m.hasPing = int(time.Since(m.pingSent).Milliseconds()), true
+		}
+	case protocol.TZone:
+		var z protocol.Zone
+		if err := ev.Env.Payload(&z); err == nil {
+			m.applyZone(z)
+		}
+	case protocol.TDungeons:
+		var d protocol.Dungeons
+		if err := ev.Env.Payload(&d); err == nil {
+			m.applyDungeons(d)
 		}
 	case protocol.TBag:
 		var b protocol.Bag
@@ -741,6 +763,7 @@ func (m Model) npcKeys() map[string]string {
 		strings.ToLower(m.t("npc.key.sell")): protocol.NPCSell,
 		strings.ToLower(m.t("npc.key.heal")): protocol.NPCHeal,
 		strings.ToLower(m.t("npc.key.talk")): protocol.NPCTalk,
+		strings.ToLower(m.t("npc.key.work")): protocol.NPCAskWork,
 	}
 }
 
@@ -1040,7 +1063,7 @@ func (m Model) viewPlaying() string {
 
 	self := m.snap.Self
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
-	mapStr := render.ViewportReady(m.world, self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers())
+	mapStr := render.ViewportReady(m.terrain(), self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers())
 
 	var top string
 	switch {
@@ -1058,7 +1081,7 @@ func (m Model) viewPlaying() string {
 		top = m.npcView(fullW, mapH+2)
 	default:
 		top = lipgloss.JoinHorizontal(lipgloss.Top,
-			ui.Panel(m.mapTitle(self.X, self.Y, mapW), mapStr, mapW+2, mapH+2),
+			ui.Panel(m.locationTitle(self.X, self.Y, mapW), mapStr, mapW+2, mapH+2),
 			ui.Panel(m.t("hud.players"), m.sidePanel(), sideWidth+2, mapH+2),
 		)
 	}
@@ -1213,6 +1236,8 @@ func (m Model) npcKeyLabel(action string) string {
 		return m.t("npc.key.heal")
 	case protocol.NPCTalk:
 		return m.t("npc.key.talk")
+	case protocol.NPCAskWork:
+		return m.t("npc.key.work")
 	case protocol.NPCSellMenu:
 		return m.t("npc.key.sell")
 	case protocol.NPCBack:

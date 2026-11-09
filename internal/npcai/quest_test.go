@@ -211,3 +211,35 @@ func TestPromptCarriesTheServerImpressionOfCharisma(t *testing.T) {
 		t.Fatal("séquence d'échappement dans le prompt")
 	}
 }
+
+func TestPromptListsSecretDungeonsOnlyWhenOffered(t *testing.T) {
+	req := testReq("du travail ?")
+	req.Offer = offerCtx()
+	sys := BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	if strings.Contains(sys, "donjons_secrets\":") {
+		t.Error("aucun donjon autorisé: la liste ne doit pas figurer dans les données")
+	}
+	if !strings.Contains(sys, `"dungeon"`) {
+		t.Error("le format de quête doit annoncer le type dungeon")
+	}
+
+	req.Offer.Quest.Dungeons = map[string]quest.DungeonRef{
+		"tombeau de aubemor": {Region: world.RegionPos{X: 0, Y: -1}, Tier: 1},
+		"crypte de valmor":   {Region: world.RegionPos{X: 2, Y: 1}, Tier: 2},
+	}
+	sys = BuildMessages(req, nil, "", 12, placeNames)[0].Content
+	i, j := strings.Index(sys, "crypte de valmor"), strings.Index(sys, "tombeau de aubemor")
+	if i < 0 || j < 0 || i > j {
+		t.Errorf("les donjons autorisés doivent figurer, triés: %d %d", i, j)
+	}
+	if !strings.Contains(sys, `"donjons_secrets":["crypte de valmor","tombeau de aubemor"]`) {
+		t.Error("liste des donjons absente ou mal formée")
+	}
+}
+
+func TestParseQuestKeepsADungeonPlace(t *testing.T) {
+	out, ok := parseOutput(`{"reply":"Oui.","quest":{"title":"T","story":"S","objective":{"type":"dungeon","place":"Crypte de Valmor"},"reward":{"gold":10}}}`)
+	if !ok || out.Quest == nil || out.Quest.Type != "dungeon" || out.Quest.Place != "Crypte de Valmor" {
+		t.Fatalf("%+v %v", out.Quest, ok)
+	}
+}

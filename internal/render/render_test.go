@@ -322,3 +322,54 @@ func TestReadyQuestGiverShowsQuestionMark(t *testing.T) {
 		t.Fatalf("une autre quête prête change ce PNJ : %q", got)
 	}
 }
+
+func TestDungeonWallsOutlineRoomsAndTheRestOfTheRockIsDim(t *testing.T) {
+	m := world.NewDungeonMap(&world.Dungeon{Seed: 987654321, Tier: 3})
+	terr := DungeonTerrain(m, nil, nil)
+	walls, rock := 0, 0
+	for y := -2; y < m.H+2; y++ {
+		for x := -2; x < m.W+2; x++ {
+			got := terr.At(x, y)
+			raw := m.TileAt(x, y)
+			if raw.Walkable() {
+				if got != raw {
+					t.Fatalf("(%d,%d): une case praticable est devenue %v", x, y, got)
+				}
+				continue
+			}
+			near := false
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					near = near || m.TileAt(x+dx, y+dy).Walkable()
+				}
+			}
+			switch {
+			case near && got != world.Wall:
+				t.Fatalf("(%d,%d): la roche au contact d'une salle devrait être un mur, pas %v", x, y, got)
+			case !near && got != world.Rock:
+				t.Fatalf("(%d,%d): la roche profonde devrait rester en sourdine, pas %v", x, y, got)
+			}
+			if near {
+				walls++
+			} else {
+				rock++
+			}
+		}
+	}
+	if walls == 0 || rock == 0 {
+		t.Errorf("%d murs, %d roche: les deux devraient exister", walls, rock)
+	}
+	// Une case jamais vue reste de la roche, même au contact d'une salle: le brouillard ne dévoile pas le contour.
+	hidden := DungeonTerrain(m, func(int, int) bool { return false }, nil)
+	for y := 0; y < m.H; y++ {
+		for x := 0; x < m.W; x++ {
+			if hidden.At(x, y) != world.Wall && hidden.At(x, y) != world.Rock {
+				t.Fatalf("(%d,%d): %v visible dans le brouillard", x, y, hidden.At(x, y))
+			}
+			if hidden.At(x, y) != world.Wall {
+				continue
+			}
+			t.Fatalf("(%d,%d): un mur apparaît dans une zone jamais vue", x, y)
+		}
+	}
+}

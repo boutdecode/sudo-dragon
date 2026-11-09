@@ -66,7 +66,7 @@ func ValidNPCAction(action string) bool {
 	switch action {
 	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
 		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack,
-		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn,
+		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn, protocol.NPCAskWork,
 		protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCSellMenu:
 		return true
 	}
@@ -171,6 +171,9 @@ func (g *Game) talkAct(p *player, action, text string) {
 
 	case protocol.NPCTurnIn:
 		log = g.questAct(p, action, text) // la remise enregistre elle-même
+
+	case protocol.NPCAskWork:
+		log = g.askWork(p)
 
 	case protocol.NPCBuyItem:
 		if !isVendor(t.npc.Kind) {
@@ -283,6 +286,10 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 			offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTurnIn, Arg: strconv.FormatInt(q.ID, 10),
 				Label: i18n.T(p.lang, "quest.offer.turnin", q.Title), Available: true})
 		}
+	}
+	// Du travail à confier: un donjon secret à portée, proposé sans modèle de langage.
+	if g.hasWork(p, npc) {
+		offers = append(offers, protocol.NPCOffer{Action: protocol.NPCAskWork, Label: i18n.T(p.lang, "npc.offer.work"), Available: true})
 	}
 	// La discussion libre n'est proposée que si un modèle de langage est disponible.
 	if g.talkerReady() {

@@ -47,14 +47,17 @@ func TestSpeciesTable(t *testing.T) {
 			t.Errorf("espèce en double: %s", s.Kind)
 		}
 		seen[s.Kind] = true
-		if !s.Garrison && !s.Habitat.Walkable() { // une garnison n'a pas d'habitat: elle a un poste
+		if !s.Garrison && !s.Dungeon && !s.Habitat.Walkable() { // une garnison ou un monstre de donjon n'a pas d'habitat: il a un poste
 			t.Errorf("%s: habitat non praticable", s.Kind)
 		}
-		if s.Garrison && s.Habitat != 0 {
-			t.Errorf("%s: une espèce de garnison ne doit pas avoir d'habitat", s.Kind)
+		if (s.Garrison || s.Dungeon) && s.Habitat != 0 {
+			t.Errorf("%s: une espèce de garnison ou de donjon ne doit pas avoir d'habitat", s.Kind)
 		}
-		if s.Boss && !s.Garrison {
-			t.Errorf("%s: un boss est forcément une espèce de garnison", s.Kind)
+		if s.Garrison && s.Dungeon {
+			t.Errorf("%s: garnison ou donjon, pas les deux", s.Kind)
+		}
+		if s.Boss && !s.Garrison && !s.Dungeon {
+			t.Errorf("%s: un boss est forcément une espèce de garnison ou de donjon", s.Kind)
 		}
 		if s.MoveEvery <= MoveCooldown {
 			t.Errorf("%s: doit être plus lent qu'un joueur (MoveEvery=%d)", s.Kind, s.MoveEvery)

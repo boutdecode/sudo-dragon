@@ -691,3 +691,97 @@ func TestHeroSheetRoundTripAndNeedsCreationForOldRows(t *testing.T) {
 		t.Fatalf("fiche relue: %+v", got)
 	}
 }
+
+func TestDiscoveriesRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateAccount("brunhild", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	found := []world.RegionPos{{X: 4, Y: -2}, {X: -1, Y: 3}, {X: 0, Y: -1}}
+	c := Character{Level: 2, HP: 10, Discoveries: found, DiscoveriesDirty: true}
+	if err := st.SaveCharacters(map[string]Character{"aldric": c, "brunhild": {Level: 1, HP: 5}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	want := []world.RegionPos{{X: 4, Y: -2}, {X: 0, Y: -1}, {X: -1, Y: 3}} // triés par Y puis X
+	if len(got.Discoveries) != len(want) {
+		t.Fatalf("découvertes %v, attendu %v", got.Discoveries, want)
+	}
+	for i := range want {
+		if got.Discoveries[i] != want[i] {
+			t.Errorf("découverte %d: %v, attendu %v", i, got.Discoveries[i], want[i])
+		}
+	}
+	if other, _ := st.LoadCharacter("brunhild"); len(other.Discoveries) != 0 {
+		t.Errorf("les découvertes d'un compte fuient chez un autre: %v", other.Discoveries)
+	}
+
+	// Une sauvegarde non « sale » n'efface rien, une sauvegarde « sale » remplace la liste.
+	c.Discoveries, c.DiscoveriesDirty, c.Gold = nil, false, 7
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := st.LoadCharacter("aldric"); len(again.Discoveries) != 3 || again.Gold != 7 {
+		t.Fatalf("découvertes perdues par une sauvegarde sans changement: %+v", again)
+	}
+	c.Discoveries, c.DiscoveriesDirty = append(found, world.RegionPos{X: 9, Y: 9}), true
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := st.LoadCharacter("aldric"); len(again.Discoveries) != 4 {
+		t.Fatalf("la nouvelle découverte n'a pas été écrite: %v", again.Discoveries)
+	}
+}
+
+// Deux sauvegardes se succèdent avant l'écriture: si la première modifiait les découvertes et pas la seconde, la
+// version retenue doit quand même les réécrire.
+func TestPersisterKeepsDiscoveriesDirtyAcrossSaves(t *testing.T) {
+	s, _ := openTemp(t)
+	if _, err := s.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	p := NewPersister(s, time.Hour, nil)
+	found := []world.RegionPos{{X: 2, Y: 5}}
+	p.Save("aldric", Character{Level: 1, HP: 5, Discoveries: found, DiscoveriesDirty: true})
+	p.Save("aldric", Character{Level: 2, HP: 5, Discoveries: found}) // plus récente, sans drapeau
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	if got.Level != 2 || len(got.Discoveries) != 1 || got.Discoveries[0] != found[0] {
+		t.Errorf("découverte perdue entre deux sauvegardes: %+v", got)
+	}
+}
+
+func TestDungeonQuestRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Unix(1_700_000_000, 0)
+	q := quest.Quest{ID: 1, Giver: world.NPCKey{Region: world.RegionPos{X: 0, Y: 0}, Index: 2}, Title: "Le maître", Story: "Allez-y.",
+		Objective: quest.Objective{Kind: quest.Dungeon, Species: "lich", Count: 1, Target: world.RegionPos{X: 0, Y: -1}},
+		Reward:    quest.Reward{Gold: 250, XP: 40, Potions: 2, Note: "prudence"}, Tier: 3, State: quest.Ready, Progress: 1, CreatedAt: t0}
+	c := Character{Level: 6, HP: 10, Quests: []quest.Quest{q}, QuestsDirty: true}
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil || len(got.Quests) != 1 {
+		t.Fatal(got, err)
+	}
+	g := got.Quests[0]
+	g.Account, g.CreatedAt, q.CreatedAt = "", g.CreatedAt.UTC(), q.CreatedAt.UTC()
+	if g != q {
+		t.Errorf("quête de donjon:\n got %+v\nwant %+v", g, q)
+	}
+}

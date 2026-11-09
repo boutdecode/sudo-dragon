@@ -83,6 +83,7 @@ type offerJSON struct {
 	Species  []speciesJSON `json:"especes_autorisees"`
 	Places   []string      `json:"lieux_atteignables,omitempty"`
 	Boss     bool          `json:"seigneur_de_guerre_possible,omitempty"`
+	Dungeons []string      `json:"donjons_secrets,omitempty"`
 	CountMin int           `json:"nombre_min"`
 	CountMax int           `json:"nombre_max"`
 	GoldCap  string        `json:"plafond_or"`
@@ -256,6 +257,10 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 			oj.Places = append(oj.Places, name)
 		}
 		slices.Sort(oj.Places) // ordre stable: prompt reproductible
+		for name := range o.Quest.Dungeons {
+			oj.Dungeons = append(oj.Dungeons, name)
+		}
+		slices.Sort(oj.Dungeons)
 		data.Offer = oj
 	}
 	var buf bytes.Buffer

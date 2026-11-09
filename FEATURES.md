@@ -5,7 +5,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 ## Monde et génération (`internal/world/`)
 
 - **Monde infini** généré par bruit simplex depuis une seed, par chunks de 32×32.
-- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte.
+- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier.
 - **Lieux** : au plus un par région de 256×256.
   - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
@@ -14,6 +14,28 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Tracé par A* sur le terrain brut, confiné aux deux régions, donc identique quel que soit l'ordre de génération.
   - Les routes s'arrêtent au bord d'un lieu et rejoignent son chemin intérieur ; elles ne touchent jamais son emprise.
   - Pont sur l'eau peu profonde (tuile `Road`) ; jamais d'eau profonde ni de montagne. Coût croissant selon le terrain (plaine < forêt < collines < neige).
+- **Donjons** (`dungeon.go`, `dungeonmap.go`) : environ une région sur cinq cache un donjon, dont l'**entrée secrète** est une case de terrain ordinaire (hors lieux et eau ; une route peut la croiser).
+  - **Nom unique** dans un rayon de 3 régions (« Crypte de Valmor »…), en français et en anglais ; identifiant stable `x,y` de la région.
+  - **Palier** de 1 à 5, un de plus toutes les 3 régions d'éloignement de l'origine ; il règle le nombre de salles (6 ou 7 au palier 1, jusqu'à 11 au palier 5), de gardes et d'élites.
+  - **Plan** (64×40) tiré de la **seed du donjon** : des salles reliées par des couloirs, escalier d'entrée dans la première, **boss** et son **coffre** dans la dernière, gardes et coffres entre les deux. Recalculé à l'identique côté client et serveur.
+  - **Instance partagée** (`game/dungeon.go`) : chaque donjon a une seule instance, avec ses propres index de joueurs et de monstres (coordonnées locales au plan, donc deux donjons ne se heurtent jamais). Marcher sur l'entrée y emmène, avec les joueurs libres à moins de 5 cases ; tous les joueurs d'un même donjon se retrouvent dedans.
+  - **Le donjon garde son état tant que son boss vit** : monstres vaincus et coffres ouverts le restent, qu'on sorte, qu'on meure ou qu'on se déconnecte, même quand il est vide (il est alors figé, sans calcul). Il **repart à neuf quand quelqu'un tue la liche, mais un jour de jeu plus tard** (24 heures de jeu, soit 24 minutes réelles ; une heure de jeu = 600 ticks, voir `protocol.TicksPerGameHour`), pour qu'on n'enchaîne pas les donjons.
+  - Pendant ce délai, le donjon reste tel que la victoire l'a laissé, pour tous : boss mort, coffres vidés, rien ne revient, même s'il se vide. À l'entrée, le journal annonce « le donjon ne se reformera pas avant N h de jeu » (message `zone`, champ `reset`, arrondi à l'heure supérieure).
+  - L'échéance passée, le premier visiteur trouve un donjon complet, boss et coffres compris, tandis que ceux qui étaient restés dans l'ancien finissent tranquillement dedans ; l'ancien se ferme avec son dernier joueur.
+  - Un donjon dont la liche vient de tomber n'est pas confié en quête (elle ne pourrait pas être vaincue avant son retour).
+  - L'état n'est qu'en mémoire : un redémarrage du serveur refait tout à neuf, délai compris.
+  - Le donjon est peuplé à l'ouverture d'après les emplacements du plan : **gardes** (squelettes et spectres), **élites** (chevaliers et golems) et la **liche**, le boss. Aucun monstre de biome ni de garnison n'y apparaît, et rien ne repousse.
+  - **Mise à l'échelle** : les monstres ont 80 % (palier 1) à 160 % (palier 5) de leurs PV et de leur XP, et un point de toucher de plus tous les deux paliers. Les combats de groupe y rassemblent 2 monstres au plus.
+  - **Coffres** : on les ouvre en marchant dessus, une fois chacun tant que la liche vit (le premier arrivé les vide ; ils se refont avec le donjon). Ils donnent de l'or (15 à 30 par palier), parfois des potions (40 %) et, dans 35 % des cas, une pièce d'équipement du palier du donjon.
+  - **Coffre du boss** : verrouillé tant que la liche vit, il contient toujours un objet, un rang au-dessus du palier (5 au plus). La liche laisse en plus 100 or + 40 par palier et 3 potions.
+  - Un sac plein laisse le coffre fermé : on peut revenir. Le butin est fabriqué sans modèle de langage (`gear.DungeonLoot`), au maximum des bonus permis ; il n'a pas de vendeur d'origine (description « Trouvé au fond d'un donjon »).
+  - Tuer la liche ne valide pas une quête de « seigneur de guerre ».
+  - On sort par l'**escalier** ; vaincu, on se réveille devant l'entrée (le donjon garde son état). Déconnecté sous terre, on est sauvegardé devant l'entrée.
+  - **Côté client** (`client/dungeon.go`) : le plan est recalculé d'après la seed du message `zone`, comme le monde. Seules les cases à moins de 7 cases du joueur ont été vues (le reste est de la roche, tuile `Rock` dessinée en `#` gris sombre ; seule la première couche de roche, au contact d'une salle ou d'un couloir diagonales comprises, reste en `#` blanc pour souligner les murs) ; un coffre ouvert apparaît vide. Le titre du panneau donne le nom du donjon et les coordonnées du plan ; `M` ouvre le plan déjà exploré avec le palier, et se referme avec `M` ou Échap.
+  - Les donjons sont activés sur le serveur (`Game.Dungeons`, désactivé par défaut dans `game.New`, comme dans les tests).
+  - **Découverte** : passer à 3 cases ou moins d'une entrée la révèle, pour ce personnage seulement. Le serveur le dit au joueur (« Vous découvrez l'entrée secrète de… »), mémorise la découverte (table `discoveries`, sauvegardée tout de suite) et la renvoie à chaque connexion. Entrer dans un donjon révèle aussi l'entrée à tout le groupe.
+  - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/moveto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
+  - Les quêtes de donjon (voir *PNJ, dialogues et quêtes*) révèlent aussi l'entrée du donjon visé, dès l'acceptation.
 - **Zones sûres** : village ou ville plus 3 cases de marge. Pas de monstres, pas de poursuite, régénération de 1 PV par seconde.
 
 ## Déplacement et exploration
@@ -23,12 +45,13 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Vision** : ±40×±20 cases ; le serveur n'envoie que les entités qui ont changé.
 - **Marche automatique `/moveto`** (`client/moveto.go`, `client/pathfind.go`) :
   - `/moveto x y`, ou par nom de repère ou de lieu découvert (casse ignorée, ambiguïtés signalées).
+  - Sous terre : par `escalier` ou `coffre` (le plus proche déjà vu, pas encore ouvert), ou par coordonnées du plan. La marche automatique ne traverse jamais un escalier de donjon ni une entrée de donjon, sauf si c'est la destination.
   - Recalcul du chemin après 4 ticks sans progrès, abandon après 8.
   - Interrompue par une direction, Échap, `q`, `i`, `c` ou `m`. Le serveur reste juge des collisions.
 - **Carte du monde (`M`)** (`client/worldmap.go`) :
   - Zoom 1, 2, 4, 8 ou 16 tuiles par cellule (`+` / `-`), curseur clignotant aux flèches, `0` ou espace pour recentrer.
   - Seul le terrain exploré est affiché ; le reste est « inexploré » (`░`).
-  - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, forêt, montagne, eau, route, repère, inexploré ; liste des repères et lieux proches avec direction et distance.
+  - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
 - **Repères** : `W` pose ou renomme (24 caractères, noms uniques, 9 au plus), `X` supprime.
 - **Localisation** : l'en-tête affiche `contrée · lieu · terrain (x, y)` ; le journal annonce chaque nouvelle contrée ou nouveau lieu.
 
@@ -38,6 +61,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 |---|---|
 | Biomes | rat (plaine), crabe (plage), loup (forêt), gobelin (collines), yéti (neige) |
 | Forteresses | squelette, chevalier, seigneur de guerre (boss) |
+| Donjons | squelette, chevalier, **spectre**, **golem**, **liche** (boss) |
 
 - Errance et poursuite à portée de détection ; 500 monstres au plus, avec un quota par joueur.
 - **Meutes** : un compagnon de plus tous les 3 niveaux du joueur ; des espèces compagnes apparaissent rarement.
@@ -98,7 +122,9 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Mémoire et lore** (`lore/`) : fiche de présentation du joueur (8 lieux au plus), rumeurs (portée 3 régions, délai 5 min, fidélité décroissante, oubli après 14 jours), résumé privé par PNJ, faits vérifiés (niveau, boss, morts, quêtes rendues).
 - **Quêtes** (`internal/quest/`, `client/quests.go`) :
   - Le modèle propose, le serveur décide : objectifs vérifiables, récompenses plafonnées, textes nettoyés. Accepter/Refuser avec `A`/`R`.
-  - Objectifs : tuer 3 à 12 monstres d'une espèce, entrer dans un lieu voisin, vaincre le seigneur de guerre (niveau 10 minimum).
+  - Objectifs : tuer 3 à 12 monstres d'une espèce, entrer dans un lieu voisin, vaincre le seigneur de guerre (niveau 10 minimum), **vaincre le maître d'un donjon secret**.
+  - **Quête de donjon** (`game/dungeonquest.go`) : le donjon est à 3 régions au plus du donneur, et il faut avoir le niveau du palier (3, 5, 7, 9 ou 11). Elle est accomplie par la mort de la liche *de ce donjon* (un autre donjon ou le seigneur de guerre ne comptent pas), puis rendue au donneur. Récompense : or de 1,25 × la difficulté (150 + 50 × palier), XP, 2 potions, plafonnée comme tout boss. **Accepter la quête révèle l'entrée** du donjon.
+  - Deux sources, même validation : le modèle de langage peut proposer `dungeon` avec un nom de la liste `donjons_secrets` du prompt ; **sans modèle**, un villageois à quêtes ajoute au menu « Demander du travail » (`T` / `W` en anglais), qui propose le donjon accessible le plus proche, pas déjà en cours ni rendu (titre et histoire tirés du catalogue, en français et en anglais).
   - Limites : 5 quêtes ouvertes, une par donneur, 30 min entre deux quêtes d'un même donneur, expiration à 7 jours.
   - Livre de quêtes (`Q`), onglets avec `Tab`, abandon avec `X` deux fois ; on rend la quête au donneur.
 - **Réputation** par région : Inconnu, Connu (3), Estimé (8), Honoré (15). Réduction de 20 % puis 40 % sur soins, potions et équipement.
@@ -128,7 +154,7 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 | Carte | flèches, `+` `-`, `0`, `W`, `X`, Échap ou `M` |
 | Quêtes | `Tab`, `↑↓`, `X`, Échap ou `Q` |
 | Combat | `A`/`1`, `I`/`2`, `F`/`3`, flèches, Entrée |
-| PNJ | lettres traduites selon la langue |
+| PNJ | lettres traduites selon la langue (dont `T` / `W` en anglais pour « Demander du travail ») |
 
 ## Interface et affichage (`internal/ui/`, `internal/render/`)
 
@@ -140,17 +166,19 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 ## Sauvegarde et persistance (`internal/store/`)
 
-- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, lore, étalages (`npc_wares`).
+- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), lore, étalages (`npc_wares`).
 - Écriture asynchrone ; sauvegarde à la déconnexion, après chaque combat, toutes les 30 s, à l'arrêt propre.
 - La seed est fixée à la création de la base ; la changer sur une base existante est refusé.
 - **Côté client** : carte, repères et exploration dans `<UserConfigDir>/sudo-dragon/map.json` (une entrée par seed, écriture différée de 15 s). Le serveur n'en sait rien.
-- Non persistés : le monde (recalculé de la seed) et les garnisons (réinitialisées au redémarrage).
+- Non persistés : le monde (recalculé de la seed), les garnisons (réinitialisées au redémarrage) et l'état des donjons (monstres vaincus, coffres ouverts : en mémoire, perdus au redémarrage du serveur). Seules les entrées découvertes sont sauvegardées.
 
 ## Réseau, multijoueur et exploitation (`internal/server/`, `internal/protocol/`)
 
 - **WebSocket**, enveloppes JSON ; serveur autoritatif à 10 Hz, un seul goroutine pour l'état du jeu.
 - Monde partagé : joueurs visibles en temps réel, chat, messages privés.
 - Instantanés fusionnés : un client lent saute des images au lieu d'être déconnecté.
+- **Message `dungeons`** : la liste complète des entrées de donjon découvertes (identifiant, nom, position, palier), envoyée à la connexion et à chaque découverte, avec l'identifiant de la dernière trouvée.
+- **Message `zone`** : envoyé à l'entrée et à la sortie d'un donjon (identifiant, nom dans la langue du joueur, seed, palier, coffres ouverts), puis à chaque coffre ouvert dans l'instance. Il précède toujours le premier instantané de la nouvelle carte, dont les coordonnées sont locales au plan du donjon.
 - **Comptes** : pseudo 3–16 caractères, mot de passe 8–72 octets (bcrypt), message d'erreur identique pour pseudo inconnu et mauvais mot de passe.
 - **Quotas par IP** : 8 échecs de connexion par minute, 10 créations de compte par heure ; limites du chat et des répliques aux PNJ.
 - **TLS** (`wss://`) via `-tls-cert` / `-tls-key` ; sur `ws://`, le mot de passe voyage en clair.
@@ -180,3 +208,8 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 - Pas de reconnexion automatique après une coupure.
 - Un seul processus serveur, sans montée en charge horizontale.
 - Le README est en partie périmé (Défendre, limites connues, carte, i18n).
+- **Donjons** :
+  - Le client recalcule tout le monde depuis la seed, donc il connaît la position de toutes les entrées : seuls l'affichage et la marche automatique passent par les découvertes, un client modifié pourrait lire les autres.
+  - L'état d'un donjon n'est pas sauvegardé en base et n'est jamais libéré tant que son boss vit : un serveur qui tourne longtemps garde en mémoire tous les donjons visités et non terminés.
+  - Le donjon est partagé par tous : pas d'instance privée par groupe ni d'invitation, et on peut y retrouver des monstres qui ont suivi un joueur jusqu'à l'escalier.
+  - Les monstres de donjon ne repoussent pas.

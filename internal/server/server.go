@@ -84,6 +84,7 @@ func New(w *world.World, log *slog.Logger, be Backend) *Server {
 		sessions:      make(map[int]*session),
 		reserved:      make(map[string]bool),
 	}
+	s.Game.Dungeons = true
 	s.Game.Persist = func(name string, sv game.Saved) { be.SaveCharacter(name, fromSaved(sv)) }
 	return s
 }
@@ -106,6 +107,7 @@ func fromSaved(sv game.Saved) store.Character {
 		Class: string(sv.Stats.Class), Scores: sv.Stats.Scores, MaxHP: sv.Stats.MaxHP, Mana: sv.Mana,
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 		Gear: sv.Gear, GearDirty: sv.GearDirty,
+		Discoveries: sv.Discovered, DiscoveriesDirty: sv.DiscoveredDirty,
 	}
 }
 
@@ -118,6 +120,7 @@ func toSaved(c store.Character) *game.Saved {
 		Pos:        world.Pos{X: c.X, Y: c.Y},
 		LLMConsent: c.LLMConsent,
 		Quests:     c.Quests, Rep: c.Rep, Gear: c.Gear, GearDirty: c.GearDirty,
+		Discovered: c.Discoveries,
 	}
 }
 
@@ -352,6 +355,8 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		NPC:      func(d protocol.NPCDialog) { sess.sendMsg(protocol.TNPC, d) },
 		Quests:   func(q protocol.Quests) { sess.sendMsg(protocol.TQuests, q) },
 		Bag:      func(b protocol.Bag) { sess.sendMsg(protocol.TBag, b) },
+		Zone:     func(z protocol.Zone) { sess.sendMsg(protocol.TZone, z) },
+		Dungeons: func(d protocol.Dungeons) { sess.sendMsg(protocol.TDungeons, d) },
 		Joined: func(id, x, y int) {
 			sess.sendMsg(protocol.TWelcome, protocol.Welcome{
 				ID: id, Name: name, X: x, Y: y, Seed: s.Game.World.Seed,

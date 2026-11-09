@@ -66,15 +66,18 @@ func TestGarrisonSpeciesAreConsistent(t *testing.T) {
 	if !(g.HP < e.HP && e.HP < b.HP && g.Dmg.Avg() < e.Dmg.Avg() && e.Dmg.Avg() < b.Dmg.Avg() && g.fighter().Def < e.fighter().Def && e.fighter().Def < b.fighter().Def && g.XP < e.XP && e.XP < b.XP) {
 		t.Fatal("les rangs de garnison ne sont pas strictement croissants")
 	}
-	// Le seigneur est unique par forteresse.
-	bosses := 0
+	// Le seigneur est unique par forteresse, la liche par donjon.
+	bosses, dungeonBosses := 0, 0
 	for _, s := range speciesList {
-		if s.Boss {
+		switch {
+		case s.Boss && s.Garrison:
 			bosses++
+		case s.Boss && s.Dungeon:
+			dungeonBosses++
 		}
 	}
-	if bosses != 1 {
-		t.Fatalf("%d espèces de boss, une attendue", bosses)
+	if bosses != 1 || dungeonBosses != 1 {
+		t.Fatalf("%d espèces de boss de forteresse et %d de donjon, une de chaque attendue", bosses, dungeonBosses)
 	}
 }
 

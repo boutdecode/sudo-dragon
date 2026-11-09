@@ -31,6 +31,17 @@ const (
 	Wall  // mur: infranchissable
 	Door  // porte ou portail: franchissable
 
+	// Tuiles des donjons (voir dungeon.go).
+	Chest  // coffre: franchissable, s'ouvre en y marchant
+	Stairs // escalier: entrée et sortie du donjon
+
+	// Entrance marque, à l'écran du client seulement, l'entrée d'un donjon déjà découverte. Le monde ne la
+	// génère jamais : l'entrée secrète est une case de terrain ordinaire (voir dungeon.go).
+	Entrance
+
+	// Rock est la roche pleine d'un donjon: infranchissable, dessinée en sourdine (voir dungeonmap.go).
+	Rock
+
 	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
 	NumTiles
 )
@@ -64,6 +75,14 @@ func (t Tile) Glyph() rune {
 		return '#'
 	case Door:
 		return '+'
+	case Chest:
+		return '$'
+	case Stairs:
+		return '<'
+	case Entrance:
+		return '>'
+	case Rock:
+		return '%'
 	}
 	return '?'
 }
@@ -71,7 +90,7 @@ func (t Tile) Glyph() rune {
 // Walkable indique si un joueur peut marcher sur la tuile.
 func (t Tile) Walkable() bool {
 	switch t {
-	case DeepWater, Water, Mountain, Wall:
+	case DeepWater, Water, Mountain, Wall, Rock:
 		return false
 	}
 	return true
@@ -109,6 +128,11 @@ type World struct {
 	tmu         sync.Mutex
 	territories map[TerritoryID]*Territory
 
+	// Donjons (voir dungeon.go). dmu est indépendant des autres verrous : il n'est jamais tenu
+	// pendant un calcul.
+	dmu      sync.Mutex
+	dungeons map[RegionPos]*Dungeon
+
 	// Routes entre lieux (voir roads.go). rmu est pris avant smu, jamais après.
 	rmu   sync.Mutex
 	roads map[roadKey]*roadLink
@@ -123,6 +147,7 @@ func New(seed int64) *World {
 		cache:     make(map[ChunkPos]*Chunk),
 		structs:   make(map[RegionPos]*Structure),
 
+		dungeons:    make(map[RegionPos]*Dungeon),
 		territories: make(map[TerritoryID]*Territory),
 		roads:       make(map[roadKey]*roadLink),
 	}

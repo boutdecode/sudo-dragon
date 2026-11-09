@@ -46,6 +46,12 @@ type player struct {
 	pos  world.Pos
 	send func(protocol.Snapshot)
 
+	// Zone du joueur : 0 pour la carte principale, sinon l'instance d'un donjon (voir dungeon.go).
+	// Dans un donjon, pos est local à la carte du donjon et ret est la case de la carte principale
+	// où l'on revient en sortant, en mourant ou en se déconnectant.
+	zone ZoneID
+	ret  world.Pos
+
 	safe       bool                     // en zone sûre; recalculé à chaque changement de case (voir setPos)
 	sendCombat func(protocol.Combat)    // peut être nil
 	sendNPC    func(protocol.NPCDialog) // peut être nil
@@ -77,6 +83,13 @@ type player struct {
 	gearDirty   bool
 	gearNotices []string
 	sendBagMsg  func(protocol.Bag)
+
+	sendZoneMsg func(protocol.Zone) // peut être nil
+
+	// Donjons dont le joueur a découvert l'entrée, par région (voir dungeon.go).
+	discovered      map[world.RegionPos]bool
+	discoveredDirty bool // à réécrire à la prochaine sauvegarde
+	sendDungeonsMsg func(protocol.Dungeons)
 }
 
 // Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
@@ -100,6 +113,10 @@ type Saved struct {
 	// Sac d'équipement et objets portés (voir internal/gear). GearDirty : à réécrire en base.
 	Gear      gear.Inventory
 	GearDirty bool
+
+	// Donjons découverts (régions qui les cachent). DiscoveredDirty: à réécrire en base.
+	Discovered      []world.RegionPos
+	DiscoveredDirty bool
 }
 
 // Game est l'état du monde vivant.
@@ -109,6 +126,10 @@ type Game struct {
 	// Talker, si défini et disponible, fait parler les PNJ avec un modèle de langage
 	// (voir talk.go). nil: pas de discussion libre, seulement les menus. À définir avant Run.
 	Talker Talker
+
+	// Dungeons active les donjons : marcher sur une entrée emmène dans une instance. Éteint par
+	// défaut, tant que le client ne sait pas afficher une carte de donjon.
+	Dungeons bool
 
 	geo map[geoKey][]npcai.Landmark // lieux connus des chefs et maires (voir geography.go)
 
@@ -131,8 +152,8 @@ type Game struct {
 
 	// Propriété exclusive de la goroutine de Run :
 	players map[int]*player
-	idCache []int // identifiants triés, valide si non nil; invalidé quand players change
-	byPos   map[world.Pos]int
+	idCache []int             // identifiants triés, valide si non nil; invalidé quand players change
+	byPos   map[world.Pos]int // index de la carte principale (zone 0); chaque instance a le sien
 	nextID  int
 	tick    uint64
 
@@ -141,12 +162,18 @@ type Game struct {
 	talkSeq uint64 // dernier numéro de conversation attribué
 
 	monsters      map[int]*monster
-	monsterAt     map[world.Pos]int
+	monsterAt     map[world.Pos]int        // idem : carte principale seulement
 	slotMonster   map[world.SlotKey]int    // emplacement de forteresse -> monstre vivant
 	slotDefeated  map[world.SlotKey]uint64 // emplacement -> tick de la dernière victoire (repousse)
 	garrisonCount int                      // monstres de garnison vivants
 	nextMonsterID int
-	rng           *rand.Rand // aléa du jeu (apparitions, errance); injectable en test
+
+	instances       map[ZoneID]*instance // instances de donjon (voir dungeon.go)
+	dungeonZone     map[string]ZoneID    // donjon (identifiant) -> son instance en cours
+	nextZone        ZoneID
+	dungeonMonsters int // monstres vivants dans les donjons (hors quotas de la carte principale)
+
+	rng *rand.Rand // aléa du jeu (apparitions, errance); injectable en test
 }
 
 // New crée un jeu pour le monde donné. Lancer ensuite Run.
@@ -164,6 +191,9 @@ func New(w *world.World) *Game {
 		slotMonster:   make(map[world.SlotKey]int),
 		slotDefeated:  make(map[world.SlotKey]uint64),
 		nextMonsterID: 1,
+		instances:     make(map[ZoneID]*instance),
+		dungeonZone:   make(map[string]ZoneID),
+		nextZone:      1,
 		rng:           rand.New(rand.NewPCG(uint64(w.Seed), 0x9e3779b97f4a7c15)),
 	}
 }
@@ -211,6 +241,8 @@ type Handlers struct {
 	NPC      func(protocol.NPCDialog) // optionnel
 	Quests   func(protocol.Quests)    // optionnel: livre de quêtes
 	Bag      func(protocol.Bag)       // optionnel: sac d'équipement
+	Zone     func(protocol.Zone)      // optionnel: entrée ou sortie d'un donjon, coffres ouverts
+	Dungeons func(protocol.Dungeons)  // optionnel: donjons découverts
 	// Joined est appelé dans la goroutine de jeu avant tout instantané, ce qui
 	// permet d'envoyer le message de bienvenue avant le premier snapshot.
 	Joined func(id, x, y int)
@@ -226,10 +258,13 @@ func (g *Game) Join(name string, h Handlers) (int, error) {
 		p.sendNPC = h.NPC
 		p.sendQuestBook = h.Quests
 		p.sendBagMsg = h.Bag
+		p.sendZoneMsg = h.Zone
+		p.sendDungeonsMsg = h.Dungeons
 		if h.Joined != nil {
 			h.Joined(p.id, p.pos.X, p.pos.Y)
 		}
 		g.sendQuests(p) // après le message de bienvenue
+		g.sendDungeons(p, "")
 		g.sendBag(p)
 		reply <- p.id
 	}) {
@@ -284,7 +319,7 @@ func (g *Game) Nearby(id int) ([]int, error) {
 
 // sees indique si b est dans la zone de vision de a.
 func sees(a, b *player) bool {
-	return abs(a.pos.X-b.pos.X) <= protocol.ViewHalfW && abs(a.pos.Y-b.pos.Y) <= protocol.ViewHalfH
+	return a.zone == b.zone && abs(a.pos.X-b.pos.X) <= protocol.ViewHalfW && abs(a.pos.Y-b.pos.Y) <= protocol.ViewHalfH
 }
 
 func (g *Game) nearby(id int) []int {
@@ -309,7 +344,8 @@ func (g *Game) join(name string, send func(protocol.Snapshot)) *player {
 // sauvegardée devenue occupée est remplacée par la case libre la plus proche;
 // les valeurs hors bornes sont ramenées dans les bornes valides.
 func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved) *player {
-	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1}
+	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1,
+		discovered: map[world.RegionPos]bool{}}
 	p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 	start := g.World.FindSpawn()
 	if saved != nil {
@@ -320,6 +356,10 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 		p.consent = saved.LLMConsent
 		g.loadQuests(p, saved)
 		p.inv = gear.SanitizeInventory(saved.Gear)
+		for _, rp := range saved.Discovered {
+			p.discovered[rp] = true
+		}
+		p.discoveredDirty = saved.DiscoveredDirty
 		p.gearDirty = saved.GearDirty // objets ajoutés avant la connexion (arme de départ): à écrire à la première sauvegarde
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		p.mana = max(0, min(saved.Mana, p.stats.MaxMana))
@@ -338,11 +378,12 @@ func (g *Game) save(p *player) {
 		// Les quêtes sont toujours jointes (une reconnexion avant l'écriture doit les retrouver) ;
 		// QuestsDirty dit seulement s'il faut les réécrire en base.
 		g.Persist(p.name, Saved{
-			Stats: p.stats, HP: p.hp, Mana: p.mana, Pos: p.pos, LLMConsent: p.consent,
+			Stats: p.stats, HP: p.hp, Mana: p.mana, Pos: p.surfacePos(), LLMConsent: p.consent,
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
+			Discovered: p.discoveredList(), DiscoveredDirty: p.discoveredDirty,
 		})
-		p.questsDirty, p.gearDirty = false, false
+		p.questsDirty, p.gearDirty, p.discoveredDirty = false, false, false
 	}
 }
 
@@ -353,9 +394,14 @@ func (g *Game) leave(id int) {
 	}
 	g.abortFight(p)
 	g.save(p)
-	delete(g.byPos, p.pos)
+	if at := g.playerIndex(p.zone); at[p.pos] == p.id {
+		delete(at, p.pos)
+	}
 	delete(g.players, id)
 	g.idCache = nil
+	if inst := g.instances[p.zone]; inst != nil {
+		g.closeIfEmpty(inst)
+	}
 }
 
 func (g *Game) move(id, dx, dy int) {
@@ -374,19 +420,38 @@ func clamp1(v int) int { return max(-1, min(1, v)) }
 
 // setPos place p en pos en maintenant l'index des positions.
 func (g *Game) setPos(p *player, pos world.Pos) {
-	if cur, ok := g.byPos[p.pos]; ok && cur == p.id {
-		delete(g.byPos, p.pos)
+	at := g.playerIndex(p.zone)
+	if cur, ok := at[p.pos]; ok && cur == p.id {
+		delete(at, p.pos)
 	}
 	p.pos = pos
-	p.safe = g.World.Safe(pos.X, pos.Y)
-	g.byPos[pos] = p.id
-	if p.hasOpenReach {
-		g.questMoved(p)
+	p.safe = p.zone == 0 && g.World.Safe(pos.X, pos.Y)
+	at[pos] = p.id
+	if p.zone == 0 {
+		g.noticeDungeons(p)
+		if p.hasOpenReach {
+			g.questMoved(p)
+		}
 	}
 }
 
-// blocked indique si une tuile est infranchissable (terrain, joueur, monstre ou PNJ).
-func (g *Game) blocked(pos world.Pos) bool {
+// blocked indique si une tuile de la carte principale est infranchissable (terrain, joueur,
+// monstre ou PNJ).
+func (g *Game) blocked(pos world.Pos) bool { return g.blockedIn(0, pos) }
+
+// blockedIn est blocked pour la zone z : la carte principale (0) ou l'instance d'un donjon.
+func (g *Game) blockedIn(z ZoneID, pos world.Pos) bool {
+	if z != 0 {
+		inst := g.instances[z]
+		if inst == nil || !inst.dmap.TileAt(pos.X, pos.Y).Walkable() {
+			return true
+		}
+		if _, occupied := inst.byPos[pos]; occupied {
+			return true
+		}
+		_, occupied := inst.monsterAt[pos]
+		return occupied
+	}
 	if !g.World.At(pos.X, pos.Y).Walkable() {
 		return true
 	}
@@ -404,14 +469,17 @@ func (g *Game) blocked(pos world.Pos) bool {
 func (g *Game) freeSpawn() world.Pos { return g.freeNear(g.World.FindSpawn()) }
 
 // freeNear renvoie la case libre et praticable la plus proche de c (en anneaux).
-func (g *Game) freeNear(c world.Pos) world.Pos {
-	for r := 0; r <= spawnSearchMax; r++ {
+func (g *Game) freeNear(c world.Pos) world.Pos { return g.freeNearIn(0, c, 0) }
+
+// freeNearIn est freeNear dans la zone z, en ignorant les cases à moins de minR de c.
+func (g *Game) freeNearIn(z ZoneID, c world.Pos, minR int) world.Pos {
+	for r := minR; r <= spawnSearchMax; r++ {
 		for dy := -r; dy <= r; dy++ {
 			for dx := -r; dx <= r; dx++ {
 				if max(abs(dx), abs(dy)) != r {
 					continue
 				}
-				if pos := (world.Pos{X: c.X + dx, Y: c.Y + dy}); !g.blocked(pos) {
+				if pos := (world.Pos{X: c.X + dx, Y: c.Y + dy}); !g.blockedIn(z, pos) {
 					return pos
 				}
 			}
@@ -448,19 +516,32 @@ func (g *Game) step() {
 		}
 		p.hasPending = false
 		dst := world.Pos{X: p.pos.X + p.pendingDX, Y: p.pos.Y + p.pendingDY}
-		if mid, ok := g.monsterAt[dst]; ok { // marcher sur un monstre l'attaque
+		if mid, ok := g.monsterIndex(p.zone)[dst]; ok { // marcher sur un monstre l'attaque
 			g.startFight(p, g.monsters[mid], true)
 			continue
 		}
-		if npc, ok := g.World.NPCAt(dst.X, dst.Y); ok { // marcher sur un PNJ lui adresse la parole
-			g.startTalk(p, npc)
+		if p.zone == 0 {
+			if npc, ok := g.World.NPCAt(dst.X, dst.Y); ok { // marcher sur un PNJ lui adresse la parole
+				g.startTalk(p, npc)
+				continue
+			}
+			// L'entrée secrète d'un donjon est une case ordinaire : on y entre en marchant dessus.
+			if d := g.World.DungeonAt(dst.X, dst.Y); d != nil && g.Dungeons && !g.blocked(dst) {
+				g.enterDungeon(p, d)
+				continue
+			}
+		} else if inst := g.instances[p.zone]; inst != nil && dst == inst.dmap.Exit {
+			g.leaveDungeon(p)
 			continue
 		}
-		if g.blocked(dst) {
+		if g.blockedIn(p.zone, dst) {
 			continue
 		}
 		g.setPos(p, dst)
 		p.cooldown = MoveCooldown
+		if inst := g.instances[p.zone]; inst != nil && inst.dmap.TileAt(dst.X, dst.Y) == world.Chest {
+			g.openChest(p, inst, dst) // marcher sur un coffre l'ouvre
+		}
 	}
 
 	g.expireIdleFights(ids)
@@ -528,7 +609,7 @@ func (g *Game) snapshotFor(p *player, monsterIDs []int) protocol.Snapshot {
 	}
 	for _, id := range monsterIDs {
 		m := g.monsters[id]
-		if inBox(m.pos, p.pos, protocol.ViewHalfW, protocol.ViewHalfH) {
+		if m.zone == p.zone && inBox(m.pos, p.pos, protocol.ViewHalfW, protocol.ViewHalfH) {
 			snap.Monsters = append(snap.Monsters, protocol.Monster{ID: m.id, Kind: m.sp.Kind, X: m.pos.X, Y: m.pos.Y, Fighting: m.fight != nil})
 		}
 	}
@@ -554,7 +635,8 @@ func (g *Game) sendSnapshot(p *player, monsterIDs []int) {
 func (g *Game) unloadChunks() {
 	keep := make(map[world.ChunkPos]bool)
 	for _, p := range g.players {
-		c := world.ChunkOf(p.pos.X, p.pos.Y)
+		sp := p.surfacePos() // en donjon, on garde les abords de l'entrée
+		c := world.ChunkOf(sp.X, sp.Y)
 		for dy := -2; dy <= 2; dy++ {
 			for dx := -2; dx <= 2; dx++ {
 				keep[world.ChunkPos{X: c.X + dx, Y: c.Y + dy}] = true

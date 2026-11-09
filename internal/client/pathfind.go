@@ -13,11 +13,13 @@ type pathNode struct {
 
 type pathHeap []pathNode
 
-func (h pathHeap) Len() int           { return len(h) }
-func (h pathHeap) Less(i, j int) bool { return h[i].f < h[j].f || (h[i].f == h[j].f && h[i].g > h[j].g) }
-func (h pathHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *pathHeap) Push(x any)        { *h = append(*h, x.(pathNode)) }
-func (h *pathHeap) Pop() any          { o := *h; n := len(o); x := o[n-1]; *h = o[:n-1]; return x }
+func (h pathHeap) Len() int { return len(h) }
+func (h pathHeap) Less(i, j int) bool {
+	return h[i].f < h[j].f || (h[i].f == h[j].f && h[i].g > h[j].g)
+}
+func (h pathHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *pathHeap) Push(x any)   { *h = append(*h, x.(pathNode)) }
+func (h *pathHeap) Pop() any     { o := *h; n := len(o); x := o[n-1]; *h = o[:n-1]; return x }
 
 func chebyshev(a, b world.Pos) int { return max(absInt(a.X-b.X), absInt(a.Y-b.Y)) }
 
@@ -50,7 +52,7 @@ const (
 // findWalkPath cherche un chemin de /moveto qui préfère les routes.
 func (m Model) findWalkPath(from, to world.Pos, free func(world.Pos) bool) []world.Pos {
 	cost := func(p world.Pos) int {
-		if m.world.At(p.X, p.Y) == world.Road {
+		if m.dmap == nil && m.world.At(p.X, p.Y) == world.Road {
 			return roadStepCost
 		}
 		return offRoadCost

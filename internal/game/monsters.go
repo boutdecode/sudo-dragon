@@ -32,6 +32,10 @@ type species struct {
 	// Boss: monstre unique d'une forteresse, au butin amélioré.
 	Garrison bool
 	Boss     bool
+
+	// Dungeon: n'apparaît que dans un donjon (jamais selon le biome). Les monstres de donjon sont mis à l'échelle
+	// du palier du donjon (voir scaledForTier).
+	Dungeon bool
 }
 
 // Tous les monstres sont plus lents qu'un joueur (MoveEvery > MoveCooldown):
@@ -47,12 +51,17 @@ var speciesList = []species{
 	{Kind: "skeleton", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 36, Size: hero.Medium, Hit: 4, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 25},
 	{Kind: "knight", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 90, Size: hero.Medium, DexMod: 2, Hit: 7, Dmg: dice.D(2, 8, 0), Reduction: dice.D(1, 8, 0), XP: 50},
 	{Kind: "warlord", Garrison: true, Boss: true, MoveEvery: 5, Aggro: 6, HP: 180, Size: hero.Large, DexMod: 1, Hit: 8, Dmg: dice.D(3, 10, 3), Reduction: dice.D(2, 6, 0), XP: 250},
+
+	// Donjons (voir dungeon.go): en plus des squelettes et des chevaliers.
+	{Kind: "wraith", Dungeon: true, MoveEvery: 4, Aggro: 7, HP: 30, Size: hero.Medium, DexMod: 2, Hit: 5, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 30},
+	{Kind: "golem", Dungeon: true, MoveEvery: 6, Aggro: 5, HP: 110, Size: hero.Large, DexMod: -1, Hit: 6, Dmg: dice.D(2, 10, 0), Reduction: dice.D(1, 10, 0), XP: 60},
+	{Kind: "lich", Dungeon: true, Boss: true, MoveEvery: 5, Aggro: 7, HP: 200, Size: hero.Medium, DexMod: 2, Hit: 8, Dmg: dice.D(3, 10, 4), Reduction: dice.D(2, 6, 0), XP: 300},
 }
 
 var speciesByTile = func() map[world.Tile][]species {
 	m := make(map[world.Tile][]species)
 	for _, s := range speciesList {
-		if s.Garrison { // les garnisons n'apparaissent pas selon le biome
+		if s.Garrison || s.Dungeon { // garnisons et donjons n'apparaissent pas selon le biome
 			continue
 		}
 		m[s.Habitat] = append(m[s.Habitat], s)
@@ -68,6 +77,9 @@ var companions = map[string][]string{
 	"yeti":     {"wolf"},   // loups des neiges
 	"skeleton": {"knight"}, // garnison
 	"warlord":  {"knight", "skeleton"},
+	"wraith":   {"skeleton"}, // donjon
+	"golem":    {"knight", "wraith"},
+	"lich":     {"golem", "wraith"},
 }
 
 // canGroup dit si deux espèces peuvent se battre ensemble.
@@ -92,14 +104,14 @@ func (g *Game) gatherGroup(m *monster) []*monster {
 	var near []*monster
 	for _, id := range g.sortedMonsterIDs() {
 		o := g.monsters[id]
-		if o == m || o.fight != nil || o.cooldown > 0 || cheb(o.pos, m.pos) > groupRadius || !canGroup(m.sp.Kind, o.sp.Kind) {
+		if o == m || o.zone != m.zone || o.fight != nil || o.cooldown > 0 || cheb(o.pos, m.pos) > groupRadius || !canGroup(m.sp.Kind, o.sp.Kind) {
 			continue
 		}
 		near = append(near, o)
 	}
 	slices.SortStableFunc(near, func(a, b *monster) int { return cheb(a.pos, m.pos) - cheb(b.pos, m.pos) })
 	limit := maxGroup
-	if m.sp.Garrison {
+	if m.sp.Garrison || m.sp.Dungeon {
 		limit = maxGarrison
 	}
 	return append([]*monster{m}, near[:min(len(near), limit-1)]...)
@@ -109,7 +121,7 @@ func (g *Game) gatherGroup(m *monster) []*monster {
 func (g *Game) spawnPack(m *monster, around world.Pos, level int) {
 	n := g.rng.IntN(min(packExtra[m.sp.Kind], level/packLevels) + 1) // pas de meute pour un débutant
 	for range n {
-		if g.monstersAround(around) >= maxPerPlayer || len(g.monsters)-g.garrisonCount >= maxMonsters {
+		if g.monstersAround(around) >= maxPerPlayer || g.biomeCount() >= maxMonsters {
 			return // la meute respecte les mêmes quotas que les monstres isolés
 		}
 		for range spawnTries {
@@ -183,6 +195,7 @@ const (
 
 type monster struct {
 	id       int
+	zone     ZoneID // 0: carte principale; sinon instance d'un donjon (pos est alors local)
 	sp       species
 	pos      world.Pos
 	home     world.Pos
@@ -227,17 +240,29 @@ func (g *Game) sortedMonsterIDs() []int {
 	return ids
 }
 
-func (g *Game) addMonster(sp species, pos world.Pos) *monster {
-	m := &monster{id: g.nextMonsterID, sp: sp, pos: pos, home: pos}
+func (g *Game) addMonster(sp species, pos world.Pos) *monster { return g.addMonsterIn(0, sp, pos) }
+
+// addMonsterIn crée un monstre dans la zone z (0: carte principale).
+func (g *Game) addMonsterIn(z ZoneID, sp species, pos world.Pos) *monster {
+	m := &monster{id: g.nextMonsterID, zone: z, sp: sp, pos: pos, home: pos}
 	g.nextMonsterID++
 	g.monsters[m.id] = m
-	g.monsterAt[pos] = m.id
+	g.monsterIndex(z)[pos] = m.id
+	if z != 0 {
+		g.dungeonMonsters++
+	}
 	return m
 }
 
+// biomeCount compte les monstres de biome vivants: ni garnisons, ni monstres de donjon.
+func (g *Game) biomeCount() int { return len(g.monsters) - g.garrisonCount - g.dungeonMonsters }
+
 func (g *Game) removeMonster(m *monster) {
-	delete(g.monsterAt, m.pos)
+	delete(g.monsterIndex(m.zone), m.pos)
 	delete(g.monsters, m.id)
+	if m.zone != 0 {
+		g.dungeonMonsters--
+	}
 	if m.slot != nil { // libère l'emplacement de forteresse
 		delete(g.slotMonster, *m.slot)
 		g.garrisonCount--
@@ -249,26 +274,27 @@ func (g *Game) moveMonster(m *monster, dx, dy int) bool {
 		return false
 	}
 	dst := world.Pos{X: m.pos.X + dx, Y: m.pos.Y + dy}
-	if g.blocked(dst) || g.World.Safe(dst.X, dst.Y) { // les zones sûres sont interdites aux monstres
+	if g.blockedIn(m.zone, dst) || (m.zone == 0 && g.World.Safe(dst.X, dst.Y)) { // les zones sûres sont interdites aux monstres
 		return false
 	}
 	if m.bounds != nil && !m.bounds.Contains(dst.X, dst.Y) { // une garnison ne quitte pas sa forteresse
 		return false
 	}
-	delete(g.monsterAt, m.pos)
+	at := g.monsterIndex(m.zone)
+	delete(at, m.pos)
 	m.pos = dst
-	g.monsterAt[dst] = m.id
+	at[dst] = m.id
 	return true
 }
 
 // nearestPlayer renvoie le joueur libre le plus proche à portée aggro (ex æquo: le plus ancien).
-func (g *Game) nearestPlayer(pos world.Pos, aggro int) *player {
+func (g *Game) nearestPlayer(z ZoneID, pos world.Pos, aggro int) *player {
 	var best *player
 	bestD := aggro + 1
 	for _, id := range g.sortedIDs() {
 		p := g.players[id]
-		if p.fight != nil {
-			continue // déjà au combat: on ne s'acharne pas à plusieurs
+		if p.zone != z || p.fight != nil {
+			continue // autre zone, ou déjà au combat: on ne s'acharne pas à plusieurs
 		}
 		if p.safe {
 			continue // un joueur en zone sûre n'est ni poursuivi ni attaqué
@@ -283,9 +309,14 @@ func (g *Game) nearestPlayer(pos world.Pos, aggro int) *player {
 // stepMonsters fait agir chaque monstre: poursuite si un joueur est à portée,
 // sinon errance près du point d'origine.
 func (g *Game) stepMonsters(ids []int) {
+	// Un donjon sans joueur est figé: il garde son état sans consommer de temps de calcul.
+	occupied := make(map[ZoneID]bool)
+	for _, p := range g.players {
+		occupied[p.zone] = true
+	}
 	for _, id := range ids {
 		m := g.monsters[id]
-		if m.fight != nil {
+		if m.fight != nil || (m.zone != 0 && !occupied[m.zone]) {
 			continue
 		}
 		if m.cooldown > 0 {
@@ -296,7 +327,7 @@ func (g *Game) stepMonsters(ids []int) {
 		}
 
 		moved := false
-		if target := g.nearestPlayer(m.pos, m.sp.Aggro); target != nil {
+		if target := g.nearestPlayer(m.zone, m.pos, m.sp.Aggro); target != nil {
 			if cheb(m.pos, target.pos) <= 1 {
 				g.startFight(target, m, false) // au contact: il attaque
 				continue
@@ -324,7 +355,7 @@ func inBox(a, b world.Pos, halfW, halfH int) bool {
 // seenByAnyPlayer indique si pos est dans la vue (marge comprise) d'un joueur.
 func (g *Game) seenByAnyPlayer(pos world.Pos) bool {
 	for _, p := range g.players {
-		if inBox(pos, p.pos, protocol.ViewHalfW+spawnViewMargin, protocol.ViewHalfH+spawnViewMargin) {
+		if p.zone == 0 && inBox(pos, p.pos, protocol.ViewHalfW+spawnViewMargin, protocol.ViewHalfH+spawnViewMargin) {
 			return true
 		}
 	}
@@ -334,7 +365,7 @@ func (g *Game) seenByAnyPlayer(pos world.Pos) bool {
 func (g *Game) monstersAround(pos world.Pos) int {
 	n := 0
 	for _, m := range g.monsters {
-		if m.slot == nil && inBox(m.pos, pos, spawnHalfW, spawnHalfH) { // la garnison n'occupe pas le quota de biome
+		if m.zone == 0 && m.slot == nil && inBox(m.pos, pos, spawnHalfW, spawnHalfH) { // la garnison n'occupe pas le quota de biome
 			n++
 		}
 	}
@@ -345,12 +376,12 @@ func (g *Game) monstersAround(pos world.Pos) int {
 func (g *Game) despawnFar() {
 	for _, id := range g.sortedMonsterIDs() {
 		m := g.monsters[id]
-		if m.fight != nil {
-			continue // jamais en plein combat
+		if m.fight != nil || m.zone != 0 {
+			continue // jamais en plein combat; les monstres de donjon vivent et meurent avec leur instance
 		}
 		near := false
 		for _, p := range g.players {
-			if inBox(m.pos, p.pos, keepHalfW, keepHalfH) {
+			if p.zone == 0 && inBox(m.pos, p.pos, keepHalfW, keepHalfH) {
 				near = true
 				break
 			}
@@ -365,10 +396,13 @@ func (g *Game) despawnFar() {
 // hors de toute vue, sur le terrain d'habitat de l'espèce.
 func (g *Game) spawnMonsters() {
 	for _, id := range g.sortedIDs() {
-		if len(g.monsters)-g.garrisonCount >= maxMonsters {
+		if g.biomeCount() >= maxMonsters {
 			return
 		}
 		p := g.players[id]
+		if p.zone != 0 {
+			continue
+		}
 		if g.monstersAround(p.pos) >= maxPerPlayer {
 			continue
 		}

@@ -16,6 +16,9 @@ const (
 	// Butin garanti du seigneur de guerre, en plus de l'or ordinaire.
 	bossGold    = 100
 	bossPotions = 3
+
+	// Or de plus par palier du donjon, pour le boss d'un donjon.
+	bossGoldPerTier = 40
 )
 
 // speciesForRole renvoie l'espèce qui occupe un emplacement de forteresse.
@@ -47,6 +50,9 @@ func respawnDelay(sp species) uint64 {
 func (g *Game) activateGarrisons() {
 	for _, id := range g.sortedIDs() {
 		p := g.players[id]
+		if p.zone != 0 {
+			continue
+		}
 		for _, s := range g.World.StructuresNear(p.pos, garrisonActivation) {
 			if s.Kind != world.KindFortress {
 				continue

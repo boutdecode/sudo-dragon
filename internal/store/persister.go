@@ -77,10 +77,11 @@ func (p *Persister) flush() error {
 		for account, c := range batch {
 			if newer, ok := p.pending[account]; !ok {
 				p.pending[account] = c
-			} else if (c.QuestsDirty && !newer.QuestsDirty) || (c.GearDirty && !newer.GearDirty) {
+			} else if (c.QuestsDirty && !newer.QuestsDirty) || (c.GearDirty && !newer.GearDirty) || (c.DiscoveriesDirty && !newer.DiscoveriesDirty) {
 				// L'écriture a échoué : la version plus récente doit réécrire ce qui n'a pas été écrit.
 				newer.QuestsDirty = newer.QuestsDirty || c.QuestsDirty
 				newer.GearDirty = newer.GearDirty || c.GearDirty
+				newer.DiscoveriesDirty = newer.DiscoveriesDirty || c.DiscoveriesDirty
 				p.pending[account] = newer
 			}
 		}
@@ -99,6 +100,7 @@ func (p *Persister) Save(account string, c Character) {
 	if old, ok := p.pending[account]; ok {
 		c.QuestsDirty = c.QuestsDirty || old.QuestsDirty // la version précédente n'a pas encore été écrite
 		c.GearDirty = c.GearDirty || old.GearDirty
+		c.DiscoveriesDirty = c.DiscoveriesDirty || old.DiscoveriesDirty
 	}
 	p.pending[account] = c
 }

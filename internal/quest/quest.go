@@ -20,19 +20,21 @@ import (
 
 // Limites.
 const (
-	MaxTitle   = 60
-	MaxStory   = 280
-	MaxNote    = 80
-	MinCount   = 3
-	MaxCount   = 12
-	MaxActive  = 5                  // quêtes actives par joueur
-	Lifetime   = 7 * 24 * time.Hour // une quête non rendue expire
-	GiverPause = 30 * time.Minute   // délai avant une nouvelle quête du même donneur
-	BossLevel  = 10                 // niveau minimal pour une quête contre le seigneur de guerre
-	PlaceRange = 3                  // distance maximale (en régions) d'un lieu cible
-	bossDiff   = 250                // difficulté d'une quête de boss (XP du seigneur de guerre)
-	reachBase  = 20
-	reachStep  = 15
+	MaxTitle    = 60
+	MaxStory    = 280
+	MaxNote     = 80
+	MinCount    = 3
+	MaxCount    = 12
+	MaxActive   = 5                  // quêtes actives par joueur
+	Lifetime    = 7 * 24 * time.Hour // une quête non rendue expire
+	GiverPause  = 30 * time.Minute   // délai avant une nouvelle quête du même donneur
+	BossLevel   = 10                 // niveau minimal pour une quête contre le seigneur de guerre
+	PlaceRange  = 3                  // distance maximale (en régions) d'un lieu cible
+	bossDiff    = 250                // difficulté d'une quête de boss (XP du seigneur de guerre)
+	dungeonBase = 150                // difficulté d'une quête de donjon: dungeonBase + dungeonStep × palier du donjon
+	dungeonStep = 50
+	reachBase   = 20
+	reachStep   = 15
 )
 
 // Kind est le type d'objectif.
@@ -42,7 +44,12 @@ const (
 	Kill  Kind = "kill"  // vaincre N monstres d'une espèce
 	Reach Kind = "reach" // entrer dans un lieu
 	Boss  Kind = "boss"  // vaincre le seigneur de guerre
+	// Dungeon: vaincre le maître d'un donjon secret (Objective.Target est la région qui le cache).
+	Dungeon Kind = "dungeon"
 )
+
+// DungeonLevel est le niveau minimal pour qu'on vous confie le donjon d'un palier (1 à 5): 3, 5, 7, 9, 11.
+func DungeonLevel(tier int) int { return 2*max(1, min(tier, 5)) + 1 }
 
 // State est l'état d'une quête.
 type State string
@@ -60,7 +67,7 @@ type Objective struct {
 	Kind    Kind
 	Species string          // Kill, Boss
 	Count   int             // Kill (3 à 12), 1 sinon
-	Target  world.RegionPos // Reach : région du lieu à atteindre
+	Target  world.RegionPos // Reach : région du lieu à atteindre ; Dungeon : région qui cache le donjon
 }
 
 // Reward est ce que le serveur donne à la remise. Note est un texte sans effet.
@@ -97,9 +104,9 @@ func (q Quest) Open() bool { return q.State == Active || q.State == Ready }
 // Proposal est ce que dit le modèle, déjà extrait du JSON mais pas encore vérifié.
 type Proposal struct {
 	Title, Story string
-	Type         string // "kill" | "reach" | "boss"
+	Type         string // "kill" | "reach" | "boss" | "dungeon"
 	Species      string
-	Place        string // nom d'un lieu proposé par le contexte
+	Place        string // nom d'un lieu (reach) ou d'un donjon (dungeon) proposé par le contexte
 	Count        int
 	Gold, XP     int
 	Potions      int
@@ -112,6 +119,12 @@ type Species struct {
 	XP   int
 }
 
+// DungeonRef désigne un donjon que le serveur autorise à confier: la région qui le cache et son palier.
+type DungeonRef struct {
+	Region world.RegionPos
+	Tier   int
+}
+
 // Context est ce que le serveur autorise pour cette proposition.
 type Context struct {
 	Level      int
@@ -119,6 +132,7 @@ type Context struct {
 	Species    []Species                  // espèces autorisées (hors garnisons, adaptées au niveau)
 	Places     map[string]world.RegionPos // nom du lieu (en minuscules) → région ; lieux à portée seulement
 	BossAround bool                       // une forteresse est à portée
+	Dungeons   map[string]DungeonRef      // nom du donjon (en minuscules) → donjon ; à portée et accessibles au niveau seulement
 	Now        time.Time
 }
 
@@ -176,12 +190,22 @@ func Validate(p Proposal, c Context) (Quest, error) {
 		}
 		q.Objective = Objective{Kind: Boss, Species: "warlord", Count: 1}
 		difficulty = bossDiff
+	case Dungeon:
+		ref, ok := c.Dungeons[strings.ToLower(strings.TrimSpace(p.Place))]
+		if !ok {
+			return Quest{}, reject("donjon inconnu ou hors de portée %q", p.Place)
+		}
+		if c.Level < DungeonLevel(ref.Tier) {
+			return Quest{}, reject("niveau %d insuffisant pour un donjon de palier %d", c.Level, ref.Tier)
+		}
+		q.Objective = Objective{Kind: Dungeon, Species: "lich", Count: 1, Target: ref.Region}
+		difficulty = dungeonBase + dungeonStep*ref.Tier
 	default:
 		return Quest{}, reject("type d'objectif inconnu %q", p.Type)
 	}
 
 	q.Tier = TierOf(difficulty)
-	q.Reward = ClampReward(Reward{Gold: p.Gold, XP: p.XP, Potions: p.Potions, Note: note}, difficulty, q.Objective.Kind == Boss)
+	q.Reward = ClampReward(Reward{Gold: p.Gold, XP: p.XP, Potions: p.Potions, Note: note}, difficulty, q.Objective.Kind == Boss || q.Objective.Kind == Dungeon)
 	return q, nil
 }
 

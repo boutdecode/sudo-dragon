@@ -52,6 +52,14 @@ func (m Model) mapTitle(x, y, w int) string {
 	return ansi.Truncate(coords, w, "")
 }
 
+// locationTitle est le titre du panneau de carte: celui du monde, ou celui du donjon.
+func (m Model) locationTitle(x, y, w int) string {
+	if m.dmap != nil {
+		return m.dungeonTitle(x, y, w)
+	}
+	return m.mapTitle(x, y, w)
+}
+
 // trackLocation annonce dans le journal un changement de contrée ou de lieu. La première position
 // reçue est mémorisée sans bruit.
 func (m *Model) trackLocation() {

@@ -37,8 +37,10 @@ const (
 	TSnapshot = "snapshot"
 	TCombat   = "combat"
 	TNPC      = "npc"
-	TQuests   = "quests" // livre de quêtes: voir Quests
-	TBag      = "bag"    // sac d'équipement: voir Bag
+	TQuests   = "quests"   // livre de quêtes: voir Quests
+	TBag      = "bag"      // sac d'équipement: voir Bag
+	TZone     = "zone"     // changement de zone (donjon ou carte principale): voir Zone
+	TDungeons = "dungeons" // donjons découverts: voir Dungeons
 	TPong     = "pong"
 )
 
@@ -57,6 +59,13 @@ const (
 	// le terrain lui-même à partir de la seed.
 	ViewHalfW = 40
 	ViewHalfH = 20
+)
+
+// Horloge du jeu: le serveur compte en ticks (10 par seconde), le client en déduit le jour et l'heure affichés.
+// Une heure de jeu dure une minute réelle, un jour de jeu 24 minutes.
+const (
+	TicksPerGameHour = 600
+	StartGameHour    = 8 // heure de jeu au tick 0
 )
 
 // Move est une intention de déplacement d'une tuile. dx et dy valent -1, 0 ou 1.
@@ -109,6 +118,38 @@ type Snapshot struct {
 	Monsters []Monster `json:"monsters,omitempty"`
 	Stats    Stats     `json:"stats"`
 	Online   int       `json:"on,omitempty"` // joueurs connectés
+}
+
+// Zone annonce dans quelle carte se trouve le joueur. Elle est envoyée à chaque entrée ou sortie d'un donjon, et
+// de nouveau à chaque coffre ouvert dans l'instance. Elle précède toujours le premier instantané de la nouvelle
+// zone. Dungeon vide: la carte principale (les coordonnées des instantanés sont celles du monde). Sinon, les
+// coordonnées des instantanés sont locales au plan du donjon, que le client recalcule d'après Seed et Tier
+// (voir world.NewDungeonMap).
+type Zone struct {
+	Dungeon string   `json:"dungeon,omitempty"` // identifiant du donjon
+	Name    string   `json:"name,omitempty"`    // son nom, dans la langue du joueur
+	Seed    int64    `json:"seed,omitempty"`
+	Tier    int      `json:"tier,omitempty"`
+	Opened  [][2]int `json:"opened,omitempty"` // coffres déjà ouverts (x, y)
+	// ResetIn, non nul, dit que le boss du donjon est déjà vaincu: nombre d'heures de jeu (arrondi au-dessus)
+	// avant que le donjon puisse repartir à neuf.
+	ResetIn int `json:"reset,omitempty"`
+}
+
+// DungeonInfo décrit l'entrée d'un donjon que le joueur a découverte.
+type DungeonInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"` // dans la langue du joueur
+	X    int    `json:"x"`    // case de l'entrée sur la carte principale
+	Y    int    `json:"y"`
+	Tier int    `json:"tier"`
+}
+
+// Dungeons est la liste complète des donjons découverts par le joueur, envoyée à la connexion puis à chaque
+// nouvelle découverte. New, non vide, est l'identifiant du donjon qui vient d'être découvert (le client l'annonce).
+type Dungeons struct {
+	List []DungeonInfo `json:"list"`
+	New  string        `json:"new,omitempty"`
 }
 
 // CombatAction est le choix du joueur pour son tour de combat:
@@ -185,6 +226,7 @@ const (
 	NPCQuestAccept = "quest_accept" // accepter la quête proposée
 	NPCQuestRefuse = "quest_refuse" // la refuser
 	NPCTurnIn      = "quest_turnin"
+	NPCAskWork     = "quest_ask" // demander s'il y a du travail (quête de donjon, sans modèle de langage)
 
 	// Équipement. NPCBuyItem et NPCSellItem portent l'objet dans NPCAction.Text (voir NPCOffer.Arg).
 	NPCBuyItem  = "buy_item"

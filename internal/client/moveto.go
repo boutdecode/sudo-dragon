@@ -75,7 +75,7 @@ type target struct {
 // discoveredPlaces renvoie les lieux (village, ville, forteresse) dont le centre est sur une zone
 // explorée de la carte.
 func (m Model) discoveredPlaces() []*world.Structure {
-	if m.world == nil {
+	if m.world == nil || m.dmap != nil {
 		return nil
 	}
 	regions := map[world.RegionPos]struct{}{}
@@ -97,6 +97,9 @@ func (m Model) discoveredPlaces() []*world.Structure {
 // exacte (repère d'abord, puis lieu, le plus proche en cas de lieux jumeaux), sinon préfixe. Renvoie
 // le nombre de correspondances (0 = inconnu, >1 = ambigu).
 func (m Model) findTarget(query string) (target, int) {
+	if m.dmap != nil {
+		return m.dungeonTarget(query)
+	}
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
 		return target{}, 0
@@ -129,6 +132,16 @@ func (m Model) findTarget(query string) (target, int) {
 			groups[low] = append(groups[low], t)
 		}
 	}
+	for _, d := range m.dungeons { // les entrées de donjon se rejoignent comme les lieux: on s'arrête devant
+		t := target{Pos: world.Pos{X: d.X, Y: d.Y}, Name: d.Name, place: true}
+		low := strings.ToLower(d.Name)
+		if low == q {
+			exact = append(exact, t)
+		}
+		if strings.HasPrefix(low, q) {
+			groups[low] = append(groups[low], t)
+		}
+	}
 	if len(exact) > 0 {
 		return nearest(exact), 1
 	}
@@ -158,7 +171,7 @@ func (m Model) walkableNear(p world.Pos, radius int) world.Pos {
 	free := m.freeFn()
 	for _, roadOnly := range []bool{true, false} {
 		ok := func(c world.Pos) bool {
-			return free(c) && (!roadOnly || m.world.At(c.X, c.Y) == world.Road)
+			return free(c) && (!roadOnly || m.terrain().At(c.X, c.Y) == world.Road)
 		}
 		if ok(p) {
 			return p
@@ -210,7 +223,11 @@ func (m *Model) sysLine(key string, args ...any) {
 
 // freeFn renvoie un test de case praticable: terrain, PNJ, monstres et
 // autres joueurs (positions de l'instantané courant).
-func (m Model) freeFn() func(world.Pos) bool {
+func (m Model) freeFn() func(world.Pos) bool { return m.freeFnTo(m.walkTarget) }
+
+// freeFnTo est freeFn pour une marche vers to. Les escaliers d'un donjon et l'entrée d'un donjon sont des
+// passages: on ne les traverse pas par mégarde, seulement si c'est la destination.
+func (m Model) freeFnTo(to world.Pos) func(world.Pos) bool {
 	busy := map[world.Pos]bool{}
 	for _, mo := range m.snap.Monsters {
 		busy[world.Pos{X: mo.X, Y: mo.Y}] = true
@@ -218,12 +235,20 @@ func (m Model) freeFn() func(world.Pos) bool {
 	for _, e := range m.snap.Others {
 		busy[world.Pos{X: e.X, Y: e.Y}] = true
 	}
+	if m.dmap != nil {
+		return func(p world.Pos) bool {
+			t := m.dmap.TileAt(p.X, p.Y)
+			return !busy[p] && t.Walkable() && (t != world.Stairs || p == to)
+		}
+	}
 	return func(p world.Pos) bool {
 		if busy[p] || !m.world.At(p.X, p.Y).Walkable() {
 			return false
 		}
-		_, npc := m.world.NPCAt(p.X, p.Y)
-		return !npc
+		if _, npc := m.world.NPCAt(p.X, p.Y); npc {
+			return false
+		}
+		return p == to || m.world.DungeonAt(p.X, p.Y) == nil
 	}
 }
 
@@ -238,7 +263,7 @@ func (m Model) startMoveto(target world.Pos) (Model, tea.Cmd) {
 		m.sysLine("cli.moveto.arrived")
 		return m, nil
 	}
-	path := m.findWalkPath(m.selfPos(), target, m.freeFn())
+	path := m.findWalkPath(m.selfPos(), target, m.freeFnTo(target))
 	if path == nil {
 		m.sysLine("cli.moveto.unreachable", target.X, target.Y)
 		return m, nil

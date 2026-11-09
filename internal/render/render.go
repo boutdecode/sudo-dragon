@@ -39,6 +39,10 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.Floor:     fg("#6b7280"),
 	world.Wall:      fg("#cbd5e1").Bold(true),
 	world.Door:      fg("#d97706").Bold(true),
+	world.Chest:     fg("#facc15").Bold(true),
+	world.Stairs:    fg("#a78bfa").Bold(true),
+	world.Entrance:  fg("#c084fc").Bold(true),
+	world.Rock:      fg("#3b4252"), // roche d'un donjon: en sourdine, pour que salles et couloirs ressortent
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -65,6 +69,11 @@ var monsterLooks = map[string]monsterLook{
 	"skeleton": {'S', fg("#e5e7eb")},
 	"knight":   {'K', fg("#94a3b8").Bold(true)},
 	"warlord":  {'B', fg("#dc2626").Bold(true)},
+
+	// Donjons.
+	"wraith": {'W', fg("#a5b4fc")},
+	"golem":  {'O', fg("#a8a29e").Bold(true)},
+	"lich":   {'L', fg("#c084fc").Bold(true)},
 }
 
 // npcLooks donne l'apparence des PNJ, indexée par leur type (voir world.NPCKind).
@@ -177,6 +186,10 @@ var variants = map[world.Tile][]rune{
 	world.Floor:     []rune("______"),
 	world.Wall:      []rune("######"),
 	world.Door:      []rune("++++++"),
+	world.Chest:     []rune("$$$$$$"),
+	world.Stairs:    []rune("<<<<<<"),
+	world.Entrance:  []rune(">>>>>>"),
+	world.Rock:      []rune("######"),
 }
 
 // TerrainName renvoie le nom d'un terrain dans la langue l.
@@ -206,6 +219,14 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.wall")
 	case world.Door:
 		return i18n.T(l, "terrain.door")
+	case world.Chest:
+		return i18n.T(l, "terrain.chest")
+	case world.Stairs:
+		return i18n.T(l, "terrain.stairs")
+	case world.Entrance:
+		return i18n.T(l, "terrain.entrance")
+	case world.Rock:
+		return i18n.T(l, "terrain.rock")
 	}
 	return "?"
 }
@@ -219,18 +240,97 @@ func glyph(t world.Tile, x, y int) rune {
 	return v[h%uint32(len(v))]
 }
 
+// Terrain est ce que Viewport sait dessiner: le monde ou le plan d'un donjon.
+type Terrain interface {
+	At(x, y int) world.Tile
+	NPCsIn(x0, y0, x1, y1 int) []world.NPC
+}
+
+// dungeonTerrain montre un donjon à travers le brouillard: les cases jamais vues sont de la roche, un coffre
+// ouvert est un sol nu. La première couche de roche, celle qui touche une case praticable (diagonales comprises),
+// est dessinée en mur blanc pour souligner le contour des salles et des couloirs ; le reste de la roche est en sourdine.
+type dungeonTerrain struct {
+	m      *world.DungeonMap
+	seen   func(x, y int) bool
+	opened map[[2]int]bool
+}
+
+// DungeonTerrain adapte le plan d'un donjon à Viewport. seen dit si une case a déjà été vue (nil: tout est
+// visible) et opened liste les coffres vidés.
+func DungeonTerrain(m *world.DungeonMap, seen func(x, y int) bool, opened [][2]int) Terrain {
+	t := dungeonTerrain{m: m, seen: seen, opened: make(map[[2]int]bool, len(opened))}
+	for _, o := range opened {
+		t.opened[o] = true
+	}
+	return t
+}
+
+func (d dungeonTerrain) At(x, y int) world.Tile {
+	if d.seen != nil && !d.seen(x, y) {
+		return world.Rock
+	}
+	t := d.m.TileAt(x, y)
+	switch {
+	case t == world.Chest && d.opened[[2]int{x, y}]:
+		return world.Floor
+	case t == world.Rock && d.bordersFloor(x, y):
+		return world.Wall
+	}
+	return t
+}
+
+// bordersFloor dit si une case voisine (8 directions) est praticable.
+func (d dungeonTerrain) bordersFloor(x, y int) bool {
+	for dy := -1; dy <= 1; dy++ {
+		for dx := -1; dx <= 1; dx++ {
+			if (dx != 0 || dy != 0) && d.m.TileAt(x+dx, y+dy).Walkable() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// entranceTerrain montre, sur la carte principale, les entrées de donjon que le joueur a découvertes.
+type entranceTerrain struct {
+	Terrain
+	at map[[2]int]bool
+}
+
+// WithEntrances superpose à t les entrées de donjon découvertes (clés: x, y). Sans entrée, t est rendu tel quel.
+func WithEntrances(t Terrain, entrances [][2]int) Terrain {
+	if len(entrances) == 0 {
+		return t
+	}
+	e := entranceTerrain{Terrain: t, at: make(map[[2]int]bool, len(entrances))}
+	for _, p := range entrances {
+		e.at[p] = true
+	}
+	return e
+}
+
+func (e entranceTerrain) At(x, y int) world.Tile {
+	if e.at[[2]int{x, y}] {
+		return world.Entrance
+	}
+	return e.Terrain.At(x, y)
+}
+
+// NPCsIn : il n'y a personne à qui parler sous terre.
+func (dungeonTerrain) NPCsIn(int, int, int, int) []world.NPC { return nil }
+
 // Viewport dessine une fenêtre de cols x rows tuiles centrée sur (cx, cy).
 // Chaque joueur est dessiné par '@' (selfID désigne le joueur local), les
 // monstres par le glyphe de leur espèce, les PNJ des structures par le leur;
 // les joueurs priment sur les monstres, qui priment sur les PNJ.
 // Le résultat contient exactement rows lignes de cols colonnes visibles.
-func Viewport(w *world.World, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int) string {
+func Viewport(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int) string {
 	return ViewportReady(w, cx, cy, cols, rows, ents, monsters, selfID, nil)
 }
 
 // ViewportReady est Viewport pour un joueur qui a des quêtes à rendre : les PNJ de readyGivers
 // (donneurs d'une quête prête) s'affichent « ? » au lieu de « ! ».
-func ViewportReady(w *world.World, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool) string {
+func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool) string {
 	type key struct{ x, y int }
 	mons := make(map[key]protocol.Monster, len(monsters))
 	for _, m := range monsters {

@@ -63,6 +63,11 @@ type Character struct {
 	// Sac d'équipement et objets portés (voir internal/gear). GearDirty : à réécrire.
 	Gear      gear.Inventory
 	GearDirty bool
+
+	// Donjons dont le personnage a découvert l'entrée, désignés par la région qui les cache (voir
+	// internal/world). DiscoveriesDirty : à réécrire.
+	Discoveries      []world.RegionPos
+	DiscoveriesDirty bool
 }
 
 // Store est la base de données.
@@ -261,6 +266,13 @@ var migrations = []string{
 	// lecture par gear.Sanitize.
 	`ALTER TABLE items ADD COLUMN family TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE items ADD COLUMN quality INTEGER NOT NULL DEFAULT 0`,
+	// 16: entrées de donjon découvertes, par personnage.
+	`CREATE TABLE discoveries (
+		account  TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
+		region_x INTEGER NOT NULL,
+		region_y INTEGER NOT NULL,
+		PRIMARY KEY (account, region_x, region_y)
+	)`,
 }
 
 // migrate applique les migrations manquantes, chacune dans sa transaction.
@@ -401,6 +413,9 @@ func (s *Store) LoadCharacter(account string) (*Character, error) {
 	if c.Gear, err = s.loadGear(account); err != nil {
 		return nil, err
 	}
+	if c.Discoveries, err = s.loadDiscoveries(account); err != nil {
+		return nil, err
+	}
 	return &c, nil
 }
 
@@ -449,6 +464,11 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 		if c.GearDirty {
 			if err := saveGear(tx, account, c.Gear); err != nil {
 				return fmt.Errorf("équipement de %s: %w", account, err)
+			}
+		}
+		if c.DiscoveriesDirty {
+			if err := saveDiscoveries(tx, account, c); err != nil {
+				return fmt.Errorf("donjons découverts de %s: %w", account, err)
 			}
 		}
 	}

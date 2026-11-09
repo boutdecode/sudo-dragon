@@ -157,6 +157,9 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 		p.stats.BossKills++
 	}
 	log := g.questKill(p, m.sp)
+	if inst := g.instances[m.zone]; m.zone != 0 && inst != nil && m.sp.Boss {
+		log = append(log, g.questDungeon(p, inst.d.Region)...)
+	}
 	log = append(log, i18n.T(p.lang, "fight.xp", m.sp.XP))
 	if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
 		log = append(log, i18n.T(p.lang, "fight.gold", gold))
@@ -168,8 +171,14 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 		log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
 	}
 	if m.sp.Boss {
-		// Le seigneur d'une forteresse laisse un trésor garanti.
-		gold, potions := p.stats.AddGold(bossGold), p.stats.AddPotions(bossPotions)
+		// Le seigneur d'une forteresse ou le maître d'un donjon laisse un trésor garanti, plus riche en donjon
+		// profond ; en donjon, sa mort déverrouille aussi le coffre du boss.
+		bonus := 0
+		if inst := g.instances[m.zone]; m.zone != 0 && inst != nil {
+			g.bossSlain(inst)
+			bonus = bossGoldPerTier * inst.d.Tier
+		}
+		gold, potions := p.stats.AddGold(bossGold+bonus), p.stats.AddPotions(bossPotions)
 		log = append(log, i18n.T(p.lang, "fight.treasure", m.sp.name(p.lang), gold, potions))
 	} else if g.rng.Float64() < lootPotionChance && p.stats.AddPotions(1) > 0 {
 		log = append(log, i18n.T(p.lang, "fight.loot_potion"))
@@ -189,7 +198,11 @@ func (g *Game) endFight(f *fight) []string {
 		p.stats.Deaths++
 		p.stats.Penalize()
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
-		g.setPos(p, g.freeSpawn())
+		if p.zone != 0 {
+			g.leaveDungeon(p) // vaincu dans un donjon: on se réveille devant son entrée
+		} else {
+			g.setPos(p, g.freeSpawn())
+		}
 		log = append(log, i18n.T(p.lang, "fight.respawn"))
 	}
 	if f.b.Result != combat.Won {

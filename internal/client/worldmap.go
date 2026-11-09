@@ -38,9 +38,10 @@ type mapState struct {
 	curX, curY int
 	zoom       int // tuiles par cellule ; 0 = défaut
 	markers    []marker
-	naming     bool // saisie du nom d'un repère en cours
-	nameIdx    int  // repère en cours de nommage
-	dirty      bool // exploration modifiée depuis la dernière sauvegarde
+	entrances  []world.Pos // entrées de donjon découvertes, à dessiner (renseigné à chaque dessin, jamais sauvegardé)
+	naming     bool        // saisie du nom d'un repère en cours
+	nameIdx    int         // repère en cours de nommage
+	dirty      bool        // exploration modifiée depuis la dernière sauvegarde
 	lastSave   time.Time
 	explored   map[[2]int]struct{}
 	blink      bool // phase du clignotement du curseur
@@ -98,6 +99,9 @@ func (m *Model) markExplored() {
 
 func (m Model) openMap() (Model, tea.Cmd) {
 	m.worldMap = true
+	if m.dmap != nil { // sous terre: un plan fixe, sans curseur ni repères
+		return m, nil
+	}
 	m.wmap.gen++
 	m.wmap.blink = true
 	m.wmap.curX, m.wmap.curY = m.snap.Self.X, m.snap.Self.Y
@@ -105,6 +109,12 @@ func (m Model) openMap() (Model, tea.Cmd) {
 }
 
 func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.dmap != nil {
+		if k := msg.String(); k == "esc" || k == "m" {
+			m.worldMap = false
+		}
+		return m, nil
+	}
 	if m.wmap.naming {
 		return m.updateNaming(msg)
 	}
@@ -245,6 +255,7 @@ const (
 	msVillage
 	msFort
 	msMarker
+	msDungeon
 	msOther
 	msSelf
 	numMapStyles
@@ -263,6 +274,7 @@ var mapStyles = [numMapStyles]lipgloss.Style{
 	msVillage:  mfg(ui.ColAccent).Bold(true),
 	msFort:     mfg(ui.ColHP).Bold(true),
 	msMarker:   mfg("#f472b6").Bold(true),
+	msDungeon:  mfg("#c084fc").Bold(true),
 	msOther:    mfg("#22d3ee").Bold(true),
 	msSelf:     lipgloss.NewStyle().Background(lipgloss.Color(ui.ColAccent)).Foreground(lipgloss.Color(ui.ColInk)).Bold(true),
 }
@@ -294,6 +306,14 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: ".", st: msWall}
 	case world.Door:
 		return mapCell{r: "+", st: msRoad}
+	case world.Chest:
+		return mapCell{r: "$", st: msRoad}
+	case world.Stairs:
+		return mapCell{r: "<", st: msRoad}
+	case world.Entrance:
+		return mapCell{r: ">", st: msDungeon}
+	case world.Rock:
+		return mapCell{r: "#", st: msUnknown}
 	default: // Wall
 		return mapCell{r: "#", st: msWall}
 	}
@@ -368,6 +388,9 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 		} else {
 			put(ctr, mapCell{r: "H", st: msVillage})
 		}
+	}
+	for _, p := range st.entrances {
+		put(p, mapCell{r: ">", st: msDungeon})
 	}
 	for _, p := range st.markers {
 		put(p.Pos, mapCell{r: "*", st: msMarker})
@@ -455,6 +478,9 @@ func (m Model) landmarks() []landmark {
 		}
 		add(l, ctr)
 	}
+	for _, d := range m.dungeons {
+		add(landmark{glyph: ">", style: msDungeon, name: d.Name, detail: m.t("map.dungeon.detail", d.Tier)}, world.Pos{X: d.X, Y: d.Y})
+	}
 	for _, p := range m.wmap.markers {
 		add(landmark{glyph: "*", style: msMarker, name: p.Name}, p.Pos)
 	}
@@ -475,6 +501,7 @@ func (m Model) legendLines(rows int) []string {
 		entry("▲", msMountain, "map.leg.mountain"),
 		entry("~", msWater, "map.leg.water"),
 		entry("=", msRoad, "map.leg.road"),
+		entry(">", msDungeon, "map.leg.dungeon"),
 		entry("*", msMarker, "map.leg.marker"),
 		entry("░", msUnknown, "map.leg.unexplored"),
 	}
@@ -505,6 +532,9 @@ func extra(s string) string {
 
 // mapView dessine la carte dans exactement w x h cellules : en-tête, carte et légende.
 func (m Model) mapView(w, h int) string {
+	if m.dmap != nil {
+		return m.dungeonMapView(w, h)
+	}
 	showLegend := w >= legendMinWidth
 	mapW := w
 	if showLegend {
@@ -515,6 +545,7 @@ func (m Model) mapView(w, h int) string {
 	if st.explored == nil {
 		st.explored = map[[2]int]struct{}{}
 	}
+	st.entrances = m.entrancePositions()
 	lines, explored, total := mapGrid(m.world, &st, m.snap.Self, m.snap.Others, cols, rows)
 
 	// En-tête.

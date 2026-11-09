@@ -144,6 +144,12 @@ func (g *Game) goalText(l i18n.Lang, q quest.Quest) string {
 		return i18n.T(l, "quest.goal.boss", i18n.T(l, "monster.warlord"))
 	case quest.Reach:
 		return i18n.T(l, "quest.goal.reach", g.placeName(l, o.Target))
+	case quest.Dungeon:
+		name := "?"
+		if d := g.World.DungeonOfRegion(o.Target); d != nil {
+			name = d.NameIn(l)
+		}
+		return i18n.T(l, "quest.goal.dungeon", name)
 	}
 	return ""
 }
@@ -209,7 +215,7 @@ func (g *Game) questKill(p *player, sp species) []string {
 			continue
 		}
 		o := q.Objective
-		if !(o.Kind == quest.Kill && o.Species == sp.Kind) && !(o.Kind == quest.Boss && sp.Boss) {
+		if !(o.Kind == quest.Kill && o.Species == sp.Kind) && !(o.Kind == quest.Boss && sp.Boss && !sp.Dungeon) { // le boss d'un donjon n'est pas un seigneur de forteresse
 			continue
 		}
 		if q.Advance(1) {
@@ -308,6 +314,7 @@ func (g *Game) offerContext(p *player, npc world.NPC) *npcai.OfferContext {
 	for name := range ambiguous {
 		delete(c.Places, name)
 	}
+	c.Dungeons = g.dungeonRefs(p, npc)
 	o := &npcai.OfferContext{Quest: c}
 	for _, q := range p.quests {
 		if q.Giver == npc.Key() {
@@ -348,6 +355,7 @@ func (g *Game) questAct(p *player, action, arg string) []string {
 		q.ID, q.Account, q.CreatedAt = p.nextQuestID, p.name, g.now()
 		p.nextQuestID++
 		p.quests = append(p.quests, q)
+		g.revealDungeonOf(p, q) // accepter un donjon en révèle l'entrée
 		g.questsChanged(p)
 		g.save(p)
 		return []string{i18n.T(p.lang, "quest.accepted", q.Title)}

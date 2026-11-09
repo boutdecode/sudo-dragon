@@ -168,3 +168,59 @@ func FuzzValidate(f *testing.F) {
 		}
 	})
 }
+
+func TestDungeonQuests(t *testing.T) {
+	g := world.NPCKey{Region: world.RegionPos{X: 0, Y: 0}}
+	target := world.RegionPos{X: 1, Y: -1}
+	c := Context{Level: 5, Giver: g, Now: time.Now(), Dungeons: map[string]DungeonRef{
+		"crypte de test": {Region: target, Tier: 2},
+	}}
+	p := Proposal{Title: "Le maître", Story: "Allez-y.", Type: "dungeon", Place: " Crypte de TEST ", Gold: 100000, XP: 100000, Potions: 50}
+	q, err := Validate(p, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Objective != (Objective{Kind: Dungeon, Species: "lich", Count: 1, Target: target}) || q.State != Active || q.Need() != 1 {
+		t.Errorf("objectif: %+v", q)
+	}
+	diff := 150 + 50*2
+	lo, hi := RewardBounds(diff, true)
+	if q.Reward.Gold != hi.Gold || q.Reward.XP != hi.XP || q.Reward.Potions != hi.Potions || hi.Potions != 3 || lo.Gold != diff/2 {
+		t.Errorf("récompense %+v, bornes %+v / %+v", q.Reward, lo, hi)
+	}
+	if q.Tier != 3 {
+		t.Errorf("palier de quête %d", q.Tier)
+	}
+
+	for name, mutate := range map[string]func(*Proposal, *Context){
+		"nom inconnu":     func(p *Proposal, _ *Context) { p.Place = "autre" },
+		"sans nom":        func(p *Proposal, _ *Context) { p.Place = "" },
+		"niveau trop bas": func(_ *Proposal, c *Context) { c.Level = DungeonLevel(2) - 1 },
+		"aucun donjon":    func(_ *Proposal, c *Context) { c.Dungeons = nil },
+	} {
+		pp, cc := p, c
+		mutate(&pp, &cc)
+		if _, err := Validate(pp, cc); err == nil {
+			t.Errorf("%s: acceptée", name)
+		}
+	}
+	// Un lieu ordinaire n'est pas un donjon, et inversement.
+	reach := Proposal{Title: "t", Story: "s", Type: "reach", Place: "crypte de test"}
+	if _, err := Validate(reach, c); err == nil {
+		t.Error("un donjon ne se rejoint pas comme un lieu")
+	}
+}
+
+func TestDungeonLevelGrowsWithTier(t *testing.T) {
+	prev := 0
+	for tier := 1; tier <= 5; tier++ {
+		if l := DungeonLevel(tier); l <= prev {
+			t.Errorf("palier %d: niveau %d", tier, l)
+		} else {
+			prev = l
+		}
+	}
+	if DungeonLevel(0) != DungeonLevel(1) || DungeonLevel(9) != DungeonLevel(5) {
+		t.Error("les paliers hors bornes devraient être ramenés dans [1, 5]")
+	}
+}
