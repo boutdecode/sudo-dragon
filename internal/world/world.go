@@ -108,6 +108,10 @@ type World struct {
 	// Contrées (voir territory.go). tmu est indépendant de mu et smu.
 	tmu         sync.Mutex
 	territories map[TerritoryID]*Territory
+
+	// Routes entre lieux (voir roads.go). rmu est pris avant smu, jamais après.
+	rmu   sync.Mutex
+	roads map[roadKey]*roadLink
 }
 
 // New crée un monde déterministe pour la seed donnée.
@@ -120,6 +124,7 @@ func New(seed int64) *World {
 		structs:   make(map[RegionPos]*Structure),
 
 		territories: make(map[TerritoryID]*Territory),
+		roads:       make(map[roadKey]*roadLink),
 	}
 }
 
@@ -141,7 +146,11 @@ func (w *World) TileAt(x, y int) Tile {
 	if s := w.StructureAt(x, y); s != nil {
 		return s.TileAt(x, y)
 	}
-	return w.terrainAt(x, y)
+	t := w.terrainAt(x, y)
+	if roadCost(t) > 0 && onRoad(w.roadsAround(RegionOf(x, y)), x, y) {
+		return Road
+	}
+	return t
 }
 
 // terrainAt calcule le terrain brut, sans structure. Le placement des
@@ -192,14 +201,18 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 	c := &Chunk{Pos: cp}
 	// Une région entière contient le chunk: une seule recherche de structure,
 	// et non une par tuile.
-	s := w.structureForRegion(RegionOf(cp.X*ChunkSize, cp.Y*ChunkSize))
+	rp := RegionOf(cp.X*ChunkSize, cp.Y*ChunkSize)
+	s := w.structureForRegion(rp)
+	roads := w.roadsAround(rp)
 	for ty := range ChunkSize {
 		for tx := range ChunkSize {
 			x, y := cp.X*ChunkSize+tx, cp.Y*ChunkSize+ty
 			if s != nil && s.Contains(x, y) {
 				c.Tiles[ty][tx] = s.TileAt(x, y)
+			} else if t := w.terrainAt(x, y); roadCost(t) > 0 && onRoad(roads, x, y) {
+				c.Tiles[ty][tx] = Road
 			} else {
-				c.Tiles[ty][tx] = w.terrainAt(x, y)
+				c.Tiles[ty][tx] = t
 			}
 		}
 	}

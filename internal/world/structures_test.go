@@ -510,8 +510,8 @@ func TestTerrainOutsideStructuresIsUnchanged(t *testing.T) {
 		if w.StructureAt(p.X, p.Y) != nil {
 			continue
 		}
-		if w.TileAt(p.X, p.Y) != w.terrainAt(p.X, p.Y) {
-			t.Fatalf("%v: TileAt diffère du terrain brut hors structure", p)
+		if got := w.TileAt(p.X, p.Y); got != w.terrainAt(p.X, p.Y) && got != Road {
+			t.Fatalf("%v: TileAt diffère du terrain brut hors structure (et n'est pas une route)", p)
 		}
 	}
 }

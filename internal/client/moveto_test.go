@@ -60,3 +60,32 @@ func TestParseMoveto(t *testing.T) {
 		}
 	}
 }
+
+// Une route parallèle à la ligne droite vaut un petit détour; une route trop
+// éloignée n'en vaut pas.
+func TestFindPathCostPrefersRoad(t *testing.T) {
+	free := func(p world.Pos) bool { return p.X >= -1 && p.X <= 40 && p.Y >= -10 && p.Y <= 10 }
+	road := func(y int) func(world.Pos) int {
+		return func(p world.Pos) int {
+			if p.Y == y {
+				return roadStepCost
+			}
+			return offRoadCost
+		}
+	}
+	from, to := world.Pos{X: 0, Y: 0}, world.Pos{X: 30, Y: 0}
+	near := findPathCost(from, to, free, road(3), roadStepCost, 60000)
+	onRoad := 0
+	for _, p := range near {
+		if p.Y == 3 {
+			onRoad++
+		}
+	}
+	if onRoad < 20 {
+		t.Fatalf("la route proche devrait être suivie (%d cases sur la route)", onRoad)
+	}
+	far := findPathCost(from, to, free, road(9), roadStepCost, 60000)
+	if len(far) != 30 {
+		t.Fatalf("une route trop éloignée ne doit pas causer de détour (len=%d)", len(far))
+	}
+}

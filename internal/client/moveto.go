@@ -238,7 +238,7 @@ func (m Model) startMoveto(target world.Pos) (Model, tea.Cmd) {
 		m.sysLine("cli.moveto.arrived")
 		return m, nil
 	}
-	path := findPath(m.selfPos(), target, m.freeFn(), maxPathNodes)
+	path := m.findWalkPath(m.selfPos(), target, m.freeFn())
 	if path == nil {
 		m.sysLine("cli.moveto.unreachable", target.X, target.Y)
 		return m, nil
@@ -308,7 +308,7 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 	free := m.freeFn()
 	if idx < 0 && !(len(m.walkPath) > 0 && chebyshev(self, m.walkPath[0]) == 1) ||
 		len(m.walkPath) == 0 || !free(m.walkPath[0]) {
-		m.walkPath = findPath(self, m.walkTarget, free, maxPathNodes)
+		m.walkPath = m.findWalkPath(self, m.walkTarget, free)
 		if m.walkPath == nil {
 			if m.walkStuck > 0 {
 				return m, again // peut-être un obstacle passager

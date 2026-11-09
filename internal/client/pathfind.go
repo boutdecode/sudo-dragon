@@ -6,10 +6,6 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// maxPathNodes borne la recherche: le monde est infini, une cible
-// inaccessible ferait sinon explorer indéfiniment.
-const maxPathNodes = 20000
-
 type pathNode struct {
 	pos  world.Pos
 	g, f int
@@ -37,12 +33,37 @@ func absInt(a int) int {
 // par to; nil si aucun chemin n'a été trouvé dans la limite maxNodes.
 // Comme côté serveur, les diagonales ne sont pas gênées par les coins.
 func findPath(from, to world.Pos, free func(world.Pos) bool, maxNodes int) []world.Pos {
+	return findPathCost(from, to, free, func(world.Pos) int { return 1 }, 1, maxNodes)
+}
+
+// Coûts de marche de /moveto: une case de route coûte moins qu'une case hors
+// route, donc le chemin fait un détour (jusqu'à 1,5 fois plus long) pour la suivre.
+const (
+	roadStepCost = 2
+	offRoadCost  = 3
+	walkMaxNodes = 60000 // la heuristique est moins serrée avec des coûts: on explore plus
+)
+
+// findWalkPath cherche un chemin de /moveto qui préfère les routes.
+func (m Model) findWalkPath(from, to world.Pos, free func(world.Pos) bool) []world.Pos {
+	cost := func(p world.Pos) int {
+		if m.world.At(p.X, p.Y) == world.Road {
+			return roadStepCost
+		}
+		return offRoadCost
+	}
+	return findPathCost(from, to, free, cost, roadStepCost, walkMaxNodes)
+}
+
+// findPathCost est findPath avec un coût d'entrée par case. minStep est le coût
+// minimal d'un pas (il garde l'heuristique admissible).
+func findPathCost(from, to world.Pos, free func(world.Pos) bool, cost func(world.Pos) int, minStep, maxNodes int) []world.Pos {
 	if from == to || !free(to) {
 		return nil
 	}
 	best := map[world.Pos]int{from: 0}
 	prev := map[world.Pos]world.Pos{}
-	h := &pathHeap{{from, 0, chebyshev(from, to)}}
+	h := &pathHeap{{from, 0, minStep * chebyshev(from, to)}}
 	for h.Len() > 0 && len(best) <= maxNodes {
 		cur := heap.Pop(h).(pathNode)
 		if cur.pos == to {
@@ -67,13 +88,13 @@ func findPath(from, to world.Pos, free func(world.Pos) bool, maxNodes int) []wor
 				if !free(n) {
 					continue
 				}
-				g := cur.g + 1
+				g := cur.g + cost(n)
 				if old, seen := best[n]; seen && old <= g {
 					continue
 				}
 				best[n] = g
 				prev[n] = cur.pos
-				heap.Push(h, pathNode{n, g, g + chebyshev(n, to)})
+				heap.Push(h, pathNode{n, g, g + minStep*chebyshev(n, to)})
 			}
 		}
 	}

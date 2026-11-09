@@ -338,6 +338,19 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 			grid[r*cols+c] = terrainCell(best)
 		}
 	}
+	if z > 1 {
+		// Une route large d'une tuile se perd dans le vote ci-dessus: on la repose.
+		half := z / 2
+		w.RoadTilesIn(cx-(cols/2)*z-half, cy-(rows/2)*z-half, cx+(cols/2+1)*z+half, cy+(rows/2+1)*z+half, func(p world.Pos) {
+			if !st.isExplored(p.X, p.Y) {
+				return
+			}
+			c, r := cellOf(p.X, cx, z, cols), cellOf(p.Y, cy, z, rows)
+			if c >= 0 && c < cols && r >= 0 && r < rows {
+				grid[r*cols+c] = terrainCell(world.Road)
+			}
+		})
+	}
 	put := func(p world.Pos, cell mapCell) {
 		c, r := cellOf(p.X, cx, z, cols), cellOf(p.Y, cy, z, rows)
 		if c >= 0 && c < cols && r >= 0 && r < rows {
