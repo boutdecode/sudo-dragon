@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -36,7 +37,11 @@ const (
 type mapState struct {
 	curX, curY int
 	zoom       int // tuiles par cellule ; 0 = défaut
-	markers    []world.Pos
+	markers    []marker
+	naming     bool // saisie du nom d'un repère en cours
+	nameIdx    int  // repère en cours de nommage
+	dirty      bool // exploration modifiée depuis la dernière sauvegarde
+	lastSave   time.Time
 	explored   map[[2]int]struct{}
 	blink      bool // phase du clignotement du curseur
 	gen        int  // invalide les minuteurs d'une carte déjà fermée
@@ -80,10 +85,14 @@ func (m *Model) markExplored() {
 		m.wmap.explored = make(map[[2]int]struct{})
 	}
 	self := m.snap.Self
+	before := len(m.wmap.explored)
 	for by := fdiv(self.Y-protocol.ViewHalfH, exploreBlock); by <= fdiv(self.Y+protocol.ViewHalfH, exploreBlock); by++ {
 		for bx := fdiv(self.X-protocol.ViewHalfW, exploreBlock); bx <= fdiv(self.X+protocol.ViewHalfW, exploreBlock); bx++ {
 			m.wmap.explored[[2]int{bx, by}] = struct{}{}
 		}
+	}
+	if len(m.wmap.explored) != before {
+		m.wmap.dirty = true
 	}
 }
 
@@ -96,10 +105,16 @@ func (m Model) openMap() (Model, tea.Cmd) {
 }
 
 func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.wmap.naming {
+		return m.updateNaming(msg)
+	}
 	z := m.wmap.z()
 	switch msg.String() {
 	case "esc", "m":
 		m.worldMap = false
+		if m.wmap.dirty {
+			return m, m.saveMap()
+		}
 	case "up":
 		m.wmap.curY -= z
 	case "down":
@@ -115,9 +130,89 @@ func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "0", " ", "space":
 		m.wmap.curX, m.wmap.curY = m.snap.Self.X, m.snap.Self.Y
 	case "w":
-		m.toggleMarker()
+		return m.placeOrRenameMarker()
+	case "x":
+		if i := m.markerAtCursor(); i >= 0 {
+			m.wmap.markers = append(m.wmap.markers[:i:i], m.wmap.markers[i+1:]...)
+			return m, m.saveMap()
+		}
 	}
 	return m, nil
+}
+
+// newMarkerInput crée le champ de saisie du nom d'un repère.
+func newMarkerInput() textinput.Model {
+	t := textinput.New()
+	t.Prompt = ""
+	t.CharLimit = maxMarkerName
+	return t
+}
+
+// updateNaming traite une touche pendant la saisie du nom d'un repère.
+func (m Model) updateNaming(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.stopNaming()
+		return m, nil
+	case "enter":
+		if i := m.wmap.nameIdx; i >= 0 && i < len(m.wmap.markers) {
+			if name := cleanMarkerName(m.markName.Value()); name != "" {
+				m.wmap.markers[i].Name = m.wmap.uniqueMarkerName(name, i)
+			}
+		}
+		m.stopNaming()
+		return m, m.saveMap()
+	}
+	var cmd tea.Cmd
+	m.markName, cmd = m.markName.Update(msg)
+	return m, cmd
+}
+
+func (m *Model) stopNaming() {
+	m.wmap.naming = false
+	m.markName.Reset()
+	m.markName.Blur()
+}
+
+// markerAtCursor renvoie l'indice du repère situé dans la cellule du curseur, ou -1.
+func (m Model) markerAtCursor() int {
+	z := m.wmap.z()
+	for i, p := range m.wmap.markers {
+		if cellOf(p.Pos.X, m.wmap.curX, z, 0) == 0 && cellOf(p.Pos.Y, m.wmap.curY, z, 0) == 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+// defaultMarkerName renvoie « Repère N » avec le plus petit N libre.
+func (m Model) defaultMarkerName() string {
+	for n := 1; ; n++ {
+		name := m.t("map.marker", n)
+		if _, c := m.wmap.findMarker(name); c == 0 {
+			return name
+		}
+	}
+}
+
+// placeOrRenameMarker pose un repère au curseur (nom par défaut) ou renomme celui de la cellule,
+// puis ouvre la saisie du nom.
+func (m Model) placeOrRenameMarker() (tea.Model, tea.Cmd) {
+	i := m.markerAtCursor()
+	switch {
+	case i >= 0:
+		m.markName.SetValue(m.wmap.markers[i].Name)
+		m.markName.CursorEnd()
+	case len(m.wmap.markers) < maxMarkers:
+		pos := world.Pos{X: m.wmap.curX, Y: m.wmap.curY}
+		m.wmap.markers = append(m.wmap.markers[:len(m.wmap.markers):len(m.wmap.markers)], marker{pos, m.defaultMarkerName()})
+		i = len(m.wmap.markers) - 1
+		m.markName.Reset()
+	default:
+		return m, nil
+	}
+	m.wmap.naming, m.wmap.nameIdx = true, i
+	return m, tea.Batch(m.markName.Focus(), m.saveMap())
 }
 
 // stepZoom passe à l'échelle voisine (delta -1 = plus fin), bornée aux extrémités.
@@ -133,21 +228,6 @@ func stepZoom(z, delta int) int {
 // cellOf renvoie l'indice de la cellule (colonne ou ligne) qui contient la coordonnée p, la
 // cellule centrale étant centrée sur cur.
 func cellOf(p, cur, z, n int) int { return n/2 + fdiv(p-cur+z/2, z) }
-
-// toggleMarker pose un repère à l'emplacement du curseur, ou retire celui de la même cellule.
-func (m *Model) toggleMarker() {
-	z := m.wmap.z()
-	cx, cy := m.wmap.curX, m.wmap.curY
-	for i, p := range m.wmap.markers {
-		if cellOf(p.X, cx, z, 0) == 0 && cellOf(p.Y, cy, z, 0) == 0 {
-			m.wmap.markers = append(m.wmap.markers[:i:i], m.wmap.markers[i+1:]...)
-			return
-		}
-	}
-	if len(m.wmap.markers) < maxMarkers {
-		m.wmap.markers = append(m.wmap.markers[:len(m.wmap.markers):len(m.wmap.markers)], world.Pos{X: cx, Y: cy})
-	}
-}
 
 // Styles de la carte (couleurs alignées sur celles de render).
 func mfg(hex string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)) }
@@ -277,7 +357,7 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 		}
 	}
 	for _, p := range st.markers {
-		put(p, mapCell{r: "*", st: msMarker})
+		put(p.Pos, mapCell{r: "*", st: msMarker})
 	}
 	for _, o := range others {
 		put(world.Pos{X: o.X, Y: o.Y}, mapCell{r: "@", st: msOther})
@@ -362,8 +442,8 @@ func (m Model) landmarks() []landmark {
 		}
 		add(l, ctr)
 	}
-	for i, p := range m.wmap.markers {
-		add(landmark{glyph: "*", style: msMarker, name: m.t("map.marker", i+1)}, p)
+	for _, p := range m.wmap.markers {
+		add(landmark{glyph: "*", style: msMarker, name: p.Name}, p.Pos)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].dist < out[j].dist })
 	return out

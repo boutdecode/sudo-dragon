@@ -52,6 +52,156 @@ func parseMoveto(text string) (target world.Pos, isCmd, ok bool) {
 	return world.Pos{X: x, Y: y}, true, true
 }
 
+// parseMovetoName reconnaît "/moveto nom du repère" : la commande avec des arguments qui ne sont pas
+// deux entiers. Le nom est l'ensemble des arguments, séparés par une espace.
+func parseMovetoName(text string) (name string, ok bool) {
+	f := strings.Fields(text)
+	if len(f) < 2 || !strings.EqualFold(f[0], "/moveto") {
+		return "", false
+	}
+	if _, _, valid := parseMoveto(text); valid {
+		return "", false
+	}
+	return strings.Join(f[1:], " "), true
+}
+
+// target est une destination désignée par son nom : un repère ou un lieu découvert.
+type target struct {
+	Pos   world.Pos
+	Name  string
+	place bool // lieu (centre à ajuster vers une case praticable)
+}
+
+// discoveredPlaces renvoie les lieux (village, ville, forteresse) dont le centre est sur une zone
+// explorée de la carte.
+func (m Model) discoveredPlaces() []*world.Structure {
+	if m.world == nil {
+		return nil
+	}
+	regions := map[world.RegionPos]struct{}{}
+	for b := range m.wmap.explored {
+		regions[world.RegionOf(b[0]*exploreBlock, b[1]*exploreBlock)] = struct{}{}
+	}
+	var out []*world.Structure
+	for rp := range regions {
+		if s := m.world.StructureOfRegion(rp); s != nil {
+			if c := s.Center(); m.wmap.isExplored(c.X, c.Y) {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+// findTarget résout un nom de repère ou de lieu découvert, sans tenir compte de la casse : égalité
+// exacte (repère d'abord, puis lieu, le plus proche en cas de lieux jumeaux), sinon préfixe. Renvoie
+// le nombre de correspondances (0 = inconnu, >1 = ambigu).
+func (m Model) findTarget(query string) (target, int) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return target{}, 0
+	}
+	self := m.selfPos()
+	nearest := func(ts []target) target {
+		best := ts[0]
+		for _, t := range ts[1:] {
+			if dist2(t.Pos, self) < dist2(best.Pos, self) {
+				best = t
+			}
+		}
+		return best
+	}
+	for _, mk := range m.wmap.markers {
+		if strings.ToLower(mk.Name) == q {
+			return target{Pos: mk.Pos, Name: mk.Name}, 1
+		}
+	}
+	var exact []target
+	groups := map[string][]target{} // lieux dont le nom commence par q, groupés par nom
+	for _, s := range m.discoveredPlaces() {
+		name := s.NameIn(m.lang)
+		t := target{Pos: s.Center(), Name: name, place: true}
+		low, full := strings.ToLower(name), strings.ToLower(m.placeLabel(s))
+		if low == q || full == q {
+			exact = append(exact, t)
+		}
+		if strings.HasPrefix(low, q) || strings.HasPrefix(full, q) {
+			groups[low] = append(groups[low], t)
+		}
+	}
+	if len(exact) > 0 {
+		return nearest(exact), 1
+	}
+	var markers []marker
+	for _, mk := range m.wmap.markers {
+		if strings.HasPrefix(strings.ToLower(mk.Name), q) {
+			markers = append(markers, mk)
+		}
+	}
+	n := len(markers) + len(groups)
+	if n == 1 {
+		if len(markers) == 1 {
+			return target{Pos: markers[0].Pos, Name: markers[0].Name}, 1
+		}
+		for _, g := range groups {
+			return nearest(g), 1
+		}
+	}
+	return target{}, n
+}
+
+func dist2(a, b world.Pos) int { return (a.X-b.X)*(a.X-b.X) + (a.Y-b.Y)*(a.Y-b.Y) }
+
+// walkableNear renvoie la case libre la plus proche de p dans un rayon donné, en préférant les
+// chemins (le centre d'un lieu tombe souvent dans un bâtiment). Repli sur p.
+func (m Model) walkableNear(p world.Pos, radius int) world.Pos {
+	free := m.freeFn()
+	for _, roadOnly := range []bool{true, false} {
+		ok := func(c world.Pos) bool {
+			return free(c) && (!roadOnly || m.world.At(c.X, c.Y) == world.Road)
+		}
+		if ok(p) {
+			return p
+		}
+		for r := 1; r <= radius; r++ {
+			best, found := world.Pos{}, false
+			for dy := -r; dy <= r; dy++ {
+				for dx := -r; dx <= r; dx++ {
+					if max(abs(dx), abs(dy)) != r {
+						continue
+					}
+					c := world.Pos{X: p.X + dx, Y: p.Y + dy}
+					if ok(c) && (!found || dist2(c, p) < dist2(best, p)) {
+						best, found = c, true
+					}
+				}
+			}
+			if found {
+				return best
+			}
+		}
+	}
+	return p
+}
+
+// movetoName lance la marche vers un repère ou un lieu découvert désigné par son nom.
+func (m Model) movetoName(name string) (Model, tea.Cmd) {
+	t, n := m.findTarget(name)
+	switch {
+	case n == 0:
+		m.sysLine("cli.moveto.unknown_marker", name)
+		return m, nil
+	case n > 1:
+		m.sysLine("cli.moveto.ambiguous", name)
+		return m, nil
+	}
+	pos := t.Pos
+	if t.place {
+		pos = m.walkableNear(pos, 8)
+	}
+	return m.startMoveto(pos)
+}
+
 func (m Model) selfPos() world.Pos { return world.Pos{X: m.snap.Self.X, Y: m.snap.Self.Y} }
 
 func (m *Model) sysLine(key string, args ...any) {

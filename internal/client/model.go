@@ -128,6 +128,7 @@ type Model struct {
 	chatScroll int // lignes de recul dans l'historique (0 = en bas)
 	chatH      int // hauteur voulue de la discussion (0 = chatLines), agrandie par ctrl+haut
 	chatInput  textinput.Model
+	markName   textinput.Model // nom d'un repère de la carte en cours de saisie
 	chatting   bool
 
 	// Combat en cours (nil hors combat). Un combat terminé reste affiché
@@ -220,7 +221,7 @@ func NewLang(addr, name string, lang i18n.Lang) Model {
 	c.CharLimit = protocol.MaxChatLen
 	c.Placeholder = i18n.T(lang, "chat.placeholder")
 
-	m := Model{addr: a, name: n, pass: p, chatInput: c, width: 80, height: 24, lang: lang}
+	m := Model{addr: a, name: n, pass: p, chatInput: c, markName: newMarkerInput(), width: 80, height: 24, lang: lang}
 	m.npcInput = newNPCInput(lang)
 	return m.setFocus(focus)
 }
@@ -302,6 +303,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
+			if m.state == statePlaying {
+				m.saveMapNow()
+			}
 			if m.conn != nil {
 				m.conn.Close()
 			}
@@ -373,7 +377,8 @@ func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.C
 	m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
 	m.locSeen, m.locInPlace = false, false
 	m.bag, m.bagSel, m.sheet = protocol.Bag{}, 0, false
-	m.worldMap, m.wmap = false, mapState{}
+	m.worldMap, m.wmap = false, loadMapState(welcome.Seed)
+	m.stopNaming()
 	m.hasPing = false
 	m.walkGen++
 	m.walking, m.walkPath = false, nil
@@ -394,6 +399,8 @@ func (m Model) forwardToInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch {
 	case m.state == statePlaying && m.chatting:
 		m.chatInput, cmd = m.chatInput.Update(msg)
+	case m.state == statePlaying && m.worldMap && m.wmap.naming:
+		m.markName, cmd = m.markName.Update(msg)
 	case m.state == stateLogin && m.focus == 0:
 		m.addr, cmd = m.addr.Update(msg)
 	case m.state == stateLogin && m.focus == 1:
@@ -532,6 +539,9 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.chatInput.Blur()
 			if target, isCmd, ok := parseMoveto(text); isCmd {
 				if !ok {
+					if name, isName := parseMovetoName(text); isName {
+						return m.movetoName(name)
+					}
 					m.sysLine("cli.err.usage_moveto")
 					return m, nil
 				}
@@ -600,6 +610,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	var saveCmd tea.Cmd
 	switch ev.Env.T {
 	case protocol.TSnapshot:
 		var s protocol.Snapshot
@@ -607,6 +618,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 			m.snap, m.hasSnap = s, true
 			m.trackLocation()
 			m.markExplored()
+			saveCmd = m.maybeSaveExplored()
 			m.snapCount++
 			if m.snapCount%unloadEach == 0 {
 				m.unloadWorld()
@@ -648,9 +660,9 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.conn == nil {
-		return m, nil
+		return m, saveCmd
 	}
-	return m, waitEvent(m.conn)
+	return m, tea.Batch(waitEvent(m.conn), saveCmd)
 }
 
 // applyCombat enregistre un nouvel état de combat et accumule son journal.
@@ -660,6 +672,8 @@ func (m *Model) applyCombat(c protocol.Combat) {
 		m.combatSel = 0
 	}
 	m.chatting, m.inventory, m.questBook, m.sheet = false, false, false, false
+	m.worldMap = false
+	m.stopNaming()
 	m.chatInput.Reset()
 	m.chatInput.Blur()
 
@@ -689,6 +703,8 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 		m.npcLog = nil
 	}
 	m.chatting, m.inventory, m.sheet = false, false, false
+	m.worldMap = false
+	m.stopNaming()
 	m.chatInput.Reset()
 	m.chatInput.Blur()
 
@@ -1123,8 +1139,10 @@ func (m Model) helpLine() string {
 		return ui.KeyBar([2]string{"↑↓", m.t("key.choose")}, [2]string{"e", m.t("key.equip")}, [2]string{"esc", m.t("key.close")})
 	case m.sheet:
 		return ui.KeyBar([2]string{"esc", m.t("key.close")})
+	case m.worldMap && m.wmap.naming:
+		return dimStyle.Render(m.t("map.name_prompt")+" ") + m.markName.View() + "  " + ui.KeyBar([2]string{"↵", m.t("key.confirm")}, [2]string{"esc", m.t("key.cancel")})
 	case m.worldMap:
-		return ui.KeyBar([2]string{"↑↓←→", m.t("key.cursor")}, [2]string{"+ -", m.t("key.zoom")}, [2]string{"w", m.t("key.marker")}, [2]string{"0", m.t("key.recenter")}, [2]string{"esc", m.t("key.close")})
+		return ui.KeyBar([2]string{"↑↓←→", m.t("key.cursor")}, [2]string{"+ -", m.t("key.zoom")}, [2]string{"w", m.t("key.marker")}, [2]string{"x", m.t("key.delete_marker")}, [2]string{"0", m.t("key.recenter")}, [2]string{"esc", m.t("key.close")})
 	case m.chatting:
 		return ui.KeyBar([2]string{"↵", m.t("key.send")}, [2]string{"esc", m.t("key.cancel")})
 	case scroll > 0:

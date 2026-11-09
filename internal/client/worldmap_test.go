@@ -96,12 +96,16 @@ func TestMapKeysZoomCursorMarkers(t *testing.T) {
 		t.Errorf("curseur x = %d", m.wmap.curX)
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if len(m.wmap.markers) != 1 {
-		t.Fatal("w devrait poser un repère")
+	if len(m.wmap.markers) != 1 || !m.wmap.naming || m.wmap.markers[0].Name != "Repère 1" {
+		t.Fatalf("w devrait poser un repère et ouvrir la saisie: %+v", m.wmap)
 	}
-	m = pressKey(t, m, tea.KeyPressMsg{Code: 'w', Text: "w"})
+	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.wmap.naming || !m.worldMap || len(m.wmap.markers) != 1 {
+		t.Fatal("Échap annule la saisie sans fermer la carte ni perdre le repère")
+	}
+	m = pressKey(t, m, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if len(m.wmap.markers) != 0 {
-		t.Fatal("w devrait retirer le repère de la cellule")
+		t.Fatal("x devrait retirer le repère de la cellule")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: '0', Text: "0"})
 	if m.wmap.curX != 12 {
@@ -118,7 +122,7 @@ func TestMapViewFitsEverySizeAndLanguage(t *testing.T) {
 		for _, sz := range [][2]int{{80, 24}, {110, 34}, {200, 60}} {
 			m := mapModel(lang, sz[0], sz[1])
 			m, _ = m.openMap()
-			m.wmap.markers = []world.Pos{{X: 20, Y: 5}}
+			m.wmap.markers = []marker{{world.Pos{X: 20, Y: 5}, "Camp"}}
 			v := m.View().Content
 			lines := strings.Split(v, "\n")
 			if len(lines) > sz[1] {
