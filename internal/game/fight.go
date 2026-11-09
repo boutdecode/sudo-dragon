@@ -118,7 +118,8 @@ func (g *Game) endFight(f *fight) []string {
 	case combat.Fled:
 		m.cooldown = disengageCooldown
 	}
-	g.save(p) // un combat change la progression: on n'attend pas la sauvegarde périodique
+	g.sendBag(p) // la fiche de personnage affiche le palmarès
+	g.save(p)    // un combat change la progression: on n'attend pas la sauvegarde périodique
 	return log
 }
 

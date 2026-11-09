@@ -1,0 +1,110 @@
+package client
+
+import (
+	"fmt"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/kevin/ascii-adventure/internal/gear"
+	"github.com/kevin/ascii-adventure/internal/hero"
+	"github.com/kevin/ascii-adventure/internal/ui"
+)
+
+// Fiche de personnage (touche C) : tout ce que le serveur établit sur le joueur. Les valeurs viennent
+// de l'instantané (PV, mana, Atq/Déf effectives), du sac (classe, caractéristiques, palmarès) et du
+// livre de quêtes (réputation).
+
+func (m Model) updateSheetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "c":
+		m.sheet = false
+	}
+	return m, nil
+}
+
+// sheetView dessine la fiche dans exactement w x h cellules.
+func (m Model) sheetView(w, h int) string {
+	rightW := w / 2
+	leftW := w - rightW
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		ui.Panel(m.t("sheet.title", m.snap.Self.Name), strings.Join(m.sheetLeft(leftW-4), "\n"), leftW, h),
+		ui.Panel(m.t("sheet.abilities"), strings.Join(m.sheetRight(rightW-4), "\n"), rightW, h),
+	)
+}
+
+func (m Model) sheetLeft(w int) []string {
+	st, self := m.snap.Stats, m.snap.Self
+	cl := hero.Class(m.bag.Class).OrDefault()
+	row := func(label, value string) string {
+		return " " + ui.Fit(dimStyle.Render(label), 13) + " " + value
+	}
+	bar := func(v, max int) string { return ui.Bar(v, max, 12) + fmt.Sprintf(" %d/%d", v, max) }
+
+	lines := []string{"", " " + titleStyle.Render(m.t("hero.class."+string(cl))) + " " + dimStyle.Render(m.t("sheet.die", cl.HitDie())),
+		row(m.t("sheet.level"), fmt.Sprintf("%d", st.Level)),
+		row(m.t("sheet.xp"), ui.FlatBar(st.XP, st.XPNext, 12, ui.ColOK)+fmt.Sprintf(" %d/%d", st.XP, st.XPNext)),
+		row(m.t("sheet.hp"), bar(st.HP, st.MaxHP)),
+	}
+	if st.MaxMana > 0 {
+		lines = append(lines, row(m.t("sheet.mana"), bar(st.Mana, st.MaxMana)))
+	}
+
+	style := hero.Kind(m.bag.Style).OrMelee()
+	var atkMod int
+	var chaMod = 0
+	if len(m.bag.Scores) == int(hero.NumAbilities) {
+		atkMod = hero.Mod(m.bag.Scores[style.Stat()])
+		chaMod = hero.Mod(m.bag.Scores[hero.CHA])
+	}
+	lines = append(lines, "",
+		row(m.t("sheet.attack"), fmt.Sprintf("%d  %s", st.Atk, dimStyle.Render(m.t("sheet.gear_bonus", m.bag.AtkBonus)))),
+		row(m.t("sheet.defense"), fmt.Sprintf("%d  %s", st.Def, dimStyle.Render(m.t("sheet.gear_bonus", m.bag.DefBonus)))),
+		row(m.t("sheet.style"), fmt.Sprintf("%s (%s %+d)", m.t("hero.kind."+string(style)), m.t("hero.ability."+style.Stat().Key()), atkMod)),
+		row(m.t("sheet.accuracy"), fmt.Sprintf("%d %%", int(hero.Accuracy(atkMod)*100+0.5))),
+		row(m.t("sheet.prices"), fmt.Sprintf("%+d %%  %s", hero.PriceAdjust(chaMod), dimStyle.Render("("+m.t("hero.impression."+hero.Impression(chaMod))+")"))),
+		"",
+		row(m.t("sheet.gold"), goldStyle.Render(fmt.Sprintf("%d", st.Gold))),
+		row(m.t("sheet.potions"), fmt.Sprintf("%d", st.Potions)),
+		row(m.t("sheet.position"), fmt.Sprintf("%d, %d", self.X, self.Y)),
+		"",
+		" "+titleStyle.Render(m.t("sheet.record")),
+		row(m.t("sheet.kills"), fmt.Sprintf("%d", m.bag.Kills)),
+		row(m.t("sheet.bosses"), fmt.Sprintf("%d", m.bag.BossKills)),
+		row(m.t("sheet.deaths"), fmt.Sprintf("%d", m.bag.Deaths)),
+	)
+	for i, l := range lines {
+		lines[i] = ui.Fit(l, w+2)
+	}
+	return lines
+}
+
+func (m Model) sheetRight(w int) []string {
+	lines := []string{""}
+	if len(m.bag.Scores) == int(hero.NumAbilities) {
+		for a := hero.Ability(0); a < hero.NumAbilities; a++ {
+			k, v := a.Key(), m.bag.Scores[a]
+			lines = append(lines, " "+ui.Fit(fmt.Sprintf("%s %-12s %2d (%+d)  %s", m.t("hero.ability."+k), m.t("hero.ability."+k+".long"), v, hero.Mod(v),
+				dimStyle.Render(m.t("hero.ability."+k+".desc"))), w))
+		}
+	}
+	lines = append(lines, "", " "+titleStyle.Render(m.t("bag.worn")))
+	for _, s := range gear.Slots {
+		name := dimStyle.Render("—")
+		if it, ok := m.wornIn(s); ok {
+			name = it.Name
+		}
+		lines = append(lines, " "+ui.Fit(dimStyle.Render(m.t("gear.slot."+string(s))+":"), 11)+" "+ui.Fit(name, w-12))
+	}
+	open, ready := m.readyQuests()
+	lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.reputation")))
+	if len(m.quests.Standing) == 0 {
+		lines = append(lines, " "+dimStyle.Render(m.t("quest.book.rep_none")))
+	}
+	for _, s := range m.quests.Standing {
+		lines = append(lines, " "+ui.Fit(fmt.Sprintf("%s · %s (%d)", s.Place, s.Tier, s.Points), w))
+	}
+	lines = append(lines, "", " "+goldStyle.Render(m.t("quest.hud", open, ready)))
+	return lines
+}

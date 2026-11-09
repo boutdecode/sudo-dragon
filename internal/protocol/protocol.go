@@ -264,6 +264,11 @@ type Bag struct {
 	Scores []int  `json:"scores,omitempty"`
 	Style  string `json:"style,omitempty"`
 	HitDie int    `json:"die,omitempty"`
+
+	// Faits établis par le serveur sur l'histoire du personnage (fiche de personnage).
+	Kills     int `json:"kills,omitempty"`
+	BossKills int `json:"bosses,omitempty"`
+	Deaths    int `json:"deaths,omitempty"`
 }
 
 // GearAction est une action sur le sac : équiper un objet (ID) ou retirer l'objet d'un emplacement (Slot).

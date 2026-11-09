@@ -138,7 +138,8 @@ func (g *Game) sendBag(p *player) {
 	}
 	atk, def := p.gearBonus()
 	b := protocol.Bag{Items: make([]protocol.ItemInfo, 0, len(p.inv.Items)), Capacity: gear.BagCapacity, AtkBonus: atk, DefBonus: def,
-		Class: string(p.stats.Class), Scores: p.stats.Scores[:], Style: string(p.weaponKind()), HitDie: p.stats.Class.HitDie()}
+		Class: string(p.stats.Class), Scores: p.stats.Scores[:], Style: string(p.weaponKind()), HitDie: p.stats.Class.HitDie(),
+		Kills: p.stats.Kills, BossKills: p.stats.BossKills, Deaths: p.stats.Deaths}
 	for _, it := range p.inv.Items {
 		b.Items = append(b.Items, g.itemInfo(p.lang, p, it))
 	}

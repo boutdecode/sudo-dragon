@@ -112,10 +112,9 @@ func (m Model) inventoryView(w, h int) string {
 
 	left := []string{
 		" " + dimStyle.Render(m.t("bag.gold_label")) + goldStyle.Render(m.t("bag.gold", st.Gold)) + "   " + m.t("bag.potions", st.Potions),
-		" " + dimStyle.Render(m.t("bag.stats", st.Atk, m.bag.AtkBonus, st.Def, m.bag.DefBonus)),
+		"",
+		" " + titleStyle.Render(m.t("bag.worn")),
 	}
-	left = append(left, m.sheetLines(iw)...)
-	left = append(left, "", " "+titleStyle.Render(m.t("bag.worn")))
 	for _, s := range gear.Slots {
 		name := dimStyle.Render("—")
 		if it, ok := m.wornIn(s); ok {
@@ -188,18 +187,4 @@ func (m Model) scoresLine() string {
 		parts = append(parts, fmt.Sprintf("%s%d", m.t("hero.ability."+a.Key()), m.bag.Scores[a]))
 	}
 	return " " + strings.Join(parts[:3], " ") + "\n " + strings.Join(parts[3:], " ")
-}
-
-// sheetLines détaille la classe et les caractéristiques dans l'écran du sac.
-func (m Model) sheetLines(w int) []string {
-	if len(m.bag.Scores) != int(hero.NumAbilities) {
-		return nil
-	}
-	cl := hero.Class(m.bag.Class)
-	out := []string{"", " " + titleStyle.Render(m.t("hero.class."+string(cl))+fmt.Sprintf(" d%d", cl.HitDie())) + " " + dimStyle.Render(m.t("bag.style", m.t("hero.kind."+m.bag.Style)))}
-	for a := hero.Ability(0); a < hero.NumAbilities; a++ {
-		k, v := a.Key(), m.bag.Scores[a]
-		out = append(out, " "+ui.Fit(fmt.Sprintf("%s %-12s %2d (%+d)  %s", m.t("hero.ability."+k), m.t("hero.ability."+k+".long"), v, hero.Mod(v), dimStyle.Render(m.t("hero.ability."+k+".desc"))), w))
-	}
-	return out
 }

@@ -205,7 +205,7 @@ Vous pouvez **relancer 3 fois en tout** (une caractéristique à la fois, touche
   vaut 85 % + 5 % par point de modificateur (bornée à 40-95 %). Les monstres touchent toujours.
 - **Charisme** : ±2 % par point de modificateur sur les prix des PNJ (bornés à ±10 %, après la réduction de réputation).
 - Les personnages créés avant cette version gardent niveau, or, quêtes et sac, mais repassent par la création à leur prochaine connexion ; leurs PV sont relancés niveau par niveau.
-- Les caractéristiques sont visibles dans le panneau latéral et dans l'écran du sac (`I`).
+- La touche `C` ouvre la **fiche de personnage** : classe, niveau, PV, mana, attaque et défense (avec la part de l'équipement), style et chance de toucher, effet du charisme, or, position, palmarès, caractéristiques détaillées, équipement porté et réputation. Un résumé des caractéristiques reste dans le panneau latéral.
 
 ## Équipement et forges
 
