@@ -53,10 +53,11 @@ func Fallback(npc world.NPCKey, ctx Context, l i18n.Lang) Wares {
 		n = 8
 	}
 	maxTier := max(1, min(ctx.MaxTier, MaxTier))
+	minTier := max(1, min(ctx.MinTier, maxTier))
 	used := map[string]bool{}
 	for i := 0; i < n; i++ {
 		slot := ctx.Slots[i%len(ctx.Slots)]
-		tier := 1 + i*maxTier/n
+		tier := minTier + i*(maxTier-minTier+1)/n
 		var name string
 		idx := make([]int, namesPerSlot[slot]) // indices de noms utilisables pour cet emplacement
 		for j := range idx {

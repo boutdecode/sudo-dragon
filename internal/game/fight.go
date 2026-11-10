@@ -5,15 +5,19 @@ import (
 	"strings"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 const (
 	disengageCooldown = 20  // ticks (2 s) pendant lesquels un monstre n'engage pas après une fuite ou une défaite
 	fightIdleTicks    = 600 // un joueur inactif depuis 60 s est considéré comme ayant fui
 	lootPotionChance  = 0.30
+	lootGearChance    = 0.05 // objet d'équipement lâché par un monstre de surface ordinaire
+	lootGearGarrison  = 0.15 // idem pour un monstre de garnison (les boss en laissent toujours un)
 	regenEvery        = 30 // ticks entre deux PV rendus hors combat (3 s)
 	safeRegenEvery    = 10 // ticks entre deux PV rendus dans une zone sûre (1 s)
 )
@@ -183,7 +187,37 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	} else if g.rng.Float64() < lootPotionChance && p.stats.AddPotions(1) > 0 {
 		log = append(log, i18n.T(p.lang, "fight.loot_potion"))
 	}
+	if line := g.monsterGear(p, m); line != "" {
+		log = append(log, line)
+	}
 	return log, leveled
+}
+
+// monsterGear tire l'objet d'équipement que m laisse à p, de rang celui de sa région (un cran de plus pour un boss
+// ou une élite), et le range dans le sac. Seuls les monstres de surface en lâchent: ceux des donjons ont leurs
+// coffres. Renvoie la ligne de journal, vide s'il n'y a rien (ou si le sac est plein).
+func (g *Game) monsterGear(p *player, m *monster) string {
+	if m.zone != 0 || m.sp.Dungeon || len(p.inv.Items) >= gear.BagCapacity {
+		return ""
+	}
+	chance := lootGearChance
+	if m.sp.Garrison {
+		chance = lootGearGarrison
+	}
+	if !m.sp.Boss && g.rng.Float64() >= chance {
+		return ""
+	}
+	tier := gear.TierForLevel(m.sp.Level)
+	if m.sp.Boss || m.sp.Kind == "knight" {
+		tier++
+	}
+	it := gear.MonsterLoot(p.lang, world.RegionOf(m.pos.X, m.pos.Y), tier, g.rng.Uint64())
+	added, err := p.inv.Add(it)
+	if err != nil {
+		return ""
+	}
+	p.gearDirty = true
+	return i18n.T(p.lang, "fight.loot_gear", added.Name)
 }
 
 // endFight libère les combattants, applique les conséquences de l'issue et renvoie les lignes de journal

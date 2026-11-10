@@ -200,6 +200,7 @@ type Proposal struct {
 type Context struct {
 	Slots   []Slot // emplacements que ce vendeur peut proposer
 	MaxTier int    // palier maximal du lieu
+	MinTier int    // palier minimal du lieu (0: aucun plancher)
 	Origin  world.NPCKey
 }
 
@@ -255,8 +256,9 @@ func Validate(p Proposal, c Context) (Item, error) {
 		return Item{}, reject("lien ou adresse dans le texte")
 	}
 	maxTier := max(1, min(c.MaxTier, MaxTier))
+	minTier := max(1, min(c.MinTier, maxTier))
 	it := shape(Item{
-		Name: name, Desc: desc, Slot: slot, Tier: max(1, min(p.Tier, maxTier)), Family: p.Family,
+		Name: name, Desc: desc, Slot: slot, Tier: max(minTier, min(p.Tier, maxTier)), Family: p.Family,
 		Quality: p.Quality, Def: p.Def, Origin: c.Origin,
 	}, hero.Kind(strings.ToLower(strings.TrimSpace(p.Kind))))
 	plo, phi := PriceBounds(it.Tier, it.Power())

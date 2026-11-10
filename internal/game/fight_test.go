@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/combat"
+	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -559,5 +560,44 @@ func TestPackJoinsEvenWhileWalking(t *testing.T) {
 	r.engage()
 	if r.p.fight == nil || len(r.p.fight.ms) != 2 || mates[0].fight == nil || mates[1].fight != nil {
 		t.Fatalf("groupe attendu: le compagnon en marche oui, le calmé non (fight=%v)", r.p.fight)
+	}
+}
+
+// Le seigneur d'une forteresse laisse toujours un objet, d'un rang au-dessus de celui de sa région.
+func TestBossDropsGearOfItsRegionLevel(t *testing.T) {
+	boss := scaledForLevel(speciesNamed(t, "warlord"), 12)
+	boss.HP = 1
+	r := newRig(t, boss)
+	r.p.stats.MaxHP, r.p.hp = 10_000, 10_000
+	r.engage()
+	for r.p.fight != nil {
+		r.g.act(r.p, combat.Attack, 0)
+	}
+	if len(r.p.inv.Items) != 1 {
+		t.Fatalf("%d objets lâchés, attendu 1", len(r.p.inv.Items))
+	}
+	if got, want := r.p.inv.Items[0].Tier, gear.TierForLevel(12)+1; got != want {
+		t.Errorf("rang %d, attendu %d", got, want)
+	}
+}
+
+// Un monstre de niveau 1 et un sac plein ne laissent rien; un monstre ordinaire n'en laisse que rarement.
+func TestMonsterGearIsRareAndNeedsBagRoom(t *testing.T) {
+	r := newRig(t, scaledForLevel(testRat, 1))
+	drops := 0
+	for range 2000 {
+		if r.g.monsterGear(r.p, r.m) != "" {
+			drops++
+			r.p.inv.Items = r.p.inv.Items[:0]
+		}
+	}
+	if drops < 40 || drops > 200 { // lootGearChance = 5 %
+		t.Errorf("%d objets sur 2000 monstres", drops)
+	}
+	r.p.inv.Items = make([]gear.Item, gear.BagCapacity)
+	for range 200 {
+		if r.g.monsterGear(r.p, r.m) != "" {
+			t.Fatal("un sac plein ne peut rien recevoir")
+		}
 	}
 }

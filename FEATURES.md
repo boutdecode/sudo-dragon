@@ -9,6 +9,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Lieux** : au plus un par région de 256×256.
   - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
+- **Niveau de région** (`world/level.go`) : il croît avec l'éloignement de l'origine (0, 0), en distance de Chebyshev, de 1 à 20 : un niveau toutes les ~154 tuiles, soit quatre **tranches** de cinq niveaux (1-5, 6-10, 11-15, 16-20) larges de 3 régions (768 tuiles). Il ne dépend pas de la graine, donc le client le recalcule sans message. Il règle la force des monstres, le rang de l'équipement vendu et lâché, et le palier des donjons.
 - **Contrées** : pays nommés aux frontières irrégulières (Voronoi), noms selon le terrain dominant, en français et en anglais.
 - **Routes entre lieux** (`roads.go`) : deux régions voisines (côte à côte, pas en diagonale) qui ont chacune un lieu sont reliées par une route.
   - Tracé par A* sur le terrain brut, confiné aux deux régions, donc identique quel que soit l'ordre de génération.
@@ -16,7 +17,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Pont sur l'eau peu profonde (tuile `Road`) ; jamais d'eau profonde ni de montagne. Coût croissant selon le terrain (plaine < forêt < collines < neige).
 - **Donjons** (`dungeon.go`, `dungeonmap.go`) : environ une région sur cinq cache un donjon, dont l'**entrée secrète** est une case de terrain ordinaire (hors lieux et eau ; une route peut la croiser).
   - **Nom unique** dans un rayon de 3 régions (« Crypte de Valmor »…), en français et en anglais ; identifiant stable `x,y` de la région.
-  - **Palier** de 1 à 5, un de plus toutes les 3 régions d'éloignement de l'origine ; il règle le nombre de salles (6 ou 7 au palier 1, jusqu'à 11 au palier 5), de gardes et d'élites.
+  - **Palier** de 1 à 5, tiré du niveau de région au centre de la région du donjon (1 + niveau / 4, soit un de plus toutes les 4 niveaux) ; il règle le nombre de salles (6 ou 7 au palier 1, jusqu'à 11 au palier 5), de gardes et d'élites.
   - **Plan** (64×40) tiré de la **seed du donjon** : des salles reliées par des couloirs, escalier d'entrée dans la première, **boss** et son **coffre** dans la dernière, gardes et coffres entre les deux. Recalculé à l'identique côté client et serveur.
   - **Instance partagée** (`game/dungeon.go`) : chaque donjon a une seule instance, avec ses propres index de joueurs et de monstres (coordonnées locales au plan, donc deux donjons ne se heurtent jamais). Marcher sur l'entrée y emmène, avec les joueurs libres à moins de 5 cases ; tous les joueurs d'un même donjon se retrouvent dedans.
   - **Le donjon garde son état tant que son boss vit** : monstres vaincus et coffres ouverts le restent, qu'on sorte, qu'on meure ou qu'on se déconnecte, même quand il est vide (il est alors figé, sans calcul). Il **repart à neuf quand quelqu'un tue la liche, mais un jour de jeu plus tard** (24 heures de jeu, soit 24 minutes réelles ; une heure de jeu = 600 ticks, voir `protocol.TicksPerGameHour`), pour qu'on n'enchaîne pas les donjons.
@@ -53,7 +54,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Seul le terrain exploré est affiché ; le reste est « inexploré » (`░`).
   - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
 - **Repères** : `W` pose ou renomme (24 caractères, noms uniques, 9 au plus), `X` supprime.
-- **Localisation** : l'en-tête affiche `contrée · lieu · terrain (x, y)` ; le journal annonce chaque nouvelle contrée ou nouveau lieu.
+- **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le panneau latéral donne la région (niveau et tranche) ; le journal annonce chaque nouvelle contrée ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
 
 ## Monstres (`internal/game/monsters.go`, `garrison.go`)
 
@@ -64,6 +65,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 | Donjons | squelette, chevalier, **spectre**, **golem**, **liche** (boss) |
 
 - Errance et poursuite à portée de détection ; 500 monstres au plus, avec un quota par joueur.
+- **Mise à l'échelle par région** (`scaledForLevel`) : un monstre de biome ou de garnison est mis au niveau de sa région à l'apparition : PV et XP +25 % par niveau au-delà du premier (×5,75 au niveau 20), +1 toucher tous les 3 niveaux, +1 aux dés de dégâts tous les 4 niveaux, +1 de DEF tous les 5 niveaux. Au niveau 1, les stats de base. L'XP et l'or de la victoire suivent. Les monstres de donjon suivent le palier du donjon.
 - **Meutes** : un compagnon de plus tous les 3 niveaux du joueur ; des espèces compagnes apparaissent rarement.
 - **Garnisons** : apparaissent à moins de 40 cases d'un joueur et restent dans la forteresse. Soldats : réapparition en 5 min ; seigneur : 15 min. Le seigneur laisse un trésor garanti (100 or, 3 potions).
 
@@ -77,7 +79,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Illustrations** : rat, loup et crabe, en demi-blocs `▀` 24 bits (`render/image.go`). Les autres espèces n'en ont pas.
 - **Secousse d'écran** (`client/fx.go`) : zone entière quand on est touché, colonne ennemie quand on touche ; 6 images de 60 ms (9 sur critique) ; PV qui clignotent en rouge. Désactivable avec `SUDO_DRAGON_NO_FX`.
 - **Issue** :
-  - Victoire : XP, or (moitié à totalité de l'XP du monstre), 30 % de chances d'une potion.
+  - Victoire : XP, or (moitié à totalité de l'XP du monstre), 30 % de chances d'une potion, et un **objet d'équipement** du rang de la région (5 % pour un monstre de biome, 15 % pour un soldat de garnison, toujours pour le seigneur ; un cran de plus pour un chevalier ou un seigneur). Le butin va dans le sac (rien s'il est plein) ; il est fabriqué comme celui des donjons (`gear.MonsterLoot`, description « Arraché à la dépouille d'un monstre »). Les monstres de donjon n'en lâchent pas : ils ont leurs coffres.
   - Défaite : retour au départ avec tous les PV, perte de 25 % de l'XP du niveau.
   - Inactivité de 60 s : fuite automatique.
 - Les combattants sont immobiles et affichés en rouge pour les autres joueurs. Impossible d'équiper pendant un combat.
@@ -109,6 +111,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Sac (`I`)** : 24 objets, `E` ou Entrée pour équiper/retirer. Revente à 40 % du prix ; un objet porté ne se revend pas.
 - **Potions** : 2 au départ. **Or** plafonné à 999 999.
 - **Forgeron (`F`, armes) et armurier (`R`)** : chaque ville a les deux, chaque village un seul, les forteresses aucun. Achat `1`–`9`, revente `V`. Prix modulés par la réputation.
+- **Rangs vendus selon la région** : le rang maximal d'une boutique est 3 dans la première tranche, +1 par tranche (5 au plus) ; le rang minimal est le numéro de la tranche (1 à 4), si bien qu'un forgeron lointain ne vend plus d'équipement de débutant. Une ville vend toujours jusqu'au rang 5. Les étalages générés par IA sont bornés par les mêmes rangs.
 - **Étalages générés par IA** : à la première visite, le modèle invente une spécialité et 6 à 8 objets ; le serveur valide tout et jette l'étalage s'il reste moins de 4 objets valides. L'étalage est le même pour tous. Sans clé Mistral, un assortiment de repli déterministe est proposé (`gear/fallback.go`).
 
 ## PNJ, dialogues et quêtes

@@ -52,3 +52,17 @@ func TestDungeonLootIsValidAndDeterministic(t *testing.T) {
 		t.Errorf("seulement %d emplacements tirés: %v", len(slots), slots)
 	}
 }
+
+func TestTierForLevelAndMonsterLoot(t *testing.T) {
+	for level, want := range map[int]int{1: 1, 4: 1, 5: 2, 9: 2, 10: 3, 15: 4, 19: 4, 20: 5, 99: 5} {
+		if got := TierForLevel(level); got != want {
+			t.Errorf("niveau %d: palier %d, attendu %d", level, got, want)
+		}
+	}
+	for tier := 1; tier <= MaxTier; tier++ {
+		it := MonsterLoot(i18n.FR, world.RegionPos{X: 2, Y: -1}, tier, uint64(tier)*7919)
+		if it.Tier != tier || it.MinLevel() != MinLevelOf[tier] || it.Origin != OriginDungeon(world.RegionPos{X: 2, Y: -1}) {
+			t.Errorf("palier %d: %+v", tier, it)
+		}
+	}
+}

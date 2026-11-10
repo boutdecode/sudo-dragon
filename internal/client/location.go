@@ -23,6 +23,7 @@ func (m Model) placeLabel(s *world.Structure) string {
 // les moins utiles sautent d'abord quand la place manque (terrain, puis contrée), sans jamais dépasser w.
 func (m Model) mapTitle(x, y, w int) string {
 	coords := fmt.Sprintf("(%d, %d)", x, y)
+	level := m.t("region.level", world.LevelAt(x, y))
 	terrain := render.TerrainName(m.lang, m.world.At(x, y))
 	region := m.world.TerritoryAt(x, y).NameIn(m.lang)
 	var place string
@@ -39,7 +40,9 @@ func (m Model) mapTitle(x, y, w int) string {
 		return strings.Join(kept, " · ")
 	}
 	for _, t := range []string{
-		join(region, place, terrain+" "+coords),
+		join(region, level, place, terrain+" "+coords),
+		join(region, level, place, coords),
+		join(level, place, coords),
 		join(region, place, coords),
 		join(place, coords),
 		join(region, coords),
@@ -72,6 +75,7 @@ func (m *Model) trackLocation() {
 	if !m.locSeen {
 		m.locSeen = true
 		m.locTerritory, m.locInPlace = t.ID, s != nil
+		m.locBand = world.LevelBand(world.LevelAt(self.X, self.Y))
 		if s != nil {
 			m.locPlace = s.Region
 		}
@@ -80,6 +84,16 @@ func (m *Model) trackLocation() {
 	if t.ID != m.locTerritory {
 		m.locTerritory = t.ID
 		m.addChat(chatLine{Channel: protocol.ChanSystem, Text: m.t("region.entering", t.NameIn(m.lang))})
+	}
+	if lvl := world.LevelAt(self.X, self.Y); world.LevelBand(lvl) != m.locBand {
+		up := world.LevelBand(lvl) > m.locBand
+		m.locBand = world.LevelBand(lvl)
+		lo, hi := world.LevelRange(lvl)
+		key := "region.level_down"
+		if up {
+			key = "region.level_up"
+		}
+		m.addChat(chatLine{Channel: protocol.ChanSystem, Text: m.t(key, lo, hi)})
 	}
 	switch {
 	case s == nil:

@@ -269,6 +269,21 @@ func scaledForTier(sp species, tier int) species {
 	return sp
 }
 
+// scaledForLevel adapte un monstre de surface au niveau de sa région (voir world.LevelAt), de 1 à 20 : PV et XP
+// augmentent de 25 % par niveau au-delà du premier, et le toucher, les dégâts et la DEF suivent à un rythme plus
+// lent. Au niveau 1, l'espèce reste telle quelle.
+func scaledForLevel(sp species, level int) species {
+	level = max(1, level)
+	pct := 100 + 25*(level-1)
+	sp.HP = max(1, sp.HP*pct/100)
+	sp.XP = max(1, sp.XP*pct/100)
+	sp.Hit += (level - 1) / 3
+	sp.Dmg = sp.Dmg.WithBonus((level - 1) / 4)
+	sp.DexMod += (level - 1) / 5
+	sp.Level = level
+	return sp
+}
+
 // closeIfEmpty détruit l'instance, avec ses monstres, si elle peut être remplacée (boss mort depuis plus d'un jour de
 // jeu) et que plus aucun joueur ne s'y trouve. Tant que le boss vit, ou que le délai court, un donjon vide garde
 // son état: sinon on referait le donjon aussitôt en sortant.

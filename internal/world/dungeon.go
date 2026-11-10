@@ -160,10 +160,9 @@ func uniqueDungeonName(seed int64, rp RegionPos) (int, stem) {
 	return idx, s
 }
 
-// dungeonTier croît avec l'éloignement de la région à l'origine.
+// dungeonTier croît avec le niveau de la région (voir LevelAt), mesuré en son centre.
 func dungeonTier(rp RegionPos) int {
-	d := max(abs(rp.X), abs(rp.Y))
-	return min(1+d/3, dungeonMaxTier)
+	return min(1+LevelAt(rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2)/4, dungeonMaxTier)
 }
 
 func (w *World) buildDungeon(rp RegionPos) *Dungeon {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/gear"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
@@ -306,5 +307,34 @@ func TestFailedStockRetriesLaterNotImmediately(t *testing.T) {
 	r.talk()
 	if len(st.reqs) != 2 {
 		t.Fatalf("la demande aurait dû être refaite: %d", len(st.reqs))
+	}
+}
+
+// L'assortiment monte en rang avec la tranche de niveaux de la région du vendeur.
+func TestVendorTiersFollowRegionLevelBand(t *testing.T) {
+	g := newGame()
+	cases := []struct {
+		rp       world.RegionPos
+		min, max int
+	}{
+		{world.RegionPos{X: 0, Y: 0}, 1, 3},
+		{world.RegionPos{X: 4, Y: 0}, 2, 4},
+		{world.RegionPos{X: -7, Y: 3}, 3, 5},
+		{world.RegionPos{X: 12, Y: 12}, 4, 5},
+	}
+	for _, c := range cases {
+		npc := world.NPC{Kind: world.NPCSmith, Region: c.rp}
+		if g.World.StructureOfRegion(c.rp) != nil && g.World.StructureOfRegion(c.rp).Kind == world.KindTown {
+			continue // une ville vend toujours jusqu'au rang 5
+		}
+		ctx := g.vendorContext(npc)
+		if ctx.MinTier != c.min || ctx.MaxTier != c.max {
+			t.Errorf("région %v: rangs %d-%d, attendu %d-%d", c.rp, ctx.MinTier, ctx.MaxTier, c.min, c.max)
+		}
+		for _, it := range gear.Fallback(npc.Key(), ctx, i18n.FR).Items {
+			if it.Tier < ctx.MinTier || it.Tier > ctx.MaxTier {
+				t.Errorf("région %v: objet de rang %d hors de %d-%d", c.rp, it.Tier, ctx.MinTier, ctx.MaxTier)
+			}
+		}
 	}
 }

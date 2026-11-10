@@ -82,7 +82,7 @@ func (g *Game) fillSlot(s *world.Structure, i int, slot world.Slot) {
 	if g.blocked(slot.Pos) { // quelqu'un se tient sur le poste: on réessaie au prochain passage
 		return
 	}
-	m := g.addMonster(sp, slot.Pos)
+	m := g.addMonster(scaledForLevel(sp, world.LevelAt(slot.Pos.X, slot.Pos.Y)), slot.Pos)
 	m.slot = &key
 	m.bounds = s
 	m.leash = garrisonLeash

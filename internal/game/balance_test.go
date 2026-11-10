@@ -184,3 +184,33 @@ func TestGroupBalance(t *testing.T) {
 		}
 	}
 }
+
+// Plus on s'éloigne, plus les créatures sont fortes: un joueur de niveau égal à celui de la région, équipé de son rang,
+// bat les monstres ordinaires; un débutant qui s'aventure trop loin ne le peut plus.
+func TestRegionLevelBalance(t *testing.T) {
+	for _, lv := range []int{5, 10, 15, 20} {
+		p := playerWith(hero.Warrior, lv, warriorScores, bestKit(rankAt(lv), "longsword"))
+		for _, k := range []string{"rat", "wolf", "goblin"} {
+			if got := winRate(p, scaledForLevel(speciesNamed(t, k), lv), 300); got < 0.9 {
+				t.Errorf("niveau %d contre %s de la région : %.0f %% de victoires, attendu au moins 90 %%", lv, k, got*100)
+			}
+		}
+	}
+	rookie := playerWith(hero.Warrior, 3, warriorScores, bestKit(rankAt(3), "longsword"))
+	for _, k := range []string{"wolf", "goblin"} {
+		if got := winRate(rookie, scaledForLevel(speciesNamed(t, k), 16), 300); got > 0.25 {
+			t.Errorf("niveau 3 contre %s du niveau 16 : %.0f %% de victoires, attendu au plus 10 %%", k, got*100)
+		}
+	}
+}
+
+func TestScaledForLevel(t *testing.T) {
+	base := speciesNamed(t, "wolf")
+	if got := scaledForLevel(base, 1); got.HP != base.HP || got.Hit != base.Hit || got.Dmg != base.Dmg || got.XP != base.XP {
+		t.Errorf("le niveau 1 ne change rien: %+v", got)
+	}
+	lo, hi := scaledForLevel(base, 6), scaledForLevel(base, 20)
+	if !(base.HP < lo.HP && lo.HP < hi.HP && base.XP < lo.XP && lo.XP < hi.XP && lo.Hit < hi.Hit && lo.Dmg.Bonus < hi.Dmg.Bonus) || hi.Level != 20 {
+		t.Errorf("la force croît avec le niveau: %+v %+v", lo, hi)
+	}
+}

@@ -183,6 +183,7 @@ type Model struct {
 	locTerritory world.TerritoryID
 	locPlace     world.RegionPos
 	locInPlace   bool
+	locBand      int // tranche de niveaux de région de la dernière position
 
 	// Marche automatique /moveto (voir moveto.go).
 	walking    bool
@@ -1132,6 +1133,10 @@ func (m Model) sidePanel() string {
 		m.t("hud.level", st.Level),
 		gauge(m.t("hud.xp"), ui.FlatBar(st.XP, st.XPNext, barW, ui.ColGold), st.XP, st.XPNext),
 		gauge(m.t("hud.hp"), ui.Bar(st.HP, st.MaxHP, barW), st.HP, st.MaxHP),
+	}
+	if m.dmap == nil && m.world != nil {
+		lo, hi := world.LevelRange(world.LevelAt(self.X, self.Y))
+		lines = append(lines, m.t("hud.region", world.LevelAt(self.X, self.Y), lo, hi))
 	}
 	if st.MaxMana > 0 {
 		lines = append(lines, gauge(m.t("hud.mana"), ui.FlatBar(st.Mana, st.MaxMana, barW, ui.ColMana), st.Mana, st.MaxMana))

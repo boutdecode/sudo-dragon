@@ -45,7 +45,13 @@ func (g *Game) vendorContext(npc world.NPC) gear.Context {
 	if npc.Kind == world.NPCArmorer {
 		c.Slots = gear.SlotsOfArmorer
 	}
-	if s := g.World.StructureOfRegion(npc.Region); s != nil && s.Kind == world.KindTown {
+	// Plus la région est lointaine, plus l'assortiment monte en rang: le plancher suit la tranche de niveaux.
+	// La tranche de départ garde son plafond d'avant (3).
+	rp := npc.Region
+	band := world.LevelBand(world.LevelAt(rp.X*world.RegionSize+world.RegionSize/2, rp.Y*world.RegionSize+world.RegionSize/2))
+	c.MaxTier = min(c.MaxTier+band, gear.MaxTier)
+	c.MinTier = 1 + band
+	if s := g.World.StructureOfRegion(rp); s != nil && s.Kind == world.KindTown {
 		c.MaxTier = gear.MaxTier
 	}
 	return c

@@ -36,6 +36,10 @@ type species struct {
 	// Dungeon: n'apparaît que dans un donjon (jamais selon le biome). Les monstres de donjon sont mis à l'échelle
 	// du palier du donjon (voir scaledForTier).
 	Dungeon bool
+
+	// Level est le niveau de région auquel l'espèce a été mise à l'échelle (voir scaledForLevel); 0 pour les
+	// monstres de donjon, qui suivent le palier de leur donjon.
+	Level int
 }
 
 // Tous les monstres sont plus lents qu'un joueur (MoveEvery > MoveCooldown):
@@ -132,10 +136,11 @@ func (g *Game) spawnPack(m *monster, around world.Pos, level int) {
 			}
 			// Même espèce, ou (rarement) une espèce compagne dont l'habitat est celui de la case.
 			sp := m.sp
+			lvl := world.LevelAt(pos.X, pos.Y)
 			if cs := companions[m.sp.Kind]; len(cs) > 0 && g.rng.IntN(4) == 0 {
 				for _, c := range speciesList {
 					if c.Kind == cs[g.rng.IntN(len(cs))] && !c.Garrison && c.Habitat == g.World.At(pos.X, pos.Y) {
-						sp = c
+						sp = scaledForLevel(c, lvl)
 					}
 				}
 			}
@@ -425,7 +430,8 @@ func (g *Game) spawnMonsters() {
 			if len(sps) == 0 {
 				continue
 			}
-			g.spawnPack(g.addMonster(sps[g.rng.IntN(len(sps))], pos), p.pos, p.stats.Level)
+			sp := scaledForLevel(sps[g.rng.IntN(len(sps))], world.LevelAt(pos.X, pos.Y))
+			g.spawnPack(g.addMonster(sp, pos), p.pos, p.stats.Level)
 			break
 		}
 	}
