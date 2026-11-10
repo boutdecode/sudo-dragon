@@ -121,6 +121,9 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 			greeting = ambientLine(p.lang, npc)
 		}
 	}
+	if npc.Index >= world.CaravanIndexBase && npc.Index < world.CaravanIndexBase+2 {
+		greeting = i18n.T(p.lang, "npc.greet.caravan")
+	}
 	g.sendTalk(p, npc.Kind, []string{greeting}, false)
 }
 
@@ -295,6 +298,9 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 			{Action: protocol.NPCHeal, Label: i18n.T(p.lang, "npc.offer.heal"), Price: price,
 				Available: (p.hp < p.stats.MaxHP || p.mana < p.stats.MaxMana) && p.stats.Gold >= price},
 		}
+	}
+	if npc.Index >= world.CaravanIndexBase && npc.Index < world.CaravanIndexBase+2 {
+		return offers // un marchand ambulant ne vend que ce qu'il porte : ni quête, ni travail, ni discussion
 	}
 	// Quêtes prêtes à rendre à ce PNJ : fonctionne sans modèle de langage.
 	for _, q := range p.quests {

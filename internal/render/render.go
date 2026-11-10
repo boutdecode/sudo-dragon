@@ -48,6 +48,8 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.Tower:     fg("#fde68a").Bold(true),
 	world.Stone:     fg("#7dd3fc").Bold(true),
 	world.LairChest: fg("#f87171").Bold(true),
+	world.Spring:    fg("#38bdf8").Bold(true),
+	world.Ruin:      fg("#d6d3d1").Bold(true),
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -82,6 +84,9 @@ var monsterLooks = map[string]monsterLook{
 
 	// Garde d'un village ou d'une ville (voir game/guards.go) : envoyé comme un monstre, mais on lui parle.
 	"guard": {'G', fg("#60a5fa").Bold(true)},
+
+	// Marchand ambulant d'une route (voir game/caravan.go) : envoyé comme un monstre, mais on lui parle.
+	"caravan": {'E', fg("#fbbf24").Bold(true)},
 }
 
 // npcLooks donne l'apparence des PNJ, indexée par leur type (voir world.NPCKind).
@@ -205,6 +210,8 @@ var variants = map[world.Tile][]rune{
 	world.Tower:     []rune("IIIIII"),
 	world.Stone:     []rune("||||||"),
 	world.LairChest: []rune("xxxxxx"),
+	world.Spring:    []rune("vvvvvv"),
+	world.Ruin:      []rune("//////"),
 }
 
 // TerrainName renvoie le nom d'un terrain dans la langue l.
@@ -252,6 +259,10 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.stone")
 	case world.LairChest:
 		return i18n.T(l, "terrain.lairchest")
+	case world.Spring:
+		return i18n.T(l, "terrain.spring")
+	case world.Ruin:
+		return i18n.T(l, "terrain.ruin")
 	}
 	return "?"
 }

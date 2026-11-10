@@ -377,6 +377,10 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: "|", st: msPOI}
 	case world.LairChest:
 		return mapCell{r: "x", st: msPOI}
+	case world.Spring:
+		return mapCell{r: "v", st: msPOI}
+	case world.Ruin:
+		return mapCell{r: "/", st: msPOI}
 	default: // Wall
 		return mapCell{r: "#", st: msWall}
 	}
@@ -580,6 +584,8 @@ func (m Model) legendLines(rows int, c world.Climate) []string {
 		entry("x", msPOI, "map.leg.lair"),
 		entry("I", msPOI, "map.leg.tower"),
 		entry("|", msPOI, "map.leg.stone"),
+		entry("v", msPOI, "map.leg.spring"),
+		entry("/", msPOI, "map.leg.ruin"),
 		entry("*", msMarker, "map.leg.marker"),
 		entry("░", msUnknown, "map.leg.unexplored"),
 	}

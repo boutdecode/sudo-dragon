@@ -94,6 +94,7 @@ type player struct {
 	// Points d'intérêt (voir poi.go).
 	respawn    *world.Pos                 // dernier feu de camp : on y réapparaît après une défaite
 	stones     map[world.RegionPos]bool   // pierres dressées activées, par région
+	maps       []world.Pos                // cartes au trésor : cases à creuser (voir treasure.go)
 	buffs      []buff                     // bonus de sanctuaire en cours (pas persistés)
 	poiCooling map[world.RegionPos]uint64 // tick avant lequel le point de la région est sans effet pour ce joueur
 }
@@ -127,6 +128,7 @@ type Saved struct {
 	// Point de réapparition (feu de camp) et pierres dressées activées.
 	Respawn *world.Pos
 	Stones  []world.RegionPos
+	Maps    []world.Pos // cartes au trésor détenues : la case à creuser de chacune
 }
 
 // Game est l'état du monde vivant.
@@ -177,6 +179,7 @@ type Game struct {
 	slotDefeated  map[world.SlotKey]uint64   // emplacement -> tick de la dernière victoire (repousse)
 	gd            guardState                 // gardes des villages et des villes (voir guards.go)
 	garrisonCount int                        // monstres de garnison vivants
+	car           caravanState               // marchands ambulants suivis (voir caravan.go)
 	lairOpened    map[world.RegionPos]uint64 // repaire -> tick de l'ouverture de son coffre (voir poi.go)
 	nextMonsterID int
 
@@ -377,6 +380,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 			r := *saved.Respawn
 			p.respawn = &r
 		}
+		p.maps = slices.Clone(saved.Maps)
 		for _, rp := range saved.Stones {
 			p.stones[rp] = true
 		}
@@ -402,7 +406,7 @@ func (g *Game) save(p *player) {
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 			Discovered: p.discoveredList(), DiscoveredDirty: p.discoveredDirty,
-			Respawn: p.respawn, Stones: p.stoneList(),
+			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps),
 		})
 		p.questsDirty, p.gearDirty, p.discoveredDirty = false, false, false
 	}
@@ -485,6 +489,9 @@ func (g *Game) blockedIn(z ZoneID, pos world.Pos) bool {
 	if g.guardAt(pos) != nil { // un garde aussi
 		return true
 	}
+	if g.caravanAt(pos) != nil { // et une caravane
+		return true
+	}
 	_, npc := g.World.NPCAt(pos.X, pos.Y) // un PNJ occupe sa case
 	return npc
 }
@@ -548,6 +555,10 @@ func (g *Game) step() {
 			continue
 		}
 		if p.zone == 0 {
+			if c := g.caravanAt(dst); c != nil { // marcher sur une caravane ouvre sa boutique
+				g.bumpCaravan(p, c)
+				continue
+			}
 			if gd := g.guardAt(dst); gd != nil { // marcher sur un garde lui parle (ou l'affronte, si l'on est hors-la-loi)
 				g.bumpGuard(p, gd)
 				continue
@@ -593,11 +604,13 @@ func (g *Game) step() {
 	mids := g.sortedMonsterIDs()
 	g.stepMonsters(mids)
 	g.stepGuards()
+	g.stepCaravans()
 	if g.tick%spawnEvery == 0 {
 		g.despawnFar()
 		g.spawnMonsters()
 		g.activateGarrisons()
 		g.activateGuards()
+		g.activateCaravans()
 		g.activateLairs()
 		mids = g.sortedMonsterIDs()
 	}
@@ -651,6 +664,7 @@ func (g *Game) snapshotFor(p *player, monsterIDs []int) protocol.Snapshot {
 		}
 	}
 	snap.Monsters = g.appendGuards(snap.Monsters, p)
+	snap.Monsters = g.appendCaravans(snap.Monsters, p)
 	return snap
 }
 

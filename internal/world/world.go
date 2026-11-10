@@ -48,6 +48,8 @@ const (
 	Tower     // tour de guet
 	Stone     // pierre dressée
 	LairChest // coffre d'un repaire
+	Spring    // source ou oasis
+	Ruin      // ruines gardées
 
 	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
 	NumTiles
@@ -100,6 +102,10 @@ func (t Tile) Glyph() rune {
 		return '|'
 	case LairChest:
 		return 'x'
+	case Spring:
+		return 'v'
+	case Ruin:
+		return '/'
 	}
 	return '?'
 }

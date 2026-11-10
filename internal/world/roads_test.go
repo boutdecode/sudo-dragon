@@ -103,3 +103,40 @@ func TestRoadsConnectTheirPlaces(t *testing.T) {
 		t.Fatal("aucun lien vérifié")
 	}
 }
+
+func TestRoadRoutesAreOrderedContinuousAndOnRoads(t *testing.T) {
+	w := New(1)
+	routes := w.RoadRoutesNear(0, 0, 4*RegionSize)
+	if len(routes) == 0 {
+		t.Fatal("aucune route près de l'origine")
+	}
+	for _, r := range routes {
+		if len(r.Path) < 2 {
+			t.Errorf("%s: tracé de %d cases", r.ID, len(r.Path))
+			continue
+		}
+		for i, p := range r.Path {
+			if w.TileAt(p.X, p.Y) != Road {
+				t.Errorf("%s: la case %v n'est pas une route", r.ID, p)
+			}
+			if i > 0 {
+				if prev := r.Path[i-1]; max(abs(p.X-prev.X), abs(p.Y-prev.Y)) > 1 {
+					t.Errorf("%s: saut de %v à %v", r.ID, prev, p)
+				}
+			}
+		}
+		if r.A == r.B {
+			t.Errorf("%s: mêmes régions", r.ID)
+		}
+		seed, ok := w.HasCaravan(r)
+		if again, ok2 := w.HasCaravan(r); ok != ok2 || seed != again {
+			t.Errorf("%s: existence de la caravane instable", r.ID)
+		}
+		if ok {
+			npc := w.CaravanMerchant(r, r.Path[0])
+			if npc.Index < CaravanIndexBase || npc.Region != r.A || npc.Name == "" || (npc.Kind != NPCSmith && npc.Kind != NPCArmorer) {
+				t.Errorf("%s: marchand incohérent %+v", r.ID, npc)
+			}
+		}
+	}
+}

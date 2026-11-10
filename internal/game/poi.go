@@ -28,6 +28,7 @@ const (
 	campfireCooldown = 3000 // ticks (5 min) entre deux repos au même feu
 	shrineCooldown   = 6000 // ticks (10 min) entre deux bénédictions du même sanctuaire
 	shrineDuration   = 3000 // ticks (5 min) de bonus
+	springCooldown   = 1200 // ticks (2 min) entre deux gorgées à la même source
 	towerRadius      = 12   // rayon (en cases) dans lequel une tour révèle les entrées de donjon
 
 	shrineDefBonus = 2 // DEF
@@ -36,6 +37,9 @@ const (
 	lairRespawn    = 18000 // ticks (30 min) avant que les gardiens reviennent et que le coffre se remplisse
 	lairLeash      = 6     // distance maximale à laquelle un gardien s'éloigne de son poste
 	lairLevelBonus = 2     // niveaux de région de plus pour les gardiens (un repaire est un défi)
+	ruinLevelBonus = 3     // idem pour le gardien d'une ruine
+	lairGearChance = 0.5   // part des coffres de repaire qui contiennent un objet
+	ruinGearChance = 0.8   // idem pour une ruine
 	lairSlotBase   = 100   // les emplacements d'un repaire sont numérotés à partir de là (ceux d'une forteresse, de 0)
 	lairGold       = 12    // or minimal par niveau du coffre ; le maximum est le double
 
@@ -141,6 +145,9 @@ func (g *Game) cooling(p *player, rp world.RegionPos, d uint64) (left uint64, co
 
 // poiStep applique l'effet du point d'intérêt sur lequel p vient d'arriver, s'il y en a un.
 func (g *Game) poiStep(p *player, pos world.Pos) {
+	if len(p.maps) > 0 {
+		g.dig(p, pos) // une case de carte au trésor est une case ordinaire
+	}
 	poi := g.World.POIAt(pos.X, pos.Y)
 	if poi == nil {
 		return
@@ -150,12 +157,14 @@ func (g *Game) poiStep(p *player, pos world.Pos) {
 		g.campfire(p, poi)
 	case world.POIShrine:
 		g.shrine(p, poi)
-	case world.POILair:
+	case world.POILair, world.POIRuin:
 		g.openLairChest(p, poi)
 	case world.POITower:
 		g.tower(p, poi)
 	case world.POIStone:
 		g.stone(p, poi)
+	case world.POISpring:
+		g.spring(p, poi)
 	}
 }
 
@@ -187,6 +196,26 @@ func (g *Game) respawnSpot(p *player) (world.Pos, bool) {
 		return g.freeNear(*p.respawn), true
 	}
 	return g.freeSpawn(), false
+}
+
+// spring soigne 30 % des PV et 50 % du mana (une oasis, en climat aride : 60 % et tout le mana). Le délai ne court que
+// si l'on a bu : on ne perd rien à passer à pleine forme.
+func (g *Game) spring(p *player, poi *world.POI) {
+	hpFrac, manaFrac, key := 0.3, 0.5, "poi.spring.drink"
+	if g.World.ClimateAt(poi.Pos.X, poi.Pos.Y) == world.Arid {
+		hpFrac, manaFrac, key = 0.6, 1.0, "poi.spring.oasis"
+	}
+	hp := min(p.stats.MaxHP-p.hp, int(float64(p.stats.MaxHP)*hpFrac+0.5))
+	mana := min(p.stats.MaxMana-p.mana, int(float64(p.stats.MaxMana)*manaFrac+0.5))
+	if hp <= 0 && mana <= 0 {
+		return
+	}
+	if _, wait := g.cooling(p, poi.Region, springCooldown); wait {
+		return
+	}
+	p.hp += hp
+	p.mana += mana
+	g.poiNotice(p, key, poi.NameIn(p.lang), hp, mana)
 }
 
 func (g *Game) shrine(p *player, poi *world.POI) {
@@ -254,7 +283,7 @@ func (g *Game) activateLairs() {
 			continue
 		}
 		for _, poi := range g.World.POIsWithin(p.pos.X, p.pos.Y, garrisonActivation) {
-			if poi.Kind != world.POILair {
+			if poi.Kind != world.POILair && poi.Kind != world.POIRuin {
 				continue
 			}
 			for i, pos := range poi.Slots {
@@ -284,7 +313,11 @@ func (g *Game) fillLairSlot(poi *world.POI, i int, pos world.Pos) {
 		list = speciesByTile[world.Plain]
 	}
 	sp := list[int((uint64(poi.Seed)>>8+uint64(i))%uint64(len(list)))]
-	level := min(world.LevelAt(pos.X, pos.Y)+lairLevelBonus, 20)
+	bonus := lairLevelBonus
+	if poi.Kind == world.POIRuin {
+		bonus = ruinLevelBonus // le gardien d'une ruine est une élite
+	}
+	level := min(world.LevelAt(pos.X, pos.Y)+bonus, 20)
 	m := g.addMonster(scaledForLevel(sp, level), pos)
 	m.slot = &key
 	m.leash = lairLeash
@@ -302,20 +335,30 @@ func (g *Game) lairGuarded(poi *world.POI) bool {
 	return false
 }
 
-// openLairChest ouvre le coffre d'un repaire dont les gardiens sont tombés. Le coffre se remplit de nouveau
-// lairRespawn ticks après son ouverture ; un sac plein le laisse fermé.
+// openLairChest ouvre le coffre d'un repaire ou d'une ruine dont les gardiens sont tombés. Le coffre se remplit de
+// nouveau lairRespawn ticks après son ouverture ; un sac plein le laisse fermé. Une ruine donne en plus un fragment
+// de lore et, avec les donjons, l'entrée du plus proche.
 func (g *Game) openLairChest(p *player, poi *world.POI) {
+	ruin := poi.Kind == world.POIRuin
+	prefix := "poi.lair"
+	if ruin {
+		prefix = "poi.ruin"
+	}
 	if g.lairGuarded(poi) {
-		g.poiNotice(p, "poi.lair.guarded")
+		g.poiNotice(p, prefix+".guarded")
 		return
 	}
 	if at, opened := g.lairOpened[poi.Region]; opened && g.tick-at < lairRespawn {
-		g.poiNotice(p, "poi.lair.empty")
+		g.poiNotice(p, prefix+".empty")
 		return
 	}
 	level := world.LevelAt(poi.Pos.X, poi.Pos.Y)
+	gearChance, goldBase := lairGearChance, lairGold*level
+	if ruin {
+		gearChance, goldBase = ruinGearChance, lairGold*level*3/2
+	}
 	var loot *gear.Item
-	if g.rng.Float64() < 0.5 {
+	if g.rng.Float64() < gearChance {
 		if len(p.inv.Items) >= gear.BagCapacity {
 			g.poiNotice(p, "dungeon.chest.bag_full")
 			return
@@ -325,7 +368,7 @@ func (g *Game) openLairChest(p *player, poi *world.POI) {
 	}
 	g.lairOpened[poi.Region] = g.tick
 
-	gold := p.stats.AddGold(lairGold*level + g.rng.IntN(lairGold*level+1))
+	gold := p.stats.AddGold(goldBase + g.rng.IntN(goldBase+1))
 	potions := p.stats.AddPotions(1 + g.rng.IntN(2))
 	p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "dungeon.chest.open", gold, potions))
 	if loot != nil {
@@ -333,8 +376,41 @@ func (g *Game) openLairChest(p *player, poi *world.POI) {
 		p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "dungeon.chest.item", added.Name))
 		p.gearDirty = true
 	}
+	if ruin {
+		g.ruinLore(p, poi)
+	}
+	chance := mapChestLair
+	if ruin {
+		chance = mapChestRuin
+	}
+	if g.rng.Float64() < chance {
+		if line := g.giveMap(p, poi.Pos); line != "" {
+			p.gearNotices = append(p.gearNotices, line)
+		}
+	}
 	g.sendBag(p)
 	g.save(p)
+}
+
+// ruinLore ajoute au journal le fragment de lore de la ruine (texte statique tiré de sa graine) et, si le joueur ne
+// la connaît pas encore, révèle l'entrée du donjon le plus proche (3 régions au plus).
+func (g *Game) ruinLore(p *player, poi *world.POI) {
+	p.gearNotices = append(p.gearNotices, i18n.Pick(p.lang, "poi.lore", int(uint64(poi.Seed)>>8)))
+	if !g.Dungeons {
+		return
+	}
+	var best *world.Dungeon
+	bestDist := 0
+	for _, d := range g.World.DungeonsNear(poi.Pos.X, poi.Pos.Y, 3) {
+		if dist := max(abs(d.Entrance.X-poi.Pos.X), abs(d.Entrance.Y-poi.Pos.Y)); best == nil || dist < bestDist {
+			best, bestDist = d, dist
+		}
+	}
+	if best == nil || p.discovered[best.Region] {
+		return
+	}
+	g.discover(p, best)
+	p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "poi.ruin.hint", best.NameIn(p.lang)))
 }
 
 // --- Pierres dressées ---

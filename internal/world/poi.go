@@ -20,10 +20,15 @@ const (
 	POILair                        // repaire : monstres et coffre
 	POITower                       // tour de guet : révèle les alentours
 	POIStone                       // pierre dressée : réseau de téléportation
+	POISpring                      // source (oasis en climat aride) : rend des PV et du mana
+	POIRuin                        // ruines : un gardien, un coffre, un indice sur un donjon
 )
 
 const (
-	poiChance    = 0.6 // part des régions qui portent un point d'intérêt
+	poiChance = 0.6 // part des régions qui portent l'un des cinq premiers types
+	// poiChanceAll borne la plage de tirage des types ajoutés ensuite (sources, ruines). Cette plage vient *après*
+	// poiChance : les points déjà posés gardent leur case et leur type.
+	poiChanceAll = 0.78
 	poiSalt      = 8000
 	poiKindSalt  = 8100
 	poiSeedSalt  = 8200
@@ -48,7 +53,7 @@ type POI struct {
 	Region RegionPos
 	Pos    Pos
 	Seed   int64 // graine propre au point (nom, tirages du jeu)
-	// Slots est la liste des emplacements de monstres d'un repaire (vide pour les autres types).
+	// Slots est la liste des emplacements de monstres d'un repaire ou d'une ruine (vide pour les autres types).
 	Slots []Pos
 
 	stem stem
@@ -68,6 +73,10 @@ func (p *POI) Tile() Tile {
 		return LairChest
 	case POITower:
 		return Tower
+	case POISpring:
+		return Spring
+	case POIRuin:
+		return Ruin
 	}
 	return Stone
 }
@@ -87,6 +96,10 @@ func poiNameKey(k POIKind) string {
 		return "poi.name.lair"
 	case POITower:
 		return "poi.name.tower"
+	case POISpring:
+		return "poi.name.spring"
+	case POIRuin:
+		return "poi.name.ruin"
 	}
 	return "poi.name.stone"
 }
@@ -133,7 +146,8 @@ func (w *World) POIAt(x, y int) *POI {
 }
 
 func (w *World) buildPOI(rp RegionPos) *POI {
-	if identityRNG(w.Seed, rp, poiSalt).Float64() >= poiChance {
+	roll := identityRNG(w.Seed, rp, poiSalt).Float64()
+	if roll >= poiChanceAll {
 		return nil
 	}
 	pos, ok := w.poiSpot(rp)
@@ -142,12 +156,19 @@ func (w *World) buildPOI(rp RegionPos) *POI {
 	}
 	kr := identityRNG(w.Seed, rp, poiKindSalt).IntN(100)
 	var kind POIKind
-	for _, e := range poiWeights {
-		if kr < e.w {
-			kind = e.kind
-			break
+	if roll >= poiChance { // plage des types ajoutés après coup : 55 % de sources, 45 % de ruines
+		kind = POISpring
+		if kr >= 55 {
+			kind = POIRuin
 		}
-		kr -= e.w
+	} else {
+		for _, e := range poiWeights {
+			if kr < e.w {
+				kind = e.kind
+				break
+			}
+			kr -= e.w
+		}
 	}
 	nr := identityRNG(w.Seed, rp, poiNameSalt)
 	p := &POI{
@@ -157,8 +178,11 @@ func (w *World) buildPOI(rp RegionPos) *POI {
 		Seed:   int64(identityRNG(w.Seed, rp, poiSeedSalt).Uint64()),
 		stem:   stem{nr.IntN(len(placeStart)), nr.IntN(len(placeEnd))},
 	}
-	if kind == POILair {
+	switch kind {
+	case POILair:
 		p.Slots = []Pos{{pos.X - 2, pos.Y - 1}, {pos.X + 2, pos.Y - 1}, {pos.X, pos.Y + 2}}
+	case POIRuin:
+		p.Slots = []Pos{{pos.X, pos.Y + 2}} // un seul gardien
 	}
 	return p
 }

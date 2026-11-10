@@ -60,6 +60,9 @@ func (g *Game) vendorContext(npc world.NPC) gear.Context {
 // waresFor renvoie l'étalage à montrer au joueur : celui généré s'il existe, sinon le repli déterministe,
 // en demandant (une fois) la génération au modèle si possible. rev vaut 0 pour le repli.
 func (g *Game) waresFor(p *player, npc world.NPC) (w gear.Wares, rev int) {
+	if npc.Index >= world.CaravanIndexBase && npc.Index < world.CaravanIndexBase+2 { // marchand ambulant
+		return g.caravanWares(p, npc)
+	}
 	key := npc.Key()
 	if st, ok := g.shops[key]; ok {
 		return st.wares, st.rev
@@ -155,6 +158,9 @@ func (g *Game) sendBag(p *player) {
 	}
 	for _, bf := range p.buffs {
 		b.Blessings = append(b.Blessings, bf.info(g.tick))
+	}
+	for _, mp := range p.maps {
+		b.Maps = append(b.Maps, protocol.TreasureMap{X: mp.X, Y: mp.Y})
 	}
 	b.Notice, p.gearNotices = p.gearNotices, nil
 	p.sendBagMsg(b)

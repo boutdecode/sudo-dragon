@@ -75,6 +75,7 @@ type Character struct {
 	RespawnX   int
 	RespawnY   int
 	Stones     []world.RegionPos
+	Maps       []world.Pos // cartes au trésor détenues : la case à creuser de chacune
 }
 
 // Store est la base de données.
@@ -285,6 +286,8 @@ var migrations = []string{
 	`ALTER TABLE characters ADD COLUMN respawn_x INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN respawn_y INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN stones TEXT NOT NULL DEFAULT ''`,
+	// 18: cartes au trésor détenues (liste « x,y;x,y » des cases à creuser).
+	`ALTER TABLE characters ADD COLUMN maps TEXT NOT NULL DEFAULT ''`,
 }
 
 // migrate applique les migrations manquantes, chacune dans sa transaction.
@@ -407,16 +410,17 @@ func (s *Store) Authenticate(name, password string) (string, error) {
 func (s *Store) LoadCharacter(account string) (*Character, error) {
 	var c Character
 	var consent, respawnSet int
-	var stones string
+	var stones, maps string
 	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold, llm_consent, kills, boss_kills, deaths,
-			class, str, agi, int_, con, wis, cha, max_hp, mana, respawn_set, respawn_x, respawn_y, stones
+			class, str, agi, int_, con, wis, cha, max_hp, mana, respawn_set, respawn_x, respawn_y, stones, maps
 		FROM characters WHERE account = ?`, account).
 		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold, &consent, &c.Kills, &c.BossKills, &c.Deaths,
 			&c.Class, &c.Scores[0], &c.Scores[1], &c.Scores[2], &c.Scores[3], &c.Scores[4], &c.Scores[5], &c.MaxHP, &c.Mana,
-			&respawnSet, &c.RespawnX, &c.RespawnY, &stones)
+			&respawnSet, &c.RespawnX, &c.RespawnY, &stones, &maps)
 	c.LLMConsent = consent != 0
 	c.RespawnSet = respawnSet != 0
 	c.Stones = decodeStones(stones)
+	c.Maps = decodeMaps(maps)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -449,8 +453,8 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 
 	stmt, err := tx.Prepare(`INSERT INTO characters(account, level, xp, potions, hp, x, y, gold,
 			llm_consent, kills, boss_kills, deaths, class, str, agi, int_, con, wis, cha, max_hp, mana,
-			respawn_set, respawn_x, respawn_y, stones, updated_at)
-		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
+			respawn_set, respawn_x, respawn_y, stones, maps, updated_at)
+		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
 		ON CONFLICT(account) DO UPDATE SET
 			level = excluded.level, xp = excluded.xp, potions = excluded.potions,
 			hp = excluded.hp, x = excluded.x, y = excluded.y, gold = excluded.gold,
@@ -460,7 +464,7 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 			con = excluded.con, wis = excluded.wis, cha = excluded.cha,
 			max_hp = excluded.max_hp, mana = excluded.mana,
 			respawn_set = excluded.respawn_set, respawn_x = excluded.respawn_x, respawn_y = excluded.respawn_y,
-			stones = excluded.stones,
+			stones = excluded.stones, maps = excluded.maps,
 			updated_at = excluded.updated_at`)
 	if err != nil {
 		return err
@@ -472,7 +476,7 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold,
 			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths,
 			c.Class, c.Scores[0], c.Scores[1], c.Scores[2], c.Scores[3], c.Scores[4], c.Scores[5], c.MaxHP, c.Mana,
-			boolToInt(c.RespawnSet), c.RespawnX, c.RespawnY, encodeStones(c.Stones),
+			boolToInt(c.RespawnSet), c.RespawnX, c.RespawnY, encodeStones(c.Stones), encodeMaps(c.Maps),
 			now, account); err != nil {
 			return fmt.Errorf("sauvegarde de %s: %w", account, err)
 		}

@@ -347,6 +347,15 @@ type Bag struct {
 
 	// Bénédictions de sanctuaire en cours (fiche de personnage).
 	Blessings []Blessing `json:"blessings,omitempty"`
+
+	// Cartes au trésor détenues : la case à creuser de chacune (fiche de personnage).
+	Maps []TreasureMap `json:"maps,omitempty"`
+}
+
+// TreasureMap est une carte au trésor : les coordonnées de la case à creuser.
+type TreasureMap struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 // Blessing est un bonus temporaire de sanctuaire. Kind vaut BlessDef, BlessHit, BlessXP ou BlessRegen ; Bonus est sa

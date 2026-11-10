@@ -1,6 +1,9 @@
 package world
 
-import "container/heap"
+import (
+	"container/heap"
+	"fmt"
+)
 
 // Routes entre lieux.
 //
@@ -21,6 +24,8 @@ type roadKey struct{ a, b RegionPos }
 // roadLink est le tracé d'un lien (nil s'il n'y en a pas).
 type roadLink struct {
 	tiles map[Pos]struct{}
+	path  []Pos // les mêmes tuiles dans l'ordre, de la région a vers la région b (voir RoadRoutesNear)
+	key   roadKey
 }
 
 // roadCacheMax borne le cache de routes; au-delà, il est vidé et se reconstruit.
@@ -215,10 +220,11 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 	if path == nil {
 		return nil
 	}
-	l := &roadLink{tiles: make(map[Pos]struct{}, len(path))}
+	l := &roadLink{tiles: make(map[Pos]struct{}, len(path)), path: make([]Pos, 0, len(path)), key: key}
 	for _, p := range path {
 		if !sa.Contains(p.X, p.Y) && !sb.Contains(p.X, p.Y) {
 			l.tiles[p] = struct{}{}
+			l.path = append(l.path, p)
 		}
 	}
 	return l
@@ -327,4 +333,51 @@ func (w *World) RoadTilesIn(x0, y0, x1, y1 int, fn func(Pos)) {
 			}
 		}
 	}
+}
+
+// RoadRoute est un lien routier entre deux lieux voisins, avec son tracé dans l'ordre.
+type RoadRoute struct {
+	ID   string    // identifiant stable « ax,ay>bx,by »
+	A, B RegionPos // A est la région ouest ou nord
+	Path []Pos     // cases de la route hors de l'emprise des lieux, de A vers B ; à ne pas modifier
+
+	// Orient vaut 0 pour une liaison est-ouest et 1 pour une liaison nord-sud : avec A, il distingue les deux
+	// liaisons qui partent d'une même région.
+	Orient int
+}
+
+// RoadRoutesNear renvoie les liens routiers dont une case est à au plus r cases (Chebyshev) de (x, y).
+func (w *World) RoadRoutesNear(x, y, r int) []RoadRoute {
+	seen := make(map[*roadLink]bool)
+	lo, hi := RegionOf(x-r, y-r), RegionOf(x+r, y+r)
+	var out []RoadRoute
+	for ry := lo.Y; ry <= hi.Y; ry++ {
+		for rx := lo.X; rx <= hi.X; rx++ {
+			for _, l := range w.roadsAround(RegionPos{rx, ry}) {
+				if seen[l] || len(l.path) < 2 {
+					continue
+				}
+				seen[l] = true
+				near := false
+				for _, p := range l.path {
+					if abs(p.X-x) <= r && abs(p.Y-y) <= r {
+						near = true
+						break
+					}
+				}
+				if !near {
+					continue
+				}
+				orient := 0
+				if l.key.b.X == l.key.a.X {
+					orient = 1
+				}
+				out = append(out, RoadRoute{
+					ID: fmt.Sprintf("%d,%d>%d,%d", l.key.a.X, l.key.a.Y, l.key.b.X, l.key.b.Y),
+					A:  l.key.a, B: l.key.b, Path: l.path, Orient: orient,
+				})
+			}
+		}
+	}
+	return out
 }

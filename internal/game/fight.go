@@ -199,6 +199,9 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	if line := g.monsterGear(p, m); line != "" {
 		log = append(log, line)
 	}
+	if line := g.monsterMap(p, m); line != "" {
+		log = append(log, line)
+	}
 	return log, leveled
 }
 

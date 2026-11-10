@@ -831,3 +831,27 @@ func TestRespawnAndStonesRoundTrip(t *testing.T) {
 		t.Errorf("état de points d'intérêt non effacé: %+v", again)
 	}
 }
+
+func TestMapsRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	maps := []world.Pos{{X: 120, Y: -45}, {X: -3, Y: 8}}
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10, Maps: maps}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	if len(got.Maps) != 2 || got.Maps[0] != maps[0] || got.Maps[1] != maps[1] {
+		t.Fatalf("cartes %v, attendu %v", got.Maps, maps)
+	}
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10}}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := st.LoadCharacter("aldric"); len(again.Maps) != 0 {
+		t.Errorf("cartes non effacées: %v", again.Maps)
+	}
+}
