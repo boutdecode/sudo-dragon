@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/kevin/ascii-adventure/internal/i18n"
-	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -16,7 +15,7 @@ import (
 // Ce sont des faits établis par le serveur (nom, genre, direction, distance), pas des paroles de joueur.
 
 const (
-	landmarkRange  = lore.RumorRadius // en régions : même portée que les rumeurs et les quêtes
+	landmarkRange  = 3 // en régions : portée de la géographie des chefs et maires (indépendante des rumeurs)
 	maxLandmarks   = 10
 	distNear       = 300 // cases : en deçà, « tout près »
 	distWalk       = 700 // cases : en deçà, « à une bonne marche »

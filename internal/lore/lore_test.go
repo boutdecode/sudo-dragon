@@ -54,7 +54,7 @@ func TestRumorTravelsAtHopDelayPerRegion(t *testing.T) {
 
 func TestRumorStopsAtRadius(t *testing.T) {
 	c := card("aldric", rp(0, 0), t0)
-	late := t0.Add(24 * time.Hour)
+	late := t0.Add(HopDelay + time.Hour)
 	if !Reaches(c, rp(RumorRadius, RumorRadius), late) {
 		t.Error("distance maximale: la rumeur devrait arriver")
 	}
@@ -90,56 +90,50 @@ func TestFidelityDecreasesWithDistance(t *testing.T) {
 	want := map[int]shown{
 		0: {true, true, true, true, true, true, true, true},
 		1: {true, true, true, true, true, true, true, false},
-		2: {true, true, true, false, false, false, true, false},
-		3: {true, true, false, false, false, false, true, false},
 	}
 	for d, w := range want {
 		if got := read(d); got != w {
 			t.Errorf("distance %d: %+v, attendu %+v", d, got, w)
 		}
 	}
-	// Les exploits notoires voyagent plus loin que le reste.
-	if _, f := Fidelity(c, 3); f.BossKills != 2 {
-		t.Error("les seigneurs de guerre vaincus doivent rester connus à distance 3")
-	}
 }
 
 func TestHearFiltersSortsAndLimits(t *testing.T) {
-	now := t0.Add(2 * time.Hour)
+	now := t0.Add(HopDelay + 2*time.Hour)
 	here := rp(0, 0)
 	cards := []Card{
-		card("lointain", rp(3, 0), t0),                      // d=3, arrivée
-		card("voisin", rp(1, 0), t0),                        // d=1
+		card("voisin", rp(1, 0), t0),                        // d=1, arrivée
+		card("deux", rp(2, 0), t0),                          // hors rayon
 		card("ici-vieux", rp(0, 0), t0),                     // d=0, plus ancien
 		card("ici-recent", rp(0, 0), now.Add(-time.Minute)), // d=0, plus récent
 		card("trop-loin", rp(4, 0), t0),                     // hors rayon
 		card("oublie", rp(0, 0), now.Add(-Forgetting-time.Hour)),
-		card("pas-encore", rp(2, 0), now.Add(-HopDelay)), // d=2 mais trop récent pour être arrivé
+		card("pas-encore", rp(1, 0), now.Add(-HopDelay/2)), // d=1 mais trop récent pour être arrivé
 	}
 	got := Hear(cards, here, "moi", now)
 	var names []string
 	for _, h := range got {
 		names = append(names, h.Account)
 	}
-	want := []string{"ici-recent", "ici-vieux", "voisin", "lointain"}
+	want := []string{"ici-recent", "ici-vieux", "voisin"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("rumeurs %v, attendu %v (proximité puis récence; hors rayon, oubliées et pas encore arrivées exclues)", names, want)
 	}
-	if got[0].Distance != 0 || !got[0].Local() || got[3].Distance != 3 || got[3].Local() {
+	if got[0].Distance != 0 || !got[0].Local() || got[2].Distance != 1 || got[2].Local() {
 		t.Fatalf("distances: %+v", got)
 	}
-	if got[3].Intro.Goal != "" || got[3].Intro.Role == "" {
-		t.Fatalf("la rumeur lointaine devrait être lacunaire: %+v", got[3].Intro)
+	if got[2].Facts.Deaths != 0 {
+		t.Fatalf("les morts ne se racontent pas hors du lieu: %+v", got[2].Facts)
 	}
 }
 
 func TestHearCapsRumorsButAlwaysKeepsTheSpeaker(t *testing.T) {
-	now := t0.Add(time.Hour)
+	now := t0.Add(HopDelay + time.Hour)
 	var cards []Card
 	for i := 0; i < MaxHeard+5; i++ {
 		cards = append(cards, card("autre"+string(rune('a'+i)), rp(0, 0), t0.Add(time.Duration(i)*time.Second)))
 	}
-	cards = append(cards, card("Moi", rp(2, 2), t0)) // la fiche de l'interlocuteur, plus loin que toutes les autres
+	cards = append(cards, card("Moi", rp(1, 1), t0)) // la fiche de l'interlocuteur
 	got := Hear(cards, rp(0, 0), "moi", now)
 
 	rumors, selves := 0, 0
@@ -162,10 +156,10 @@ func TestHearCapsRumorsButAlwaysKeepsTheSpeaker(t *testing.T) {
 }
 
 func TestHearKeepsOneCardPerAccountTheClosest(t *testing.T) {
-	now := t0.Add(time.Hour)
-	far := card("aldric", rp(3, 0), t0)
+	now := t0.Add(HopDelay + time.Hour)
+	far := card("aldric", rp(1, 1), t0)
 	far.Alias = "Version lointaine"
-	near := card("ALDRIC", rp(1, 0), t0)
+	near := card("ALDRIC", rp(0, 0), t0)
 	near.Alias = "Version proche"
 	got := Hear([]Card{far, near}, rp(0, 0), "x", now)
 	if len(got) != 1 || got[0].Intro.Alias != "Version proche" {

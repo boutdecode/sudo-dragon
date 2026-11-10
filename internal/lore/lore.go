@@ -19,10 +19,11 @@ import (
 // Réglages de la mémoire. Ce sont des constantes de jeu, faciles à ajuster.
 const (
 	// RumorRadius est la distance maximale (en régions, Chebyshev) à laquelle une
-	// présentation se répand. Une région fait 256 cases: 3 régions ≈ 770 cases.
-	RumorRadius = 3
+	// présentation se répand : le lieu et les régions adjacentes (une région fait
+	// 256 cases, donc ≈ 380 cases au plus d'un lieu à l'autre).
+	RumorRadius = 1
 	// HopDelay est le temps que met une rumeur pour franchir une région.
-	HopDelay = 5 * time.Minute
+	HopDelay = time.Hour
 	// Forgetting est la durée après laquelle une présentation est oubliée si le
 	// joueur ne la renouvelle pas.
 	Forgetting = 14 * 24 * time.Hour
@@ -110,30 +111,17 @@ func Reaches(c Card, at world.RegionPos, now time.Time) bool {
 	return age >= time.Duration(d)*HopDelay && age <= Forgetting
 }
 
-// Fidelity applique la perte de détails selon la distance : ce qui est loin se
-// raconte approximativement.
+// Fidelity applique la perte de détails selon la distance : la mémoire des PNJ
+// est locale (RumorRadius = 1 région).
 //
-//	distance 0-1 : tout
-//	distance 2   : alias, rôle, origine
-//	distance 3   : alias, rôle
-//
-// Les exploits notoires (seigneurs de guerre vaincus) voyagent plus loin que le
-// reste : ils restent connus à toute distance. Le niveau n'est connu que de près.
+//	distance 0 : tout, morts comprises
+//	distance 1 : tout sauf les morts
 func Fidelity(c Card, distance int) (Intro, Facts) {
-	in, f := c.Intro, Facts{BossKills: c.BossKills}
-	if distance > 2 {
-		in.Origin = ""
-	}
-	if distance > 1 {
-		in.Goal, in.Trait = "", ""
-	}
-	if distance <= 1 {
-		f.Level = c.Level
-	}
+	f := Facts{BossKills: c.BossKills, Level: c.Level}
 	if distance == 0 {
 		f.Deaths = c.Deaths
 	}
-	return in, f
+	return c.Intro, f
 }
 
 // Hear calcule ce qu'un PNJ du lieu at sait, à l'instant now, parmi les fiches

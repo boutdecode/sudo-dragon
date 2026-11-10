@@ -112,7 +112,7 @@ Un guerrier débutant bat un rat ou un loup, mais pas un yéti : il faut progres
 
 Le monde repose sur deux découpages indépendants, tous deux calculés depuis la seed (le client les retrouve sans rien recevoir) :
 
-- **La grille de régions** (carrés de 256 × 256 cases) est l'unité technique : au plus un lieu par région, rumeurs et quêtes qui voyagent sur 3 régions, réputation par région.
+- **La grille de régions** (carrés de 256 × 256 cases) est l'unité technique : au plus un lieu par région, rumeurs qui voyagent sur 1 région (le lieu et ses voisines), réputation par région.
 - **Les contrées** sont des pays nommés à frontières irrégulières (diagramme de Voronoi à germes décalés, environ 1 000 cases de large). Leur nom reflète le terrain dominant
   (« Forêts d'Aube », « Plaines de Solbrune », « Côtes de Kerhaven »…) et existe en français et en anglais. Les lieux d'une contrée ont un air de famille : leurs noms puisent dans la même
   petite famille de syllabes, sans jamais se répéter à moins de 3 régions.
@@ -171,7 +171,7 @@ Le budget ne compte que les jetons de sortie demandés au maximum : il peut êtr
 
 **Mémoire et lore** : un PNJ peut demander au joueur de se présenter. La fiche (pseudo, rôle, origine, but, trait), déclarée par le joueur donc
 non vérifiée, est mémorisée par lieu (8 lieux au plus par compte). Les autres joueurs l'entendent sous forme de **rumeurs** : visibles à
-3 régions au plus, avec 5 minutes de délai par région, de moins en moins fidèles avec la distance, oubliées après 14 jours. Chaque PNJ garde aussi
+1 région au plus (le lieu et les régions adjacentes), avec 1 heure de délai pour passer à la région voisine, oubliées après 14 jours. Chaque PNJ garde aussi
 un résumé **privé** de ses conversations avec chaque joueur, jamais montré aux autres. Le serveur y ajoute des faits vérifiés (niveau, boss tués, morts).
 
 **Confidentialité** : un avis s'affiche à la première discussion et exige un accord explicite (une fois par compte). Sans accord, rien n'est envoyé au fournisseur.
@@ -251,7 +251,7 @@ textes, puis présente une carte **Accepter / Refuser** (`A` / `R`). Rien n'exis
 
 **Réputation** : chaque quête rendue rapporte 2 à 4 points dans le lieu du donneur. Paliers : Inconnu, Connu (3), Estimé (8), Honoré (15). Aux paliers Estimé et Honoré, les soins et les potions
 y coûtent 20 % puis 40 % de moins. Les PNJ du lieu connaissent la réputation du joueur et ses quêtes rendues ; la rumeur de ces exploits voyage comme celle des présentations
-(3 régions, 5 minutes par région, oubli après 14 jours). Les quêtes rendues sont des faits établis par le serveur, pas des paroles de joueur.
+(1 région, 1 heure pour passer à la région voisine, oubli après 14 jours). Les quêtes rendues sont des faits établis par le serveur, pas des paroles de joueur.
 
 Côté opérateur, `-lore-list` affiche aussi les quêtes rendues et `-lore-purge` supprime quêtes et réputation avec le reste. Les quêtes de `quests` et la réputation de `reputation` sont dans la base SQLite.
 

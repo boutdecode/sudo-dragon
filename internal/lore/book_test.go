@@ -77,17 +77,17 @@ func TestRememberThenHeardLocallyAndRemotely(t *testing.T) {
 		t.Fatalf("lieu d'origine: %+v", got)
 	}
 
-	// Deux régions plus loin: rien avant 10 minutes, puis une version lacunaire.
-	if got := e.heard(rp(2, 0), "brenna"); len(got) != 0 {
+	// Une région plus loin: rien avant 1 heure, puis tout sauf les morts.
+	if got := e.heard(rp(1, 0), "brenna"); len(got) != 0 {
 		t.Fatalf("la rumeur est arrivée instantanément: %+v", got)
 	}
-	e.clk.Advance(2 * lore.HopDelay)
-	got = e.heard(rp(2, 0), "brenna")
-	if len(got) != 1 || got[0].Distance != 2 {
+	e.clk.Advance(lore.HopDelay)
+	got = e.heard(rp(1, 0), "brenna")
+	if len(got) != 1 || got[0].Distance != 1 {
 		t.Fatalf("après le délai: %+v", got)
 	}
-	if got[0].Intro.Role != "forgeron" || got[0].Intro.Origin != "le Nord" || got[0].Intro.Goal != "" {
-		t.Fatalf("fidélité à distance 2: %+v", got[0].Intro)
+	if got[0].Intro.Role != "forgeron" || got[0].Intro.Origin != "le Nord" || got[0].Intro.Goal != "trouver son frère" {
+		t.Fatalf("fidélité à distance 1: %+v", got[0].Intro)
 	}
 
 	// Hors du rayon, jamais.
