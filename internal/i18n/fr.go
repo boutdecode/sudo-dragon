@@ -716,7 +716,7 @@ var fr = map[string]string{
 	"key.cursor":                    "curseur",
 	"key.zoom":                      "zoom",
 	"key.marker":                    "poser/nommer un repère",
-	"key.goto": "y aller",
+	"key.goto":                      "y aller",
 	"key.recenter":                  "recentrer",
 	"map.title":                     "CARTE",
 	"map.you":                       "Vous (%d, %d)",

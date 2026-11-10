@@ -716,7 +716,7 @@ var en = map[string]string{
 	"key.cursor":                    "cursor",
 	"key.zoom":                      "zoom",
 	"key.marker":                    "place/rename a marker",
-	"key.goto": "go there",
+	"key.goto":                      "go there",
 	"key.recenter":                  "recenter",
 	"map.title":                     "MAP",
 	"map.you":                       "You (%d, %d)",
