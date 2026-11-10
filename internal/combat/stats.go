@@ -66,8 +66,12 @@ func (s Stats) averageHP() int {
 	return max(1, s.Class.OrDefault().HitDie()/2+1+s.Scores.Mod(hero.CON))
 }
 
+// xpCurve règle la courbe d'expérience: XPToNext vaut xpCurve × niveau². Le niveau 20 demande ~300 000 XP, soit
+// ~60 h de jeu actif (30 jours à ~2 h par jour); changer ce coefficient suffit pour ralentir ou accélérer.
+const xpCurve = 120
+
 // XPToNext est l'expérience à accumuler (dans le niveau courant) pour passer au suivant.
-func (s Stats) XPToNext() int { return 10 * s.Level }
+func (s Stats) XPToNext() int { return xpCurve * s.Level * s.Level }
 
 // AddXP ajoute de l'expérience et applique les montées de niveau: chaque niveau lance le dé
 // de vie de la classe (plus le mod de CON). Avec rng nil, le gain est la valeur moyenne du dé

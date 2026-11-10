@@ -12,18 +12,18 @@ func TestNewStats(t *testing.T) {
 	if s.Level != 1 || s.XP != 0 || s.MaxHP <= 0 || s.Defense() != 10 || s.Potions != startPotions {
 		t.Fatalf("fiche de départ inattendue: %+v", s)
 	}
-	if s.XPToNext() != 10 {
+	if s.XPToNext() != 120 {
 		t.Fatalf("XPToNext niveau 1 = %d", s.XPToNext())
 	}
 }
 
 func TestAddXPLevelsUpAndCarriesOver(t *testing.T) {
 	s := NewStats()
-	if n := s.AddXP(4, nil); n != 0 || s.Level != 1 || s.XP != 4 {
+	if n := s.AddXP(40, nil); n != 0 || s.Level != 1 || s.XP != 40 {
 		t.Fatalf("pas de niveau attendu: %+v (niveaux gagnés %d)", s, n)
 	}
 	hp := s.MaxHP
-	if n := s.AddXP(8, nil); n != 1 || s.Level != 2 || s.XP != 2 {
+	if n := s.AddXP(80, nil); n != 1 || s.Level != 2 || s.XP != 0 {
 		t.Fatalf("niveau 2 avec reliquat 2 attendu: %+v (niveaux gagnés %d)", s, n)
 	}
 	if s.MaxHP != hp+7 {
@@ -33,9 +33,22 @@ func TestAddXPLevelsUpAndCarriesOver(t *testing.T) {
 
 func TestAddXPSeveralLevelsAtOnce(t *testing.T) {
 	s := NewStats()
-	// 10 (niv. 1) + 20 (niv. 2) = 30 pour atteindre le niveau 3, plus 5 de reliquat.
-	if n := s.AddXP(35, nil); n != 2 || s.Level != 3 || s.XP != 5 {
+	// 120 (niv. 1) + 480 (niv. 2) = 600 pour atteindre le niveau 3, plus 5 de reliquat.
+	if n := s.AddXP(605, nil); n != 2 || s.Level != 3 || s.XP != 5 {
 		t.Fatalf("attendu niveau 3 / XP 5, obtenu %+v (niveaux gagnés %d)", s, n)
+	}
+}
+
+// Le niveau 20 doit demander ~60 h de jeu: ~300 000 XP cumulés (voir xpCurve).
+func TestXPCurveTotalToMaxLevel(t *testing.T) {
+	s := NewStats()
+	total := 0
+	for s.Level < 20 {
+		total += s.XPToNext()
+		s.Level++
+	}
+	if total < 280000 || total > 320000 {
+		t.Fatalf("XP cumulé niveau 1→20 = %d, attendu ~300 000", total)
 	}
 }
 
@@ -49,10 +62,10 @@ func TestAddXPNegativeIgnored(t *testing.T) {
 
 func TestPenalizeKeepsLevel(t *testing.T) {
 	s := NewStats()
-	s.AddXP(10+15, nil) // niveau 2, XP 15
+	s.AddXP(120+16, nil) // niveau 2, XP 16
 	s.Penalize()
-	if s.Level != 2 || s.XP != 11 {
-		t.Fatalf("attendu niveau 2 / XP 11, obtenu %+v", s)
+	if s.Level != 2 || s.XP != 12 {
+		t.Fatalf("attendu niveau 2 / XP 12, obtenu %+v", s)
 	}
 	z := NewStats()
 	z.Penalize()

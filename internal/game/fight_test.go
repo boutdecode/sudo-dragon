@@ -168,7 +168,7 @@ func TestWinGivesXPRemovesMonsterAndFreesPlayer(t *testing.T) {
 
 func TestLevelUpRestoresHP(t *testing.T) {
 	r := newRig(t, weak(testRat))
-	r.p.stats.XP = 9 // +4 XP franchit le palier de 10
+	r.p.stats.XP = r.p.stats.XPToNext() - 1 // +4 XP franchit le palier
 	r.p.hp = 3
 	r.engage()
 	r.g.act(r.p, combat.Attack, 0)

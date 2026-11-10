@@ -98,7 +98,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 | Gredin | d8 | 4 |
 | Magicien | d6 | 8 |
 
-- **Niveaux** : `10 × niveau` XP. À chaque niveau : dé de vie + modificateur de CON, PV et mana restaurés.
+- **Niveaux** : `120 × niveau²` XP (≈ 300 000 XP cumulés jusqu’au niveau 20, soit ~60 h de jeu actif). À chaque niveau : dé de vie + modificateur de CON, PV et mana restaurés.
 - **Mana** : base de classe + 2 par niveau + niveau × modificateur de SAG ; un sort coûte 2 mana.
 - **Style d'attaque** déduit de l'arme : mêlée (FOR), distance (AGI), magie (INT). Sans mana, une arme magique sert de gourdin.
 - **Charisme** : ±2 % par point de modificateur sur les prix, borné à ±10 %.
