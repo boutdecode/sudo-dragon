@@ -179,6 +179,7 @@ type Model struct {
 
 	// Sac d'équipement (voir bag.go).
 	bag    protocol.Bag
+	bagAt  time.Time // réception du sac : les bénédictions de sanctuaire y décomptent leur temps restant
 	bagSel int
 
 	// Dernier endroit annoncé dans le journal (contrée, lieu) : voir location.go.

@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -41,6 +42,7 @@ func cleanItem(it protocol.ItemInfo) protocol.ItemInfo {
 
 // applyBag enregistre le sac reçu et affiche ses notifications dans le journal.
 func (m *Model) applyBag(b protocol.Bag) {
+	m.bagAt = time.Now()
 	items := make([]protocol.ItemInfo, 0, min(len(b.Items), maxBagRows))
 	for i, it := range b.Items {
 		if i >= maxBagRows {

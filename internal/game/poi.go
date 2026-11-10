@@ -9,6 +9,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/i18n"
+	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -72,6 +73,22 @@ func shrineBuff(c world.Climate) buffKind {
 	return buffDef
 }
 
+// info décrit le bonus pour la fiche de personnage, avec le temps restant à l'instant now.
+func (b buff) info(now uint64) protocol.Blessing {
+	bl := protocol.Blessing{Secs: int((b.until - min(now, b.until) + 9) / 10)} // 10 ticks par seconde
+	switch b.kind {
+	case buffDef:
+		bl.Kind, bl.Bonus = protocol.BlessDef, shrineDefBonus
+	case buffHit:
+		bl.Kind, bl.Bonus = protocol.BlessHit, shrineHitBonus
+	case buffXP:
+		bl.Kind, bl.Bonus = protocol.BlessXP, 50
+	default:
+		bl.Kind, bl.Bonus = protocol.BlessRegen, 1
+	}
+	return bl
+}
+
 func (p *player) hasBuff(k buffKind) bool {
 	for _, b := range p.buffs {
 		if b.kind == k {
@@ -81,12 +98,14 @@ func (p *player) hasBuff(k buffKind) bool {
 	return false
 }
 
-// expireBuffs retire les bonus échus ; fighter() ne regarde jamais l'horloge.
-func (p *player) expireBuffs(now uint64) {
+// expireBuffs retire les bonus échus (fighter() ne regarde jamais l'horloge) et dit s'il y en avait.
+func (p *player) expireBuffs(now uint64) bool {
 	if len(p.buffs) == 0 {
-		return
+		return false
 	}
+	n := len(p.buffs)
 	p.buffs = slices.DeleteFunc(p.buffs, func(b buff) bool { return now >= b.until })
+	return len(p.buffs) != n
 }
 
 // stoneList renvoie les régions des pierres activées, dans un ordre stable (Y puis X).

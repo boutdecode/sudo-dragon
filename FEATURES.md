@@ -43,7 +43,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   | Point | Glyphe | Effet |
   |---|---|---|
   | **Feu de camp** (30 %) | `&` | Soigne la moitié des PV et du mana (une fois par 5 min et par feu) et en fait votre **point de réapparition** : après une défaite, on se réveille près du dernier feu allumé au lieu du point de départ (sauvegardé avec le personnage ; message dédié). Un donjon renvoie toujours devant son entrée. |
-  | **Sanctuaire** (20 %) | `o` | Bonus de 5 min selon le **climat** de la contrée : tempéré +2 DEF, tropical +1 PV/s hors combat, aride +2 au toucher, boréal +50 % d'XP. Cooldown de 10 min par sanctuaire ; le bonus n'est pas sauvegardé. |
+  | **Sanctuaire** (20 %) | `o` | Bonus de 5 min selon le **climat** de la contrée : tempéré +2 DEF, tropical +1 PV/s hors combat, aride +2 au toucher, boréal +50 % d'XP. Cooldown de 10 min par sanctuaire ; le bonus n'est pas sauvegardé et figure sur la fiche de personnage (`C`). |
   | **Repaire** (20 %) | `x` (coffre) | Trois **gardiens** (bêtes du biome, 2 niveaux de région de plus) restent à moins de 6 cases de leur poste ; activés à moins de 40 cases d'un joueur, repoussent 30 min après leur défaite. Le **coffre** reste fermé tant qu'un gardien vit, puis donne de l'or, 1-2 potions et, une fois sur deux, un équipement (rang de la région + 1) ; il se remplit de nouveau 30 min après son ouverture. Sac plein : le coffre reste fermé. État en mémoire. |
   | **Tour de guet** (15 %) | `I` | Révèle les entrées de donjon à 12 cases ou moins (comme une découverte) et, côté client, **marque comme exploré** un rayon de 96 cases sur la carte du monde. |
   | **Pierre dressée** (15 %) | `\|` | S'**active** au premier passage (sauvegardé). Debout sur une pierre activée, `/menhir` liste les autres pierres activées avec leur prix, `/menhir <n° ou nom>` y téléporte contre de l'or (15 or par région de distance, 20 au minimum). Impossible en combat ou en conversation. |
@@ -112,7 +112,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Mana** : base de classe + 2 par niveau + niveau × modificateur de SAG ; un sort coûte 2 mana.
 - **Style d'attaque** déduit de l'arme : mêlée (FOR), distance (AGI), magie (INT). Sans mana, une arme magique sert de gourdin.
 - **Charisme** : ±2 % par point de modificateur sur les prix, borné à ±10 %.
-- **Fiche (`C`)** : classe, niveau, PV, mana, attaque, défense, or, position, palmarès (victoires, boss, morts), caractéristiques, équipement, réputation.
+- **Fiche (`C`)** : classe, niveau, PV, mana, attaque, défense, or, position, palmarès (victoires, boss, morts), caractéristiques, équipement, **bénédictions de sanctuaire** en cours (bonus et temps restant, qui décompte côté client et disparaît à l'échéance ; la DEF affichée les inclut), réputation.
 - Les anciens personnages repassent par la création à leur prochaine connexion.
 
 ## Inventaire, équipement et commerce (`internal/gear/`, `client/bag.go`, `game/shop.go`)

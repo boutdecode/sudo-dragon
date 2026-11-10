@@ -254,3 +254,27 @@ func TestSavedStonesAndRespawnRoundTrip(t *testing.T) {
 		t.Fatalf("état non restauré: %v %v", p.respawn, p.stones)
 	}
 }
+
+func TestBlessingsReachTheSheetAndExpire(t *testing.T) {
+	g := newGame()
+	var bags []protocol.Bag
+	p, _ := joinRec(g, "a")
+	p.sendBagMsg = func(b protocol.Bag) { bags = append(bags, b) }
+	sh := firstPOI(t, g, world.POIShrine)
+	walkOnto(g, p, sh)
+	if len(bags) == 0 || len(bags[len(bags)-1].Blessings) != 1 {
+		t.Fatalf("pas de bénédiction dans le sac envoyé: %+v", bags)
+	}
+	bl := bags[len(bags)-1].Blessings[0]
+	if bl.Bonus <= 0 || bl.Secs <= 0 || bl.Secs > shrineDuration/10 {
+		t.Fatalf("bénédiction incohérente: %+v", bl)
+	}
+
+	// À l'échéance, le serveur renvoie un sac sans bénédiction.
+	n := len(bags)
+	g.tick = p.buffs[0].until - 1
+	g.step()
+	if len(bags) <= n || len(bags[len(bags)-1].Blessings) != 0 {
+		t.Fatalf("sac non renvoyé à l'expiration: %d -> %d, %+v", n, len(bags), bags[len(bags)-1].Blessings)
+	}
+}

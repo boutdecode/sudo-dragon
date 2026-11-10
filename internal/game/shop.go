@@ -153,6 +153,9 @@ func (g *Game) sendBag(p *player) {
 	for _, it := range p.inv.Items {
 		b.Items = append(b.Items, g.itemInfo(p.lang, p, it))
 	}
+	for _, bf := range p.buffs {
+		b.Blessings = append(b.Blessings, bf.info(g.tick))
+	}
 	b.Notice, p.gearNotices = p.gearNotices, nil
 	p.sendBagMsg(b)
 }

@@ -3,6 +3,7 @@ package client
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -69,6 +70,33 @@ func TestSheetKeyOpensAndClosesAndFitsEverySize(t *testing.T) {
 					break
 				}
 			}
+		}
+	}
+}
+
+func TestSheetShowsSanctuaryBlessings(t *testing.T) {
+	for _, lang := range []i18n.Lang{i18n.FR, i18n.EN} {
+		m := sheetModel(lang, 120, 40)
+		m.sheet = true
+		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, m.t("sheet.blessings")) {
+			t.Errorf("%s: section des bénédictions affichée sans bénédiction", lang)
+		}
+		m.bagAt = time.Now()
+		m.bag.Blessings = []protocol.Blessing{{Kind: protocol.BlessDef, Bonus: 2, Secs: 125}, {Kind: protocol.BlessXP, Bonus: 50, Secs: 30}}
+		out := ansi.Strip(m.sheetView(116, 30))
+		for _, want := range []string{m.t("sheet.blessings"), "+2 DEF", "(2:05)", "+50 %", "(0:30)"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s: fiche sans %q\n%s", lang, want, out)
+			}
+		}
+		// La DEF de la bénédiction ne doit pas être comptée dans la base du détail « base + AGI + équipement ».
+		if got, want := m.blessingDef(), 2; got != want {
+			t.Errorf("%s: DEF de bénédiction %d, attendu %d", lang, got, want)
+		}
+		// Un bonus échu disparaît de la fiche sans nouveau message du serveur.
+		m.bagAt = time.Now().Add(-time.Minute)
+		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, "+50 %") || !strings.Contains(out, "+2 DEF") {
+			t.Errorf("%s: les bonus échus ne disparaissent pas:\n%s", lang, out)
 		}
 	}
 }

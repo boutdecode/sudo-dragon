@@ -344,7 +344,26 @@ type Bag struct {
 	Kills     int `json:"kills,omitempty"`
 	BossKills int `json:"bosses,omitempty"`
 	Deaths    int `json:"deaths,omitempty"`
+
+	// Bénédictions de sanctuaire en cours (fiche de personnage).
+	Blessings []Blessing `json:"blessings,omitempty"`
 }
+
+// Blessing est un bonus temporaire de sanctuaire. Kind vaut BlessDef, BlessHit, BlessXP ou BlessRegen ; Bonus est sa
+// valeur (points de DEF ou de toucher, pourcentage d'XP, PV par seconde) et Secs le temps restant à l'envoi.
+type Blessing struct {
+	Kind  string `json:"kind"`
+	Bonus int    `json:"bonus"`
+	Secs  int    `json:"secs"`
+}
+
+// Genres de bénédiction.
+const (
+	BlessDef   = "def"
+	BlessHit   = "hit"
+	BlessXP    = "xp"
+	BlessRegen = "regen"
+)
 
 // GearAction est une action sur le sac : équiper un objet (ID) ou retirer l'objet d'un emplacement (Slot).
 type GearAction struct {

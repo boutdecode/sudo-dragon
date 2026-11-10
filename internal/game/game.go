@@ -531,7 +531,9 @@ func (g *Game) step() {
 		if p.cooldown > 0 {
 			p.cooldown--
 		}
-		p.expireBuffs(g.tick)
+		if p.expireBuffs(g.tick) {
+			g.sendBag(p) // la fiche de personnage ne doit plus afficher la bénédiction
+		}
 		if p.fight != nil || p.talk != nil { // en combat ou en conversation: immobile
 			p.hasPending = false
 			continue

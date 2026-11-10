@@ -3,12 +3,14 @@ package client
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
+	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
@@ -61,7 +63,7 @@ func (m Model) sheetLeft(w int) []string {
 		chaMod = hero.Mod(m.bag.Scores[hero.CHA])
 	}
 	lines = append(lines, "",
-		row(m.t("sheet.defense"), fmt.Sprintf("%d  %s", st.Def, dimStyle.Render(m.t("sheet.def_detail", st.Def-m.bag.DefBonus-agiMod, agiMod, m.bag.DefBonus)))),
+		row(m.t("sheet.defense"), fmt.Sprintf("%d  %s", st.Def, dimStyle.Render(m.t("sheet.def_detail", st.Def-m.bag.DefBonus-agiMod-m.blessingDef(), agiMod, m.bag.DefBonus)))),
 		row(m.t("sheet.style"), fmt.Sprintf("%s (%s %+d)", m.t("hero.kind."+string(style)), m.t("hero.ability."+style.Stat().Key()), atkMod)),
 		row(m.t("sheet.accuracy"), m.t("sheet.hit_detail", st.Hit, int(hero.HitChance(st.Hit, hero.DefBase(hero.Medium))*100+0.5))),
 		row(m.t("sheet.attack"), textsafe.Clean(st.Dmg, 16)),
@@ -100,6 +102,10 @@ func (m Model) sheetRight(w int) []string {
 		}
 		lines = append(lines, " "+ui.Fit(dimStyle.Render(m.t("gear.slot."+string(s))+":"), 11)+" "+ui.Fit(name, w-12))
 	}
+	if bl := m.blessingLines(w); len(bl) > 0 {
+		lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.blessings")))
+		lines = append(lines, bl...)
+	}
 	open, ready := m.readyQuests()
 	lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.reputation")))
 	if len(m.quests.Standing) == 0 {
@@ -110,6 +116,33 @@ func (m Model) sheetRight(w int) []string {
 	}
 	lines = append(lines, "", " "+goldStyle.Render(m.t("quest.hud", open, ready)))
 	return lines
+}
+
+// blessingLines liste les bénédictions de sanctuaire encore actives, avec leur temps restant.
+func (m Model) blessingLines(w int) []string {
+	var out []string
+	elapsed := int(time.Since(m.bagAt).Seconds())
+	for _, b := range m.bag.Blessings {
+		left := b.Secs - elapsed
+		if left <= 0 {
+			continue
+		}
+		out = append(out, " "+ui.Fit(m.t("blessing."+b.Kind, b.Bonus)+" "+dimStyle.Render(fmt.Sprintf("(%d:%02d)", left/60, left%60)), w))
+	}
+	return out
+}
+
+// blessingDef est le bonus de DEF d'une bénédiction de sanctuaire : il fait partie de la DEF affichée, mais ni de la
+// base, ni de l'équipement.
+func (m Model) blessingDef() int {
+	n := 0
+	elapsed := int(time.Since(m.bagAt).Seconds())
+	for _, b := range m.bag.Blessings {
+		if b.Kind == protocol.BlessDef && b.Secs > elapsed {
+			n += b.Bonus
+		}
+	}
+	return n
 }
 
 // reductionText présente les dés de réduction de l'armure ("—" sans armure).
