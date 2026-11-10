@@ -14,6 +14,7 @@ import (
 
 const (
 	disengageCooldown = 20  // ticks (2 s) pendant lesquels un monstre n'engage pas après une fuite ou une défaite
+	fleeGrace         = 50  // ticks (5 s) pendant lesquels aucun monstre n'engage un joueur qui vient de fuir
 	fightIdleTicks    = 600 // un joueur inactif depuis 60 s est considéré comme ayant fui
 	lootPotionChance  = 0.30
 	lootGearChance    = 0.05 // objet d'équipement lâché par un monstre de surface ordinaire
@@ -50,6 +51,9 @@ func (g *Game) Act(id int, action string, target int) {
 func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	if p.fight != nil || m.fight != nil {
 		return
+	}
+	if playerStarted {
+		p.calmUntil = 0 // attaquer met fin au répit
 	}
 	g.engage(p, g.gatherGroup(m), playerStarted, "")
 }
@@ -256,9 +260,14 @@ func (g *Game) endFight(f *fight) []string {
 		log = append(log, i18n.T(p.lang, respawn))
 	}
 	if f.b.Result != combat.Won {
+		calm := disengageCooldown
+		if f.b.Result == combat.Fled {
+			calm = fleeGrace
+			p.calmUntil = g.tick + fleeGrace // et aucun autre monstre ne vous prend en chasse
+		}
 		for i, m := range f.ms {
 			if !f.slain[i] {
-				m.calm = disengageCooldown
+				m.calm = calm
 			}
 		}
 	}

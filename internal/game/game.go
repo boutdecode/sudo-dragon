@@ -52,6 +52,7 @@ type player struct {
 	zone ZoneID
 	ret  world.Pos
 
+	calmUntil  uint64                   // tick jusqu'auquel aucun monstre n'engage ce joueur (répit après une fuite)
 	safe       bool                     // en zone sûre; recalculé à chaque changement de case (voir setPos)
 	sendCombat func(protocol.Combat)    // peut être nil
 	sendNPC    func(protocol.NPCDialog) // peut être nil

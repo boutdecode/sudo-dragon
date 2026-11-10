@@ -312,6 +312,9 @@ func (g *Game) nearestPlayer(z ZoneID, pos world.Pos, aggro int) *player {
 		if p.zone != z || p.fight != nil {
 			continue // autre zone, ou déjà au combat: on ne s'acharne pas à plusieurs
 		}
+		if p.calmUntil > g.tick {
+			continue // il vient de fuir: on le laisse souffler
+		}
 		if p.safe {
 			continue // un joueur en zone sûre n'est ni poursuivi ni attaqué
 		}

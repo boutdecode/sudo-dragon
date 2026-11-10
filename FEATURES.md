@@ -101,6 +101,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Victoire : XP, or (moitié à totalité de l'XP du monstre), 30 % de chances d'une potion, et un **objet d'équipement** du rang de la région (5 % pour un monstre de biome, 15 % pour un soldat de garnison, toujours pour le seigneur ; un cran de plus pour un chevalier ou un seigneur). Le butin va dans le sac (rien s'il est plein) ; il est fabriqué comme celui des donjons (`gear.MonsterLoot`, description « Arraché à la dépouille d'un monstre »). Les monstres de donjon n'en lâchent pas : ils ont leurs coffres.
   - Défaite : retour au dernier feu de camp utilisé (sinon au départ, ou devant l'entrée d'un donjon) avec tous les PV et la mana, sans perte d'XP : seul le compteur de morts augmente.
   - Inactivité de 60 s : fuite automatique.
+  - Après une fuite (réussie ou par inactivité), **aucun monstre n'engage le joueur pendant 5 s** (`fleeGrace`) et ceux du combat restent figés autant de temps ; attaquer un monstre met fin au répit. Après une défaite ou un départ, seuls les monstres du combat sont figés 2 s.
 - Les combattants sont immobiles et affichés en rouge pour les autres joueurs. Impossible d'équiper pendant un combat.
 
 ## Personnage (`internal/hero/`, `client/create.go`, `client/sheet.go`)

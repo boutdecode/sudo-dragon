@@ -229,20 +229,83 @@ func TestFleeFreesBothAndMonsterWaits(t *testing.T) {
 	if c := r.last(); !c.Over || c.Result != protocol.ResultFled {
 		t.Fatalf("issue de fuite attendue: %+v", c)
 	}
-	if r.m.fight != nil || r.m.calm != disengageCooldown {
+	if r.m.fight != nil || r.m.calm != fleeGrace {
 		t.Fatalf("monstre: fight=%v cooldown=%d", r.m.fight, r.m.calm)
 	}
 
-	// Le joueur reste collé au monstre, qui ne ré-engage qu'après le délai.
-	for i := 0; i < disengageCooldown-1; i++ {
+	// Le joueur reste collé au monstre, qui ne ré-engage qu'après le répit.
+	for i := 0; i < fleeGrace-1; i++ {
+		r.g.tick++
 		r.g.stepMonsters(r.g.sortedMonsterIDs())
 		if r.p.fight != nil {
 			t.Fatalf("ré-engagé trop tôt (itération %d)", i)
 		}
 	}
+	r.g.tick++
 	r.g.stepMonsters(r.g.sortedMonsterIDs())
 	if r.p.fight == nil {
-		t.Fatal("le monstre aurait dû ré-engager après le délai")
+		t.Fatal("le monstre aurait dû ré-engager après le répit")
+	}
+}
+
+// Après une fuite, un autre monstre à portée n'engage pas non plus le joueur, jusqu'à la fin du répit.
+func TestFleeGraceProtectsFromOtherMonsters(t *testing.T) {
+	r := newRig(t, testRat)
+	r.p.stats.MaxHP, r.p.hp = 1000, 1000
+	r.engage()
+	for i := 0; i < 200 && r.p.fight != nil; i++ {
+		r.g.act(r.p, combat.Flee, 0)
+	}
+	if r.p.fight != nil {
+		t.Fatal("la fuite n'a jamais réussi en 200 essais")
+	}
+	// Un second monstre, libre, au contact du joueur.
+	var other *monster
+	for _, d := range dirs8 {
+		pos := world.Pos{X: r.p.pos.X + d[0], Y: r.p.pos.Y + d[1]}
+		if !r.g.blocked(pos) && !r.g.World.Safe(pos.X, pos.Y) {
+			if _, taken := r.g.monsterIndex(r.p.zone)[pos]; !taken {
+				other = r.g.addMonster(testRat, pos)
+				break
+			}
+		}
+	}
+	if other == nil {
+		t.Skip("terrain peu praticable autour du joueur")
+	}
+	for i := 0; i < fleeGrace-1; i++ {
+		r.g.tick++
+		r.g.stepMonsters(r.g.sortedMonsterIDs())
+		if r.p.fight != nil {
+			t.Fatalf("engagé pendant le répit (itération %d)", i)
+		}
+	}
+	r.g.tick++
+	r.g.stepMonsters(r.g.sortedMonsterIDs())
+	if r.p.fight == nil {
+		t.Fatal("un monstre aurait dû engager après le répit")
+	}
+}
+
+// Attaquer un monstre pendant le répit met fin au répit.
+func TestAttackEndsFleeGrace(t *testing.T) {
+	r := newRig(t, testRat)
+	r.p.stats.MaxHP, r.p.hp = 1000, 1000
+	r.engage()
+	for i := 0; i < 200 && r.p.fight != nil; i++ {
+		r.g.act(r.p, combat.Flee, 0)
+	}
+	if r.p.fight != nil || r.p.calmUntil <= r.g.tick {
+		t.Fatalf("répit attendu après la fuite (calmUntil=%d, tick=%d)", r.p.calmUntil, r.g.tick)
+	}
+	r.m.calm = 0
+	r.g.move(r.p.id, r.dx, r.dy)
+	r.g.step()
+	if r.p.fight == nil {
+		t.Fatal("marcher sur le monstre aurait dû ouvrir un combat")
+	}
+	if r.p.calmUntil != 0 {
+		t.Fatalf("le répit aurait dû prendre fin: calmUntil=%d", r.p.calmUntil)
 	}
 }
 
