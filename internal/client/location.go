@@ -83,7 +83,7 @@ func (m *Model) trackLocation() {
 	}
 	if t.ID != m.locTerritory {
 		m.locTerritory = t.ID
-		m.addChat(chatLine{Channel: protocol.ChanSystem, Text: m.t("region.entering", t.NameIn(m.lang))})
+		m.addChat(chatLine{Channel: protocol.ChanSystem, Text: m.t("region.entering", t.NameIn(m.lang), m.t("climate."+m.world.ClimateAt(self.X, self.Y).Key()))})
 	}
 	if lvl := world.LevelAt(self.X, self.Y); world.LevelBand(lvl) != m.locBand {
 		up := world.LevelBand(lvl) > m.locBand

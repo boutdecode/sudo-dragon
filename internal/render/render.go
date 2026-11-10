@@ -169,6 +169,7 @@ func init() {
 	}
 	npcStyle[""] = len(styles) // PNJ inconnu
 	styles = append(styles, unknownNPC.style)
+	addClimateStyles()
 }
 
 // variants donne plusieurs glyphes par terrain pour éviter l'effet « mur de
@@ -231,8 +232,10 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 	return "?"
 }
 
-func glyph(t world.Tile, x, y int) rune {
-	v := variants[t]
+func glyph(t world.Tile, x, y int) rune { return pick(variants[t], x, y) }
+
+// pick choisit un glyphe parmi v d'après la seule position.
+func pick(v []rune, x, y int) rune {
 	h := uint32(x)*73856093 ^ uint32(y)*19349663
 	h ^= h >> 13
 	h *= 0x5bd1e995
@@ -364,6 +367,7 @@ func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 		}
 	}
 
+	cl, hasClimate := w.(climated)
 	x0, y0 := cx-cols/2, cy-rows/2
 	var out strings.Builder
 	out.Grow(rows * (cols + 16))
@@ -406,7 +410,11 @@ func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 				}
 			} else {
 				t := w.At(x, y)
-				ch, st = glyph(t, x, y), int(t)
+				c := world.Temperate
+				if hasClimate {
+					c = cl.ClimateAt(x, y)
+				}
+				ch, st = glyphIn(c, t, x, y), styleFor(c, t)
 			}
 			if st != cur {
 				flush()

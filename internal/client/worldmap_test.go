@@ -175,3 +175,24 @@ func TestMapCursorBlinks(t *testing.T) {
 		t.Error("carte fermée : le clignotement doit s'arrêter")
 	}
 }
+
+// Les couleurs de la carte suivent le climat de la contrée, sans changer les glyphes.
+func TestMapStylesFollowClimate(t *testing.T) {
+	if len(mapStyles) != int(world.NumClimates)*numMapStyles {
+		t.Fatalf("%d styles, attendu %d", len(mapStyles), int(world.NumClimates)*numMapStyles)
+	}
+	temperate := mapStyles[msForest+climatShift(world.Temperate)].Render("^")
+	for c := world.Climate(1); c < world.NumClimates; c++ {
+		if got := mapStyles[msForest+climatShift(c)].Render("^"); got == temperate {
+			t.Errorf("la forêt du climat %s a la couleur du tempéré", c.Key())
+		}
+		if mapStyles[msVillage+climatShift(c)].Render("H") != mapStyles[msVillage].Render("H") {
+			t.Errorf("les villages ne doivent pas changer de couleur (%s)", c.Key())
+		}
+	}
+	for c := world.Climate(0); c < world.NumClimates; c++ {
+		if i18n.T(i18n.FR, "climate."+c.Key()) == "climate."+c.Key() || i18n.T(i18n.EN, "climate."+c.Key()) == "climate."+c.Key() {
+			t.Errorf("climat %s sans traduction", c.Key())
+		}
+	}
+}

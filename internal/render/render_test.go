@@ -380,3 +380,56 @@ func TestDungeonWallsOutlineRoomsAndTheRestOfTheRockIsDim(t *testing.T) {
 		}
 	}
 }
+
+// Chaque climat habille tous les terrains, en ASCII, sans glyphe réservé à une entité.
+func TestClimatesAreCompleteAndDoNotCollide(t *testing.T) {
+	reserved := map[rune]bool{'@': true}
+	for _, l := range monsterLooks {
+		reserved[l.glyph] = true
+	}
+	for _, l := range npcLooks {
+		reserved[l.glyph] = true
+	}
+	seen := map[int]bool{}
+	for c := world.Climate(0); c < world.NumClimates; c++ {
+		for tile := world.Tile(0); tile < world.NumTiles; tile++ {
+			st := styleFor(c, tile)
+			if st < 0 || st >= len(styles) {
+				t.Fatalf("climat %s, tuile %d: style %d hors table", c.Key(), tile, st)
+			}
+			if c != world.Temperate && st < int(world.NumTiles) {
+				t.Errorf("climat %s, tuile %d: style de base réutilisé", c.Key(), tile)
+			}
+			if seen[st] && c != world.Temperate {
+				t.Errorf("style %d partagé entre deux climats", st)
+			}
+			seen[st] = true
+		}
+		for tile, vs := range climateVariants[c] {
+			for _, r := range vs {
+				if r > 126 || r < 32 || reserved[r] {
+					t.Errorf("climat %s, tuile %d: glyphe %q interdit", c.Key(), tile, r)
+				}
+			}
+		}
+	}
+}
+
+// Une forêt tropicale n'a pas la même couleur qu'une forêt aride ; le tempéré garde le rendu d'origine.
+func TestClimateChangesColoursNotTheMap(t *testing.T) {
+	tropical, arid := styleFor(world.Tropical, world.Forest), styleFor(world.Arid, world.Forest)
+	if styles[tropical].Render("T") == styles[arid].Render("T") {
+		t.Error("deux climats rendent la forêt pareil")
+	}
+	if styleFor(world.Temperate, world.Forest) != int(world.Forest) {
+		t.Error("le tempéré doit garder le style d'origine")
+	}
+	if TileHex(world.Temperate, world.Forest) != "" || TileHex(world.Arid, world.Plain) == "" {
+		t.Error("TileHex")
+	}
+	w := world.New(7)
+	out := Viewport(w, 0, 0, 40, 10, nil, nil, 0)
+	if len(plain(out)) != 10 {
+		t.Fatalf("%d lignes", len(plain(out)))
+	}
+}

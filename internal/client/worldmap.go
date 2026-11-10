@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/render"
 	"github.com/kevin/ascii-adventure/internal/ui"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -261,7 +262,28 @@ const (
 	numMapStyles
 )
 
-var mapStyles = [numMapStyles]lipgloss.Style{
+// mapStyles contient numMapStyles styles par climat, ceux du tempéré d'abord : l'indice d'un style n'est donc valable
+// pour tous les climats que décalé de climatShift(c). Les climats ne recolorent que les terrains naturels.
+var mapStyles = func() []lipgloss.Style {
+	base := baseMapStyles
+	all := append([]lipgloss.Style(nil), base[:]...)
+	recolor := map[int]world.Tile{msWater: world.Water, msSand: world.Sand, msPlain: world.Plain, msForest: world.Forest, msHills: world.Hills, msMountain: world.Mountain}
+	for c := world.Climate(1); c < world.NumClimates; c++ {
+		block := base
+		for ms, tile := range recolor {
+			if hex := render.TileHex(c, tile); hex != "" {
+				block[ms] = block[ms].Foreground(lipgloss.Color(hex))
+			}
+		}
+		all = append(all, block[:]...)
+	}
+	return all
+}()
+
+// climatShift est le décalage à ajouter à un indice de style pour l'habiller aux couleurs du climat c.
+func climatShift(c world.Climate) int { return int(c) * numMapStyles }
+
+var baseMapStyles = [numMapStyles]lipgloss.Style{
 	msUnknown:  mfg(ui.ColFaint),
 	msWater:    mfg("#60a5fa"),
 	msSand:     mfg("#e5c07b"),
@@ -355,7 +377,9 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 					best, bestN = t, counts[t]
 				}
 			}
-			grid[r*cols+c] = terrainCell(best)
+			cell := terrainCell(best)
+			cell.st += climatShift(w.ClimateAt(px, py))
+			grid[r*cols+c] = cell
 		}
 	}
 	if z > 1 {
@@ -488,9 +512,9 @@ func (m Model) landmarks() []landmark {
 	return out
 }
 
-func (m Model) legendLines(rows int) []string {
+func (m Model) legendLines(rows int, c world.Climate) []string {
 	entry := func(glyph string, st int, key string) string {
-		return " " + mapStyles[st].Render(glyph) + " " + m.t(key)
+		return " " + mapStyles[st+climatShift(c)].Render(glyph) + " " + m.t(key)
 	}
 	lines := []string{
 		entry("@", msSelf, "map.leg.you"),
@@ -564,11 +588,11 @@ func (m Model) mapView(w, h int) string {
 	}
 	header = ui.Fit(header, w)
 
-	title := m.world.TerritoryAt(st.curX, st.curY).NameIn(m.lang)
+	title := m.world.TerritoryAt(st.curX, st.curY).NameIn(m.lang) + " · " + m.t("climate."+m.world.ClimateAt(st.curX, st.curY).Key())
 	body := ui.Panel(title, strings.Join(lines, "\n"), mapW, h-1)
 	if showLegend {
 		lrows := h - 1 - 2
-		leg := m.legendLines(lrows - 1)
+		leg := m.legendLines(lrows-1, m.world.ClimateAt(st.curX, st.curY))
 		for len(leg) < lrows-1 {
 			leg = append(leg, "")
 		}

@@ -100,7 +100,7 @@ func TestArrivalMessagesAreAnnouncedOnceAndInTheRightLanguage(t *testing.T) {
 		t.Fatalf("annonce répétée dans le même lieu : %v", lastSystemLines(m, 3))
 	}
 	m = moveTo(t, m, pos.X+4000, pos.Y) // nouvelle contrée
-	if got := lastSystemLines(m, 2); !strings.Contains(strings.Join(got, " "), "Vous entrez") {
+	if got := lastSystemLines(m, 2); !strings.Contains(strings.Join(got, " "), "Vous entrez") || !strings.Contains(strings.Join(got, " "), "climat") {
 		t.Fatalf("changement de contrée non annoncé : %v", got)
 	}
 

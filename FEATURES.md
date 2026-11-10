@@ -11,6 +11,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
 - **Niveau de région** (`world/level.go`) : il croît avec l'éloignement de l'origine (0, 0), en distance de Chebyshev, de 1 à 20 : un niveau toutes les ~154 tuiles, soit quatre **tranches** de cinq niveaux (1-5, 6-10, 11-15, 16-20) larges de 3 régions (768 tuiles). Il ne dépend pas de la graine, donc le client le recalcule sans message. Il règle la force des monstres, le rang de l'équipement vendu et lâché, et le palier des donjons.
 - **Contrées** : pays nommés aux frontières irrégulières (Voronoi), noms selon le terrain dominant, en français et en anglais.
+- **Climats** (`world/climate.go`) : chaque contrée a un climat tiré de la graine (40 % **tempéré**, 20 % **tropical**, 20 % **aride**, 20 % **boréal**). Il est purement visuel (terrain, monstres et génération ne changent pas) et se recalcule des deux côtés sans message : franchir la frontière d'une contrée change les couleurs et les glyphes du terrain (tropical : verts vifs et mers turquoise ; aride : plaines jaunes, forêts olive clairsemées, collines rouges ; boréal : verts froids et bleutés). La neige, les routes des lieux, les structures et les donjons gardent leurs couleurs.
 - **Routes entre lieux** (`roads.go`) : deux régions voisines (côte à côte, pas en diagonale) qui ont chacune un lieu sont reliées par une route.
   - Tracé par A* sur le terrain brut, confiné aux deux régions, donc identique quel que soit l'ordre de génération.
   - Les routes s'arrêtent au bord d'un lieu et rejoignent son chemin intérieur ; elles ne touchent jamais son emprise.
@@ -51,10 +52,11 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Interrompue par une direction, Échap, `q`, `i`, `c` ou `m`. Le serveur reste juge des collisions.
 - **Carte du monde (`M`)** (`client/worldmap.go`) :
   - Zoom 1, 2, 4, 8 ou 16 tuiles par cellule (`+` / `-`), curseur clignotant aux flèches, `0` ou espace pour recentrer.
+  - Les couleurs du terrain suivent le climat de chaque contrée (palette partagée avec la vue de jeu, `render.TileHex`) ; le titre du panneau donne la contrée et son climat, et la légende prend les couleurs du climat sous le curseur.
   - Seul le terrain exploré est affiché ; le reste est « inexploré » (`░`).
   - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
 - **Repères** : `W` pose ou renomme (24 caractères, noms uniques, 9 au plus), `X` supprime.
-- **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le panneau latéral donne la région (niveau et tranche) ; le journal annonce chaque nouvelle contrée ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
+- **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le panneau latéral donne la région (niveau et tranche) ; le journal annonce chaque nouvelle contrée (avec son climat) ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
 
 ## Monstres (`internal/game/monsters.go`, `garrison.go`)
 
@@ -164,7 +166,7 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 - Plein écran, fond sombre peint (option `--transparent` pour garder le fond du terminal), logo.
 - Panneau latéral (jauges XP/PV/PM, caractéristiques) et zone de discussion redimensionnable.
-- Terrain avec variantes et couleurs ; joueurs en combat affichés en rouge.
+- Terrain avec variantes de glyphes et couleurs, selon le climat de la contrée (`render/climate.go`; pas de climat sous terre) ; joueurs en combat affichés en rouge.
 - Latence mesurée par ping/pong et affichée.
 - Options du client : `-addr`, `-name`, `-transparent`, `-lang`.
 
