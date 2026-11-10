@@ -242,7 +242,6 @@ func (g *Game) endFight(f *fight) []string {
 	switch f.b.Result {
 	case combat.Lost:
 		p.stats.Deaths++
-		p.stats.Penalize()
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 		respawn := "fight.respawn"
 		if p.zone != 0 {

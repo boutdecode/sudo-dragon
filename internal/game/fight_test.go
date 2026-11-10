@@ -184,7 +184,7 @@ func TestLevelUpRestoresHP(t *testing.T) {
 	}
 }
 
-func TestLossRespawnsWithPenalty(t *testing.T) {
+func TestLossRespawnsWithoutXPLoss(t *testing.T) {
 	r := newRig(t, deadly(testRat))
 	r.p.stats.XP = 8
 	r.p.hp = 5
@@ -199,7 +199,7 @@ func TestLossRespawnsWithPenalty(t *testing.T) {
 	if r.p.fight != nil || r.m.fight != nil {
 		t.Fatal("combattants non libérés")
 	}
-	if r.p.hp != r.p.stats.MaxHP || r.p.stats.XP != 6 || r.p.stats.Level != 1 {
+	if r.p.hp != r.p.stats.MaxHP || r.p.stats.XP != 8 || r.p.stats.Level != 1 {
 		t.Fatalf("après défaite: PV %d/%d, XP %d, niveau %d", r.p.hp, r.p.stats.MaxHP, r.p.stats.XP, r.p.stats.Level)
 	}
 	if r.p.pos == old {

@@ -82,7 +82,7 @@ Un joueur avance de 5 cases par seconde ; tous les monstres sont plus lents, on 
 Les touches `1` à `4` font la même chose. Après la victoire, `Entrée` ferme l'écran.
 
 - Vainqueur : de l'XP, et 30 % de chances de trouver une potion. Chaque niveau lance le dé de vie de la classe (+ bonus de CON) et restaure tous les PV et la mana ; il ne change ni le toucher ni les dégâts, qui viennent des caractéristiques et de l'équipement.
-- Vaincu : vous réapparaissez au point de départ avec tous vos PV, en perdant 25 % de l'XP du niveau (jamais de niveau).
+- Vaincu : vous réapparaissez au point de départ avec tous vos PV, sans perte d'XP.
 - Les PV remontent d'un point toutes les 3 secondes hors combat.
 - Pendant un combat, vous et votre adversaire restez sur place, hors d'atteinte des autres, et apparaissez en rouge pour les autres joueurs.
   Un joueur inactif depuis 60 secondes est considéré comme ayant fui.

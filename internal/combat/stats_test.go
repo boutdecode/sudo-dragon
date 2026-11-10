@@ -60,20 +60,6 @@ func TestAddXPNegativeIgnored(t *testing.T) {
 	}
 }
 
-func TestPenalizeKeepsLevel(t *testing.T) {
-	s := NewStats()
-	s.AddXP(120+16, nil) // niveau 2, XP 16
-	s.Penalize()
-	if s.Level != 2 || s.XP != 12 {
-		t.Fatalf("attendu niveau 2 / XP 12, obtenu %+v", s)
-	}
-	z := NewStats()
-	z.Penalize()
-	if z.Level != 1 || z.XP != 0 {
-		t.Fatalf("pénalité sur XP nulle: %+v", z)
-	}
-}
-
 func TestAddPotionsCap(t *testing.T) {
 	s := NewStats()
 	if got := s.AddPotions(3); got != 3 || s.Potions != startPotions+3 {

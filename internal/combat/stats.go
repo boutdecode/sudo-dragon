@@ -92,9 +92,6 @@ func (s *Stats) AddXP(n int, rng *rand.Rand) (levels int) {
 	return levels
 }
 
-// Penalize retire 25 % de l'expérience du niveau courant (mort). Le niveau ne baisse jamais.
-func (s *Stats) Penalize() { s.XP = s.XP * 3 / 4 }
-
 // AddGold ajoute de l'or jusqu'au plafond et renvoie le montant réellement ajouté.
 func (s *Stats) AddGold(n int) int {
 	added := max(0, min(n, MaxGold-s.Gold))

@@ -99,7 +99,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Secousse d'écran** (`client/fx.go`) : zone entière quand on est touché, colonne ennemie quand on touche ; 6 images de 60 ms (9 sur critique) ; PV qui clignotent en rouge. Désactivable avec `SUDO_DRAGON_NO_FX`.
 - **Issue** :
   - Victoire : XP, or (moitié à totalité de l'XP du monstre), 30 % de chances d'une potion, et un **objet d'équipement** du rang de la région (5 % pour un monstre de biome, 15 % pour un soldat de garnison, toujours pour le seigneur ; un cran de plus pour un chevalier ou un seigneur). Le butin va dans le sac (rien s'il est plein) ; il est fabriqué comme celui des donjons (`gear.MonsterLoot`, description « Arraché à la dépouille d'un monstre »). Les monstres de donjon n'en lâchent pas : ils ont leurs coffres.
-  - Défaite : retour au départ avec tous les PV, perte de 25 % de l'XP du niveau.
+  - Défaite : retour au dernier feu de camp utilisé (sinon au départ, ou devant l'entrée d'un donjon) avec tous les PV et la mana, sans perte d'XP : seul le compteur de morts augmente.
   - Inactivité de 60 s : fuite automatique.
 - Les combattants sont immobiles et affichés en rouge pour les autres joueurs. Impossible d'équiper pendant un combat.
 
