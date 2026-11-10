@@ -18,8 +18,8 @@ const (
 	lootPotionChance  = 0.30
 	lootGearChance    = 0.05 // objet d'équipement lâché par un monstre de surface ordinaire
 	lootGearGarrison  = 0.15 // idem pour un monstre de garnison (les boss en laissent toujours un)
-	regenEvery        = 30 // ticks entre deux PV rendus hors combat (3 s)
-	safeRegenEvery    = 10 // ticks entre deux PV rendus dans une zone sûre (1 s)
+	regenEvery        = 30   // ticks entre deux PV rendus hors combat (3 s)
+	safeRegenEvery    = 10   // ticks entre deux PV rendus dans une zone sûre (1 s)
 )
 
 // fight relie un joueur et un ou plusieurs monstres engagés. Pendant le combat, tous restent sur leur case,
@@ -51,7 +51,12 @@ func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	if p.fight != nil || m.fight != nil {
 		return
 	}
-	group := g.gatherGroup(m)
+	g.engage(p, g.gatherGroup(m), playerStarted, "")
+}
+
+// engage ouvre le combat de p contre group (déjà rassemblé et libre). intro remplace, si elle est non vide, la
+// phrase d'ouverture par défaut.
+func (g *Game) engage(p *player, group []*monster, playerStarted bool, intro string) {
 	f := &fight{p: p, ms: group, slain: make([]bool, len(group)), lastAct: g.tick}
 	foes := make([]combat.Foe, len(group))
 	for i, gm := range group {
@@ -66,8 +71,8 @@ func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	}
 	p.hasPending = false
 
-	var intro string
 	switch {
+	case intro != "":
 	case len(group) > 1 && playerStarted:
 		intro = i18n.T(p.lang, "fight.you_attack_group", groupLabel(foes))
 	case len(group) > 1:
@@ -152,6 +157,9 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	p, m := f.p, f.ms[i]
 	f.slain[i] = true
 	m.fight = nil
+	if m.guard != nil { // un garde ne laisse ni XP ni butin : seulement la rancune du lieu
+		return g.guardSlain(p, m.guard), false
+	}
 	if m.slot != nil { // l'emplacement ne repousse qu'après un délai
 		g.slotDefeated[*m.slot] = g.tick
 	}
@@ -164,12 +172,13 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	if inst := g.instances[m.zone]; m.zone != 0 && inst != nil && m.sp.Boss {
 		log = append(log, g.questDungeon(p, inst.d.Region)...)
 	}
-	log = append(log, i18n.T(p.lang, "fight.xp", m.sp.XP))
+	xp := p.xpWithBuff(m.sp.XP) // bénédiction d'un sanctuaire
+	log = append(log, i18n.T(p.lang, "fight.xp", xp))
 	if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
 		log = append(log, i18n.T(p.lang, "fight.gold", gold))
 	}
 	leveled := false
-	if p.stats.AddXP(m.sp.XP, g.rng) > 0 {
+	if p.stats.AddXP(xp, g.rng) > 0 {
 		leveled = true
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 		log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
@@ -232,12 +241,17 @@ func (g *Game) endFight(f *fight) []string {
 		p.stats.Deaths++
 		p.stats.Penalize()
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
+		respawn := "fight.respawn"
 		if p.zone != 0 {
 			g.leaveDungeon(p) // vaincu dans un donjon: on se réveille devant son entrée
 		} else {
-			g.setPos(p, g.freeSpawn())
+			spot, camp := g.respawnSpot(p)
+			g.setPos(p, spot)
+			if camp {
+				respawn = "fight.respawn_camp"
+			}
 		}
-		log = append(log, i18n.T(p.lang, "fight.respawn"))
+		log = append(log, i18n.T(p.lang, respawn))
 	}
 	if f.b.Result != combat.Won {
 		for i, m := range f.ms {
@@ -379,5 +393,6 @@ func (p *player) fighter() combat.Fighter {
 	f.MeleeMod = f.MeleeHit
 	f.Mana, f.MaxMana = p.mana, p.stats.MaxMana
 	f.Init = p.stats.Scores.Mod(hero.AGI)
+	p.applyBuffs(&f.Def, &f.Hit)
 	return f
 }

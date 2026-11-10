@@ -29,7 +29,9 @@ type geoKey struct {
 }
 
 // knowsNeighbours dit si ce type de PNJ connaît les lieux voisins.
-func knowsNeighbours(k world.NPCKind) bool { return k == world.NPCChief || k == world.NPCMayor }
+func knowsNeighbours(k world.NPCKind) bool {
+	return k == world.NPCChief || k == world.NPCMayor || k == world.NPCGuard
+}
 
 // compass donne la clé de catalogue de la direction (le nord est vers les y décroissants, comme à l'écran).
 func compass(dx, dy int) string {

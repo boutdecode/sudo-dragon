@@ -116,6 +116,7 @@ type Structure struct {
 	Origin Pos // coin haut-gauche de l'emprise
 	W, H   int // dimensions de l'emprise
 	NPCs   []NPC
+	Guards []NPC // gardes qui patrouillent (village et ville) : position de départ seulement, voir guards.go
 	Slots  []Slot
 
 	tiles []Tile // W*H, ligne par ligne
@@ -418,6 +419,7 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 			Region: rp, Index: i, Name: name, Persona: id.persona(i18n.FR), id: id,
 		})
 	}
+	w.makeGuards(s, taken)
 	firstVillager := true
 	for i := range s.NPCs {
 		if s.NPCs[i].Kind != NPCVillager {

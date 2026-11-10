@@ -300,8 +300,8 @@ func TestAskForWorkHasItsOwnKey(t *testing.T) {
 			}
 			seen[k] = a
 		}
-		if len(keys) != 5 {
-			t.Errorf("%s: %d touches, attendu 5 (une par action sans argument)", lang, len(keys))
+		if len(keys) != 7 {
+			t.Errorf("%s: %d touches, attendu 7 (une par action sans argument)", lang, len(keys))
 		}
 	}
 }

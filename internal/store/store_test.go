@@ -540,6 +540,22 @@ func sampleQuests() []quest.Quest {
 	}
 }
 
+func TestNegativeReputationRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("brigand", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	rp := world.RegionPos{X: 3, Y: 3}
+	c := Character{Level: 2, HP: 10, Rep: map[world.RegionPos]int{rp: -12}, QuestsDirty: true}
+	if err := st.SaveCharacters(map[string]Character{"brigand": c}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("brigand")
+	if err != nil || got == nil || got.Rep[rp] != -12 || len(got.Rep) != 1 {
+		t.Fatalf("réputation négative perdue: %+v %v", got, err)
+	}
+}
+
 func TestQuestsAndReputationRoundTrip(t *testing.T) {
 	st, _ := openTemp(t)
 	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
@@ -783,5 +799,35 @@ func TestDungeonQuestRoundTrip(t *testing.T) {
 	g.Account, g.CreatedAt, q.CreatedAt = "", g.CreatedAt.UTC(), q.CreatedAt.UTC()
 	if g != q {
 		t.Errorf("quête de donjon:\n got %+v\nwant %+v", g, q)
+	}
+}
+
+func TestRespawnAndStonesRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	stones := []world.RegionPos{{X: 4, Y: -2}, {X: -1, Y: 3}}
+	c := Character{Level: 2, HP: 10, RespawnSet: true, RespawnX: -17, RespawnY: 230, Stones: stones}
+	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	if !got.RespawnSet || got.RespawnX != -17 || got.RespawnY != 230 {
+		t.Errorf("réapparition %+v", got)
+	}
+	if len(got.Stones) != 2 || got.Stones[0] != stones[0] || got.Stones[1] != stones[1] {
+		t.Errorf("pierres %v, attendu %v", got.Stones, stones)
+	}
+
+	// Sans feu ni pierre, rien ne fuit d'une sauvegarde à l'autre.
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10}}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := st.LoadCharacter("aldric"); again.RespawnSet || len(again.Stones) != 0 {
+		t.Errorf("état de points d'intérêt non effacé: %+v", again)
 	}
 }

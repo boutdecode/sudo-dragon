@@ -43,6 +43,11 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.Stairs:    fg("#a78bfa").Bold(true),
 	world.Entrance:  fg("#c084fc").Bold(true),
 	world.Rock:      fg("#3b4252"), // roche d'un donjon: en sourdine, pour que salles et couloirs ressortent
+	world.Campfire:  fg("#fb923c").Bold(true),
+	world.Shrine:    fg("#f0abfc").Bold(true),
+	world.Tower:     fg("#fde68a").Bold(true),
+	world.Stone:     fg("#7dd3fc").Bold(true),
+	world.LairChest: fg("#f87171").Bold(true),
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -74,6 +79,9 @@ var monsterLooks = map[string]monsterLook{
 	"wraith": {'W', fg("#a5b4fc")},
 	"golem":  {'O', fg("#a8a29e").Bold(true)},
 	"lich":   {'L', fg("#c084fc").Bold(true)},
+
+	// Garde d'un village ou d'une ville (voir game/guards.go) : envoyé comme un monstre, mais on lui parle.
+	"guard": {'G', fg("#60a5fa").Bold(true)},
 }
 
 // npcLooks donne l'apparence des PNJ, indexée par leur type (voir world.NPCKind).
@@ -87,6 +95,7 @@ var npcLooks = map[world.NPCKind]monsterLook{
 	world.NPCChief:    {'C', fg("#d4a017").Bold(true)},
 	world.NPCMayor:    {'C', fg("#d4a017").Bold(true)},
 	world.NPCVillager: {'V', fg("#7dd3fc").Bold(true)},
+	world.NPCGuard:    {'G', fg("#60a5fa").Bold(true)},
 }
 
 // questGiverKind n'est pas un vrai type de PNJ : c'est l'apparence d'un villageois qui
@@ -191,6 +200,11 @@ var variants = map[world.Tile][]rune{
 	world.Stairs:    []rune("<<<<<<"),
 	world.Entrance:  []rune(">>>>>>"),
 	world.Rock:      []rune("######"),
+	world.Campfire:  []rune("&&&&&&"),
+	world.Shrine:    []rune("oooooo"),
+	world.Tower:     []rune("IIIIII"),
+	world.Stone:     []rune("||||||"),
+	world.LairChest: []rune("xxxxxx"),
 }
 
 // TerrainName renvoie le nom d'un terrain dans la langue l.
@@ -228,6 +242,16 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.entrance")
 	case world.Rock:
 		return i18n.T(l, "terrain.rock")
+	case world.Campfire:
+		return i18n.T(l, "terrain.campfire")
+	case world.Shrine:
+		return i18n.T(l, "terrain.shrine")
+	case world.Tower:
+		return i18n.T(l, "terrain.tower")
+	case world.Stone:
+		return i18n.T(l, "terrain.stone")
+	case world.LairChest:
+		return i18n.T(l, "terrain.lairchest")
 	}
 	return "?"
 }

@@ -42,6 +42,13 @@ const (
 	// Rock est la roche pleine d'un donjon: infranchissable, dessinée en sourdine (voir dungeonmap.go).
 	Rock
 
+	// Points d'intérêt en plein air (voir poi.go): tous franchissables, on interagit en y marchant.
+	Campfire  // feu de camp
+	Shrine    // sanctuaire
+	Tower     // tour de guet
+	Stone     // pierre dressée
+	LairChest // coffre d'un repaire
+
 	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
 	NumTiles
 )
@@ -83,6 +90,16 @@ func (t Tile) Glyph() rune {
 		return '>'
 	case Rock:
 		return '%'
+	case Campfire:
+		return '&'
+	case Shrine:
+		return 'o'
+	case Tower:
+		return 'I'
+	case Stone:
+		return '|'
+	case LairChest:
+		return 'x'
 	}
 	return '?'
 }
@@ -133,6 +150,10 @@ type World struct {
 	dmu      sync.Mutex
 	dungeons map[RegionPos]*Dungeon
 
+	// Points d'intérêt (voir poi.go). pmu est indépendant des autres verrous : il n'est jamais tenu pendant un calcul.
+	pmu  sync.Mutex
+	pois map[RegionPos]*POI
+
 	// Routes entre lieux (voir roads.go). rmu est pris avant smu, jamais après.
 	rmu   sync.Mutex
 	roads map[roadKey]*roadLink
@@ -148,6 +169,7 @@ func New(seed int64) *World {
 		structs:   make(map[RegionPos]*Structure),
 
 		dungeons:    make(map[RegionPos]*Dungeon),
+		pois:        make(map[RegionPos]*POI),
 		territories: make(map[TerritoryID]*Territory),
 		roads:       make(map[roadKey]*roadLink),
 	}
@@ -170,6 +192,9 @@ func fbm(n opensimplex.Noise, x, y float64) float64 {
 func (w *World) TileAt(x, y int) Tile {
 	if s := w.StructureAt(x, y); s != nil {
 		return s.TileAt(x, y)
+	}
+	if p := w.POIAt(x, y); p != nil {
+		return p.Tile()
 	}
 	t := w.terrainAt(x, y)
 	if roadCost(t) > 0 && onRoad(w.roadsAround(RegionOf(x, y)), x, y) {
@@ -229,11 +254,14 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 	rp := RegionOf(cp.X*ChunkSize, cp.Y*ChunkSize)
 	s := w.structureForRegion(rp)
 	roads := w.roadsAround(rp)
+	poi := w.POIOfRegion(rp)
 	for ty := range ChunkSize {
 		for tx := range ChunkSize {
 			x, y := cp.X*ChunkSize+tx, cp.Y*ChunkSize+ty
 			if s != nil && s.Contains(x, y) {
 				c.Tiles[ty][tx] = s.TileAt(x, y)
+			} else if poi != nil && poi.Pos.X == x && poi.Pos.Y == y {
+				c.Tiles[ty][tx] = poi.Tile()
 			} else if t := w.terrainAt(x, y); roadCost(t) > 0 && onRoad(roads, x, y) {
 				c.Tiles[ty][tx] = Road
 			} else {

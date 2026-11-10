@@ -426,7 +426,7 @@ func TestValidNPCActions(t *testing.T) {
 			t.Errorf("%q devrait être valide", a)
 		}
 	}
-	for _, a := range []string{"", "Buy", "steal", "attack", "buy "} {
+	for _, a := range []string{"", "Buy", "pillage", "attack", "buy "} {
 		if ValidNPCAction(a) {
 			t.Errorf("%q ne devrait pas être valide", a)
 		}

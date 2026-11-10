@@ -67,7 +67,8 @@ func ValidNPCAction(action string) bool {
 	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
 		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack,
 		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn, protocol.NPCAskWork,
-		protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCSellMenu:
+		protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCSellMenu,
+		protocol.NPCWhere, protocol.NPCPlaces, protocol.NPCSteal:
 		return true
 	}
 	return false
@@ -100,6 +101,8 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 		greeting = i18n.T(p.lang, "npc.greet.healer")
 	case world.NPCSmith, world.NPCArmorer:
 		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
+	case world.NPCGuard:
+		greeting = i18n.T(p.lang, "npc.greet.guard")
 	case world.NPCChief, world.NPCMayor:
 		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
 		if !g.talkerReady() {
@@ -174,6 +177,16 @@ func (g *Game) talkAct(p *player, action, text string) {
 
 	case protocol.NPCAskWork:
 		log = g.askWork(p)
+
+	case protocol.NPCWhere, protocol.NPCPlaces:
+		log = g.guardAnswer(p, t.npc, action, text)
+
+	case protocol.NPCSteal:
+		if t.npc.Kind != world.NPCMerchant {
+			log = notOffered(p.lang)
+		} else {
+			log, changed = g.steal(p, t.npc)
+		}
 
 	case protocol.NPCBuyItem:
 		if !isVendor(t.npc.Kind) {
@@ -270,7 +283,10 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 				Available: p.stats.Gold >= g.buyPrice(p, npc) && p.stats.Potions < combat.MaxPotions},
 			{Action: protocol.NPCSell, Label: i18n.T(p.lang, "npc.offer.sell"), Price: potionSellPrice, Gain: true,
 				Available: p.stats.Potions > 0 && p.stats.Gold <= combat.MaxGold-potionSellPrice},
+			{Action: protocol.NPCSteal, Label: i18n.T(p.lang, "npc.offer.steal"), Available: true},
 		}
+	case world.NPCGuard:
+		offers = g.guardOffers(p, npc)
 	case world.NPCSmith, world.NPCArmorer:
 		offers = g.shopOffers(p, npc)
 	case world.NPCHealer:

@@ -180,6 +180,8 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 		bh *= 2
 	}
 
+	// Une route ne traverse pas la case d'un point d'intérêt (voir poi.go) : elle la contournerait de toute façon à l'écran.
+	poiA, poiB := w.POIOfRegion(key.a), w.POIOfRegion(key.b)
 	terrain := make([]int8, bw*bh) // 0: pas encore calculé, -1: infranchissable
 	cost := func(x, y int) int {
 		p := Pos{x, y}
@@ -193,6 +195,9 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 			if reachB[p] {
 				return 1
 			}
+			return 0
+		}
+		if (poiA != nil && p == poiA.Pos) || (poiB != nil && p == poiB.Pos) {
 			return 0
 		}
 		i := (y-y0)*bw + (x - x0)

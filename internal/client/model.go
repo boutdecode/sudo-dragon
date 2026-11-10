@@ -775,11 +775,13 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 // le PNJ propose réellement sont envoyées.
 func (m Model) npcKeys() map[string]string {
 	return map[string]string{
-		strings.ToLower(m.t("npc.key.buy")):  protocol.NPCBuy,
-		strings.ToLower(m.t("npc.key.sell")): protocol.NPCSell,
-		strings.ToLower(m.t("npc.key.heal")): protocol.NPCHeal,
-		strings.ToLower(m.t("npc.key.talk")): protocol.NPCTalk,
-		strings.ToLower(m.t("npc.key.work")): protocol.NPCAskWork,
+		strings.ToLower(m.t("npc.key.buy")):    protocol.NPCBuy,
+		strings.ToLower(m.t("npc.key.sell")):   protocol.NPCSell,
+		strings.ToLower(m.t("npc.key.heal")):   protocol.NPCHeal,
+		strings.ToLower(m.t("npc.key.talk")):   protocol.NPCTalk,
+		strings.ToLower(m.t("npc.key.work")):   protocol.NPCAskWork,
+		strings.ToLower(m.t("npc.key.places")): protocol.NPCPlaces,
+		strings.ToLower(m.t("npc.key.steal")):  protocol.NPCSteal,
 	}
 }
 
@@ -1210,7 +1212,7 @@ func (m Model) helpLine() string {
 	case m.worldMap && m.wmap.naming:
 		return dimStyle.Render(m.t("map.name_prompt")+" ") + m.markName.View() + "  " + ui.KeyBar([2]string{"↵", m.t("key.confirm")}, [2]string{"esc", m.t("key.cancel")})
 	case m.worldMap:
-		return ui.KeyBar([2]string{"↑↓←→", m.t("key.cursor")}, [2]string{"+ -", m.t("key.zoom")}, [2]string{"w", m.t("key.marker")}, [2]string{"x", m.t("key.delete_marker")}, [2]string{"0", m.t("key.recenter")}, [2]string{"esc", m.t("key.close")})
+		return ui.KeyBar([2]string{"↑↓←→", m.t("key.cursor")}, [2]string{"+ -", m.t("key.zoom")}, [2]string{"g", m.t("key.goto")}, [2]string{"w", m.t("key.marker")}, [2]string{"x", m.t("key.delete_marker")}, [2]string{"0", m.t("key.recenter")}, [2]string{"esc", m.t("key.close")})
 	case m.chatting:
 		return ui.KeyBar([2]string{"↵", m.t("key.send")}, [2]string{"esc", m.t("key.cancel")})
 	case scroll > 0:
@@ -1260,6 +1262,10 @@ func (m Model) npcKeyLabel(action string) string {
 		return m.t("npc.key.work")
 	case protocol.NPCSellMenu:
 		return m.t("npc.key.sell")
+	case protocol.NPCPlaces:
+		return m.t("npc.key.places")
+	case protocol.NPCSteal:
+		return m.t("npc.key.steal")
 	case protocol.NPCBack:
 		return "Esc"
 	case protocol.NPCConsent:

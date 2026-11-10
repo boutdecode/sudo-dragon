@@ -396,9 +396,9 @@ func TestAbandonAndTamperedState(t *testing.T) {
 		{ID: 5, State: quest.Active, Progress: 99, Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}, CreatedAt: time.Now()},
 		{ID: 0, State: quest.Active},
 		{ID: 6, State: quest.Abandoned},
-	}, Rep: map[world.RegionPos]int{{X: 1, Y: 1}: -4}}
+	}, Rep: map[world.RegionPos]int{{X: 1, Y: 1}: -50, {X: 2, Y: 2}: 0}}
 	p := r.g.joinWith("autre", func(protocol.Snapshot) {}, &sv)
-	if len(p.quests) != 1 || p.quests[0].State != quest.Ready || p.quests[0].Progress != 3 || len(p.rep) != 0 {
+	if len(p.quests) != 1 || p.quests[0].State != quest.Ready || p.quests[0].Progress != 3 || len(p.rep) != 1 || p.rep[world.RegionPos{X: 1, Y: 1}] != quest.MinReputation {
 		t.Fatalf("%+v %v", p.quests, p.rep)
 	}
 }

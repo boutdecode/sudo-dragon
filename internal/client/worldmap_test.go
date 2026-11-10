@@ -111,6 +111,11 @@ func TestMapKeysZoomCursorMarkers(t *testing.T) {
 	if m.wmap.curX != 12 {
 		t.Error("0 devrait recentrer")
 	}
+	m = pressKey(t, m, tea.KeyPressMsg{Code: 'g', Text: "g"})
+	if m.worldMap {
+		t.Error("g devrait fermer la carte")
+	}
+	m = pressKey(t, m, tea.KeyPressMsg{Code: 'm', Text: "m"})
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.worldMap {
 		t.Error("Échap devrait fermer la carte")

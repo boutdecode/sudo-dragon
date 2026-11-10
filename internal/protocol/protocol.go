@@ -232,6 +232,11 @@ const (
 	NPCBuyItem  = "buy_item"
 	NPCSellItem = "sell_item"
 	NPCSellMenu = "sell_menu" // ouvre la liste des objets du sac à revendre
+
+	// Gardes et vol. NPCWhere demande où trouver un métier (NPCAction.Text = type de PNJ, voir NPCOffer.Arg).
+	NPCWhere  = "where"  // garde : où trouver tel habitant
+	NPCPlaces = "places" // garde : quels lieux voisins
+	NPCSteal  = "steal"  // marchand : faire les poches
 )
 
 // MaxSayLen est la longueur maximale (en caractères) d'une réplique de joueur.

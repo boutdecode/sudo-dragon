@@ -99,8 +99,16 @@ type landmarkJSON struct {
 	Note      string `json:"a_savoir,omitempty"`
 }
 
+type residentJSON struct {
+	Name      string `json:"nom"`
+	Job       string `json:"metier"`
+	Direction string `json:"direction"`
+	Steps     int    `json:"pas"`
+}
+
 type dataJSON struct {
 	Landmarks    []landmarkJSON    `json:"lieux_connus,omitempty"`
+	Residents    []residentJSON    `json:"habitants_du_lieu,omitempty"`
 	Interlocutor interlocutorJSON  `json:"interlocuteur"`
 	Rumors       []rumorJSON       `json:"rumeurs"`
 	DeedRumors   []hearsayDeedJSON `json:"quetes_rendues_par_d_autres,omitempty"`
@@ -134,6 +142,8 @@ func jobLabel(l i18n.Lang, k world.NPCKind) string {
 		return i18n.T(l, "prompt.job.smith")
 	case world.NPCArmorer:
 		return i18n.T(l, "prompt.job.armorer")
+	case world.NPCGuard:
+		return i18n.T(l, "prompt.job.guard")
 	case world.NPCChief:
 		return i18n.T(l, "prompt.job.chief")
 	case world.NPCMayor:
@@ -177,6 +187,16 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	b.WriteString("\n")
 	if n.Kind == world.NPCVillager {
 		b.WriteString(i18n.T(l, "prompt.villager_rule"))
+	}
+	if n.Kind == world.NPCGuard {
+		b.WriteString(i18n.T(l, "prompt.guard_rule"))
+		b.WriteString("\n")
+		if len(req.Landmarks) > 0 {
+			b.WriteString(i18n.T(l, "prompt.geography_rule"))
+		} else {
+			b.WriteString(i18n.T(l, "prompt.geography_none"))
+		}
+		b.WriteString("\n")
 	}
 	if n.Kind == world.NPCChief || n.Kind == world.NPCMayor {
 		b.WriteString(i18n.T(l, "prompt.official_rule"))
@@ -225,13 +245,18 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 		data.Rumors = append(data.Rumors, rumorJSON{Pseudo: h.Account, Provenance: prov, Said: cardOf(h.Intro), Certain: factsOf(h.Facts)})
 	}
 	for _, lm := range req.Landmarks {
-		if n.Kind != world.NPCChief && n.Kind != world.NPCMayor {
-			break // seuls les chefs et maires connaissent les environs, quoi qu'on leur transmette
+		if n.Kind != world.NPCChief && n.Kind != world.NPCMayor && n.Kind != world.NPCGuard {
+			break // seuls les chefs, maires et gardes connaissent les environs, quoi qu'on leur transmette
 		}
 		data.Landmarks = append(data.Landmarks, landmarkJSON{Name: lm.Name, Kind: lm.Kind, Region: lm.Region, Direction: lm.Direction, Distance: lm.Distance, Note: lm.Note})
 	}
+	if n.Kind == world.NPCGuard {
+		for _, r := range req.Residents {
+			data.Residents = append(data.Residents, residentJSON{Name: r.Name, Job: r.Job, Direction: r.Direction, Steps: r.Steps})
+		}
+	}
 	data.Interlocutor.Impression = textsafe.Clean(req.Impression, 40)
-	if req.Reputation > 0 {
+	if req.Reputation != 0 {
 		data.Interlocutor.Reputation = &reputationJSON{Tier: quest.TierLabel(l, req.Reputation), Points: req.Reputation}
 	}
 	for _, d := range req.Deeds.Mine {

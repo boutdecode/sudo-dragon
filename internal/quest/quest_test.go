@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -146,6 +147,26 @@ func TestReputationTiersAndDiscount(t *testing.T) {
 	q := Quest{Tier: 3}
 	if q.ReputationGain() != 4 || (Quest{Tier: 0}).ReputationGain() != 2 {
 		t.Error("gain de réputation")
+	}
+}
+
+func TestNegativeReputationTiers(t *testing.T) {
+	for pts, want := range map[int]string{-1: "Inconnu", -4: "Inconnu", -5: "Suspect", -9: "Suspect", -10: "Recherché", -20: "Recherché"} {
+		if TierName(pts) != want {
+			t.Errorf("%d points → %s, attendu %s", pts, TierName(pts), want)
+		}
+	}
+	if IsWanted(-9) || !IsWanted(-10) || !IsWanted(MinReputation) || IsWanted(0) {
+		t.Error("IsWanted")
+	}
+	if NextTier(-3) != 0 {
+		t.Error("pas de palier suivant pour une réputation négative")
+	}
+	if Discount(100, -15) != 100 {
+		t.Error("pas de remise pour un hors-la-loi")
+	}
+	if TierLabel(i18n.FR, -12) == TierLabel(i18n.FR, 0) || TierLabel(i18n.EN, -12) == TierLabel(i18n.FR, -12) {
+		t.Error("libellés des paliers négatifs")
 	}
 }
 

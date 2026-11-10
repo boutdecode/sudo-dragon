@@ -304,7 +304,7 @@ func (m Model) npcOfferKey(o protocol.NPCOffer, turnInRank int) string {
 		return m.t("quest.key.accept")
 	case protocol.NPCQuestRefuse:
 		return m.t("quest.key.refuse")
-	case protocol.NPCTurnIn, protocol.NPCBuyItem, protocol.NPCSellItem:
+	case protocol.NPCTurnIn, protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCWhere:
 		return strconv.Itoa(turnInRank + 1)
 	}
 	return m.npcKeyLabel(o.Action)
@@ -312,7 +312,7 @@ func (m Model) npcOfferKey(o protocol.NPCOffer, turnInRank int) string {
 
 // isNumbered : les offres qui portent un argument (quête à rendre, objet à acheter ou à revendre) se choisissent par un chiffre.
 func isNumbered(action string) bool {
-	return action == protocol.NPCTurnIn || action == protocol.NPCBuyItem || action == protocol.NPCSellItem
+	return action == protocol.NPCTurnIn || action == protocol.NPCBuyItem || action == protocol.NPCSellItem || action == protocol.NPCWhere
 }
 
 // itemOffers renvoie les offres d'équipement (celles qui portent une fiche d'objet), dans l'ordre.

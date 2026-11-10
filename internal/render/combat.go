@@ -89,6 +89,13 @@ var monsterArt = map[string][]string{
 		`|/|  *  |\|`,
 		` \_/   \_/ `,
 	},
+	"guard": {
+		`   .-^-.   `,
+		`  [ o o ]  `,
+		` ,/|===|\, `,
+		` ||[ + ]||  `,
+		`   /   \   `,
+	},
 }
 
 // npcArt contient les portraits des PNJ pour l'écran de dialogue.
@@ -140,6 +147,13 @@ var npcArt = map[world.NPCKind][]string{
 		`  ( ^ ^ )  `,
 		`   \ ~ /   `,
 		`  /|   |\  `,
+		`   |   |   `,
+	},
+	world.NPCGuard: {
+		`   .-^-.   `,
+		`  [ o o ]  `,
+		`  /[ = ]\  `,
+		`  |/|+|\|  `,
 		`   |   |   `,
 	},
 }

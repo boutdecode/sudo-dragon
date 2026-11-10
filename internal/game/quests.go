@@ -66,8 +66,8 @@ func (p *player) refreshQuestFlags() {
 // loadQuests restaure les quêtes sauvegardées (valeurs relues de la base, donc revérifiées).
 func (g *Game) loadQuests(p *player, saved *Saved) {
 	for rp, pts := range saved.Rep {
-		if pts > 0 {
-			p.rep[rp] = pts
+		if pts != 0 {
+			p.rep[rp] = max(quest.MinReputation, pts)
 		}
 	}
 	for _, q := range saved.Quests {
@@ -394,8 +394,7 @@ func (g *Game) turnIn(p *player, arg string) []string {
 	if levels > 0 {
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 	}
-	before := p.rep[q.Place()]
-	p.rep[q.Place()] = before + q.ReputationGain()
+	repLog := g.addRep(p, q.Place(), q.ReputationGain())
 
 	giver := p.talk.npc.NameIn(p.lang)
 	log := []string{
@@ -405,13 +404,30 @@ func (g *Game) turnIn(p *player, arg string) []string {
 	if levels > 0 {
 		log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
 	}
-	if after := p.rep[q.Place()]; tierLabel(p.lang, after) != tierLabel(p.lang, before) {
-		log = append(log, i18n.T(p.lang, "quest.rep_up", g.placeName(p.lang, q.Place()), tierLabel(p.lang, after)))
-	}
+	log = append(log, repLog...)
 	g.questsChanged(p)
 	g.save(p) // la remise change l'or, l'XP, la réputation et la mémoire du lieu : écriture immédiate
 	return log
 }
+
+// addRep modifie la réputation du joueur dans un lieu (bornée par quest.MinReputation) et
+// renvoie la ligne de journal si le palier change. Elle ne sauvegarde pas : à l'appelant.
+func (g *Game) addRep(p *player, place world.RegionPos, delta int) []string {
+	before := p.rep[place]
+	after := max(quest.MinReputation, before+delta)
+	if after == 0 {
+		delete(p.rep, place)
+	} else {
+		p.rep[place] = after
+	}
+	if tierLabel(p.lang, after) == tierLabel(p.lang, before) {
+		return nil
+	}
+	return []string{i18n.T(p.lang, "quest.rep_up", g.placeName(p.lang, place), tierLabel(p.lang, after))}
+}
+
+// abandonRepLoss est la réputation perdue en abandonnant une quête acceptée.
+const abandonRepLoss = 1
 
 // abandonQuest abandonne une quête en cours (depuis le livre de quêtes).
 func (g *Game) abandonQuest(p *player, id int64) {
@@ -419,9 +435,10 @@ func (g *Game) abandonQuest(p *player, id int64) {
 	if q == nil || !q.Open() {
 		return
 	}
-	title := q.Title
+	title, place := q.Title, q.Place()
 	p.quests = slices.DeleteFunc(p.quests, func(x quest.Quest) bool { return x.ID == id })
 	p.questNotices = append(p.questNotices, i18n.T(p.lang, "quest.abandoned", title))
+	p.questNotices = append(p.questNotices, g.addRep(p, place, -abandonRepLoss)...)
 	g.questsChanged(p)
 	g.save(p)
 }

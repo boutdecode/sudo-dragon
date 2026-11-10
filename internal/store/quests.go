@@ -52,7 +52,7 @@ func saveQuests(tx *sql.Tx, account string, c Character) error {
 		}
 	}
 	for rp, pts := range c.Rep {
-		if pts <= 0 {
+		if pts == 0 {
 			continue
 		}
 		if _, err := tx.Exec(`INSERT INTO reputation(account, region_x, region_y, points)

@@ -528,7 +528,7 @@ search:
 
 	c, _ := signInEventually(t, url, "alice")
 	send(t, c, protocol.TMove, protocol.Move{DX: dx, DY: dy})
-	if d := readNPC(t, c); d.Kind != "merchant" || len(d.Offers) != 2 {
+	if d := readNPC(t, c); d.Kind != "merchant" || len(d.Offers) != 3 {
 		t.Fatalf("ouverture: %+v", d)
 	}
 

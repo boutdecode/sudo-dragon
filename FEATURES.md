@@ -5,7 +5,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 ## Monde et génération (`internal/world/`)
 
 - **Monde infini** généré par bruit simplex depuis une seed, par chunks de 32×32.
-- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier.
+- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier. Tuiles de points d'intérêt : feu de camp, sanctuaire, tour de guet, pierre dressée, coffre de repaire (voir plus bas).
 - **Lieux** : au plus un par région de 256×256.
   - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
@@ -38,6 +38,15 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - **Découverte** : passer à 3 cases ou moins d'une entrée la révèle, pour ce personnage seulement. Le serveur le dit au joueur (« Vous découvrez l'entrée secrète de… »), mémorise la découverte (table `discoveries`, sauvegardée tout de suite) et la renvoie à chaque connexion. Entrer dans un donjon révèle aussi l'entrée à tout le groupe.
   - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/goto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
   - Les quêtes de donjon (voir *PNJ, dialogues et quêtes*) révèlent aussi l'entrée du donjon visé, dès l'acceptation.
+- **Points d'intérêt** (`world/poi.go`, `game/poi.go`) : de petits repères en plein air, **une case chacun**, au plus un par région (~60 % des régions). Position, type et nom (« Menhir de Valmor »…, en français et en anglais) viennent de la seed par des flux dédiés : le client les recalcule sans message et aucun lieu ni donjon existant ne bouge. Ils sont **visibles d'emblée** (pas de découverte) ; on les place sur du terrain praticable, loin des lieux, du point de départ et des entrées de donjon, et les routes les contournent. Ils s'affichent sur la carte principale et sur la carte du monde (`M`, une fois la zone explorée), avec leur ligne de légende. On interagit en **marchant sur la case** :
+
+  | Point | Glyphe | Effet |
+  |---|---|---|
+  | **Feu de camp** (30 %) | `&` | Soigne la moitié des PV et du mana (une fois par 5 min et par feu) et en fait votre **point de réapparition** : après une défaite, on se réveille près du dernier feu allumé au lieu du point de départ (sauvegardé avec le personnage ; message dédié). Un donjon renvoie toujours devant son entrée. |
+  | **Sanctuaire** (20 %) | `o` | Bonus de 5 min selon le **climat** de la contrée : tempéré +2 DEF, tropical +1 PV/s hors combat, aride +2 au toucher, boréal +50 % d'XP. Cooldown de 10 min par sanctuaire ; le bonus n'est pas sauvegardé. |
+  | **Repaire** (20 %) | `x` (coffre) | Trois **gardiens** (bêtes du biome, 2 niveaux de région de plus) restent à moins de 6 cases de leur poste ; activés à moins de 40 cases d'un joueur, repoussent 30 min après leur défaite. Le **coffre** reste fermé tant qu'un gardien vit, puis donne de l'or, 1-2 potions et, une fois sur deux, un équipement (rang de la région + 1) ; il se remplit de nouveau 30 min après son ouverture. Sac plein : le coffre reste fermé. État en mémoire. |
+  | **Tour de guet** (15 %) | `I` | Révèle les entrées de donjon à 12 cases ou moins (comme une découverte) et, côté client, **marque comme exploré** un rayon de 96 cases sur la carte du monde. |
+  | **Pierre dressée** (15 %) | `\|` | S'**active** au premier passage (sauvegardé). Debout sur une pierre activée, `/menhir` liste les autres pierres activées avec leur prix, `/menhir <n° ou nom>` y téléporte contre de l'or (15 or par région de distance, 20 au minimum). Impossible en combat ou en conversation. |
 - **Zones sûres** : village ou ville plus 3 cases de marge. Pas de monstres, pas de poursuite, régénération de 1 PV par seconde.
 
 ## Déplacement et exploration
@@ -55,7 +64,8 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Zoom 1, 2, 4, 8 ou 16 tuiles par cellule (`+` / `-`), curseur clignotant aux flèches, `0` ou espace pour recentrer.
   - Les couleurs du terrain suivent le climat de chaque contrée (palette partagée avec la vue de jeu, `render.TileHex`) ; le titre du panneau donne la contrée et son climat, et la légende prend les couleurs du climat sous le curseur.
   - Seul le terrain exploré est affiché ; le reste est « inexploré » (`░`).
-  - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
+  - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, points d'intérêt (feu de camp, sanctuaire, repaire, tour, pierre), forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
+- **Aller au curseur** : `G` lance la marche automatique (`/goto`) vers la case du curseur (case libre la plus proche) et ferme la carte.
 - **Repères** : `W` pose ou renomme (24 caractères, noms uniques, 9 au plus), `X` supprime.
 - **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le panneau latéral donne la région (niveau et tranche) ; le journal annonce chaque nouvelle contrée (avec son climat) ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
 
@@ -119,7 +129,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 
 ## PNJ, dialogues et quêtes
 
-- **PNJ** (`game/npc.go`) : marchand, soigneur, forgeron, armurier, chef de village / maire, villageois, villageois à quêtes, soldats. On leur parle en marchant dessus (abandon après 60 s).
+- **PNJ** (`game/npc.go`) : marchand, soigneur, forgeron, armurier, chef de village / maire, villageois, villageois à quêtes, soldats, gardes (mobiles, voir plus bas). On leur parle en marchant dessus (abandon après 60 s).
 - **Services** : potion à 20 or (revente 8 or) ; soins complets gratuits au niveau 1, ensuite 4 or × niveau. Le chef et le maire renseignent sur les lieux dans un rayon de 3 régions, même sans clé Mistral.
 - **Dialogues libres** (Mistral, touche `D` / `T` en anglais) :
   - Le modèle ne produit que du texte, sans effet sur l'or, les objets ou les stats.
@@ -134,7 +144,16 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Limites : 5 quêtes ouvertes, une par donneur, 30 min entre deux quêtes d'un même donneur, expiration à 7 jours.
   - **Donneur sans travail** : le `!` d'un donneur disparaît (il s'affiche comme un villageois) tant qu'il ne peut rien confier : quête déjà ouverte chez lui, 30 min de pause après une remise, ou 5 quêtes ouvertes. Il revient tout seul à la fin de la pause. Le modèle est alors prévenu qu'il n'a pas de travail ; si sa quête proposée est écartée (invalide ou non modérée), une ligne système l'indique. Limite : sans modèle, le `!` ne tient pas compte de la présence d'un donjon accessible.
   - Livre de quêtes (`Q`), onglets avec `Tab`, abandon avec `X` deux fois ; on rend la quête au donneur.
-- **Réputation** par région : Inconnu, Connu (3), Estimé (8), Honoré (15). Réduction de 20 % puis 40 % sur soins, potions et équipement.
+- **Réputation** par lieu (village ou ville) : Recherché (≤ −10), Suspect (≤ −5), Inconnu, Connu (3), Estimé (8), Honoré (15). Réduction de 20 % puis 40 % sur soins, potions et équipement ; aucune remise sous Inconnu. Bornée à −20 minimum, sauvegardée (valeurs négatives comprises) et changement de palier annoncé dans le journal. Elle monte en rendant des quêtes et **baisse** de 1 en abandonnant une quête, de 3 en se faisant prendre à voler, de 5 en tuant un garde.
+- **Vol** : le marchand propose « Faire les poches » (`steal`). Chance de 50 % modulée par le charisme (20 % à 80 %) : succès = quelques pièces d'or (5 + 3 × niveau + 0 à 5), échec = −3 de réputation dans le lieu. Un même marchand ne se laisse pas voler deux fois en 3 minutes (mémoire du serveur seulement).
+- **Gardes de villages et de villes** (`game/guards.go`, `world/guards.go`) :
+  - Un village a 2 gardes, une ville 5 ; les forteresses aucun. Leur identité (nom unique dans le lieu, personnalité) et leur case de départ sont déterministes, tirées de la seed sur un flux séparé (les plans existants ne bougent pas). Ils ne sont pas dans `Structure.NPCs` : le serveur les fait apparaître quand un joueur est à moins de 40 cases du lieu et les retire quand plus personne n'est près ; un garde vaincu est remplacé après 5 min.
+  - **Patrouille** : ils vont de point de passage en point de passage sur les chemins du lieu (plus court trajet, pauses, un pas toutes les 0,5 s), même en zone sûre, et restent à 8 cases au plus de l'emprise du lieu. Ils s'arrêtent quand on leur parle.
+  - Ils s'affichent comme `G` bleu (même canal que les monstres dans l'instantané, identifiants hors de la plage des monstres). Marcher dessus leur adresse la parole.
+  - **Hors-la-loi** : un joueur **Recherché** (réputation ≤ −10) *dans ce lieu* est poursuivi à 12 cases ou moins, même en zone sûre, puis combattu au contact (un pas toutes les 0,3 s : plus lent qu'un joueur, on peut les distancer). Marcher sur un garde quand on est Recherché le combat au lieu de lui parler. La réputation est propre à chaque lieu : être Recherché dans un village ne concerne pas les gardes des autres lieux. Les autres joueurs ne sont jamais attaqués.
+  - **Combat** : fiche de monstre « Garde » (PV 60, mise à l'échelle du niveau de la région comme les monstres), sans XP ni butin. Le tuer coûte 5 de réputation de plus.
+  - **Dialogue** : menu « Où trouver : soigneur / marchand / forgeron / armurier / chef ou maire ? » (distance en pas et direction vers l'habitant du lieu, ou, s'il n'y en a pas, le lieu voisin le plus proche qui en a un) et « Quels sont les lieux voisins ? » (les trois plus proches, comme le chef). Ces réponses marchent sans clé Mistral.
+  - **Discussion libre** (`D`) : le modèle reçoit en plus la liste des habitants du lieu avec métier, direction et distance (`habitants_du_lieu`) et les lieux voisins ; il n'a pas le droit d'inventer un habitant ou un chemin. Il est prévenu de la réputation du joueur, négative comprise.
 
 ## Chat et commandes
 
@@ -145,6 +164,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 | `/me` | émote locale |
 | `/w`, `/msg`, `/whisper` pseudo message | message privé |
 | `/goto x y` ou `/goto nom` | marche automatique (côté client) |
+| `/menhir [n° ou nom]` | liste les pierres dressées activées ou voyage de l'une à l'autre (debout sur une pierre) |
 | `/help`, `/?` | aide |
 
 Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'historique, `Ctrl+↑` / `Ctrl+↓` redimensionnent la discussion. Dans la saisie du chat, `↑` / `↓` rappellent les 100 dernières lignes envoyées (commandes comprises), la saisie en cours est retrouvée en bas.
@@ -173,11 +193,11 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 ## Sauvegarde et persistance (`internal/store/`)
 
-- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), lore, étalages (`npc_wares`).
+- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), point de réapparition et pierres dressées activées (colonnes de `characters`, migration 17), lore, étalages (`npc_wares`).
 - Écriture asynchrone ; sauvegarde à la déconnexion, après chaque combat, toutes les 30 s, à l'arrêt propre.
 - La seed est fixée à la création de la base ; la changer sur une base existante est refusé.
 - **Côté client** : carte, repères et exploration dans `<UserConfigDir>/sudo-dragon/map.json` (une entrée par seed, écriture différée de 15 s). Le serveur n'en sait rien.
-- Non persistés : le monde (recalculé de la seed), les garnisons (réinitialisées au redémarrage) et l'état des donjons (monstres vaincus, coffres ouverts : en mémoire, perdus au redémarrage du serveur). Seules les entrées découvertes sont sauvegardées.
+- Non persistés : le monde (recalculé de la seed), les garnisons et les repaires (réinitialisés au redémarrage), les bonus et cooldowns des points d'intérêt (en mémoire) et l'état des donjons (monstres vaincus, coffres ouverts : en mémoire, perdus au redémarrage du serveur). Seules les entrées découvertes sont sauvegardées.
 
 ## Réseau, multijoueur et exploitation (`internal/server/`, `internal/protocol/`)
 
@@ -210,6 +230,8 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 `Makefile` : build, test, race, check, load, llm-smoke. Go 1.27 requis.
 
 ## En cours et limites
+
+- **Gardes** : leur état (position, trajet, mémoire des vols) n'est pas sauvegardé et un redémarrage du serveur les replace à leur poste. Rien ne fait remonter la réputation avec le temps : un joueur Recherché doit rendre des quêtes (pas de grâce, pas de rançon). Les villageois et les marchands ne réagissent ni au vol ni aux combats. Un garde ne sait pas contourner un obstacle autre qu'un joueur passager (il repart vers un autre point de passage après un blocage).
 
 - Pas de compétences ni de sorts à apprendre : la magie est un style d'attaque lié à l'arme.
 - Pas de reconnexion automatique après une coupure.

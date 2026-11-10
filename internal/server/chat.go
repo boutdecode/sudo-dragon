@@ -74,6 +74,15 @@ func (sess *session) handleChat(text string) {
 			return
 		}
 		sess.whisper(target, msg)
+	case "/menhir":
+		text, err := sess.srv.Game.Menhir(sess.id, rest)
+		if err == nil {
+			for _, line := range strings.Split(text, "\n") {
+				if line != "" {
+					sess.sendMsg(protocol.TChat, protocol.Chat{Channel: protocol.ChanSystem, Text: line})
+				}
+			}
+		}
 	case "/help", "/?":
 		sess.sendSystem("srv.help")
 	default:

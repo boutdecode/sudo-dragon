@@ -100,7 +100,7 @@ func (s *Server) SetRegistrationLimit(perHour int) {
 
 // fromSaved et toSaved convertissent entre l'état du jeu et l'état stocké.
 func fromSaved(sv game.Saved) store.Character {
-	return store.Character{
+	c := store.Character{
 		Level: sv.Stats.Level, XP: sv.Stats.XP, Potions: sv.Stats.Potions, Gold: sv.Stats.Gold,
 		HP: sv.HP, X: sv.Pos.X, Y: sv.Pos.Y,
 		LLMConsent: sv.LLMConsent, Kills: sv.Stats.Kills, BossKills: sv.Stats.BossKills, Deaths: sv.Stats.Deaths,
@@ -108,11 +108,16 @@ func fromSaved(sv game.Saved) store.Character {
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 		Gear: sv.Gear, GearDirty: sv.GearDirty,
 		Discoveries: sv.Discovered, DiscoveriesDirty: sv.DiscoveredDirty,
+		Stones: sv.Stones,
 	}
+	if sv.Respawn != nil {
+		c.RespawnSet, c.RespawnX, c.RespawnY = true, sv.Respawn.X, sv.Respawn.Y
+	}
+	return c
 }
 
 func toSaved(c store.Character) *game.Saved {
-	return &game.Saved{
+	sv := &game.Saved{
 		Stats: combat.StatsFor(c.Level, c.XP, c.Potions, hero.Class(c.Class), hero.Scores(c.Scores), c.MaxHP).
 			WithGold(c.Gold).WithRecord(c.Kills, c.BossKills, c.Deaths),
 		HP:         c.HP,
@@ -121,7 +126,12 @@ func toSaved(c store.Character) *game.Saved {
 		LLMConsent: c.LLMConsent,
 		Quests:     c.Quests, Rep: c.Rep, Gear: c.Gear, GearDirty: c.GearDirty,
 		Discovered: c.Discoveries,
+		Stones:     c.Stones,
 	}
+	if c.RespawnSet {
+		sv.Respawn = &world.Pos{X: c.RespawnX, Y: c.RespawnY}
+	}
+	return sv
 }
 
 // SetTalker branche le service qui fait parler les PNJ (nil: pas de discussion libre).

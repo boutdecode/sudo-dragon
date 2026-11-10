@@ -90,6 +90,12 @@ type player struct {
 	discovered      map[world.RegionPos]bool
 	discoveredDirty bool // à réécrire à la prochaine sauvegarde
 	sendDungeonsMsg func(protocol.Dungeons)
+
+	// Points d'intérêt (voir poi.go).
+	respawn    *world.Pos                 // dernier feu de camp : on y réapparaît après une défaite
+	stones     map[world.RegionPos]bool   // pierres dressées activées, par région
+	buffs      []buff                     // bonus de sanctuaire en cours (pas persistés)
+	poiCooling map[world.RegionPos]uint64 // tick avant lequel le point de la région est sans effet pour ce joueur
 }
 
 // Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
@@ -117,6 +123,10 @@ type Saved struct {
 	// Donjons découverts (régions qui les cachent). DiscoveredDirty: à réécrire en base.
 	Discovered      []world.RegionPos
 	DiscoveredDirty bool
+
+	// Point de réapparition (feu de camp) et pierres dressées activées.
+	Respawn *world.Pos
+	Stones  []world.RegionPos
 }
 
 // Game est l'état du monde vivant.
@@ -162,10 +172,12 @@ type Game struct {
 	talkSeq uint64 // dernier numéro de conversation attribué
 
 	monsters      map[int]*monster
-	monsterAt     map[world.Pos]int        // idem : carte principale seulement
-	slotMonster   map[world.SlotKey]int    // emplacement de forteresse -> monstre vivant
-	slotDefeated  map[world.SlotKey]uint64 // emplacement -> tick de la dernière victoire (repousse)
-	garrisonCount int                      // monstres de garnison vivants
+	monsterAt     map[world.Pos]int          // idem : carte principale seulement
+	slotMonster   map[world.SlotKey]int      // emplacement de forteresse -> monstre vivant
+	slotDefeated  map[world.SlotKey]uint64   // emplacement -> tick de la dernière victoire (repousse)
+	gd            guardState                 // gardes des villages et des villes (voir guards.go)
+	garrisonCount int                        // monstres de garnison vivants
+	lairOpened    map[world.RegionPos]uint64 // repaire -> tick de l'ouverture de son coffre (voir poi.go)
 	nextMonsterID int
 
 	instances       map[ZoneID]*instance // instances de donjon (voir dungeon.go)
@@ -190,6 +202,7 @@ func New(w *world.World) *Game {
 		monsterAt:     make(map[world.Pos]int),
 		slotMonster:   make(map[world.SlotKey]int),
 		slotDefeated:  make(map[world.SlotKey]uint64),
+		lairOpened:    make(map[world.RegionPos]uint64),
 		nextMonsterID: 1,
 		instances:     make(map[ZoneID]*instance),
 		dungeonZone:   make(map[string]ZoneID),
@@ -345,7 +358,7 @@ func (g *Game) join(name string, send func(protocol.Snapshot)) *player {
 // les valeurs hors bornes sont ramenées dans les bornes valides.
 func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved) *player {
 	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1,
-		discovered: map[world.RegionPos]bool{}}
+		discovered: map[world.RegionPos]bool{}, stones: map[world.RegionPos]bool{}, poiCooling: map[world.RegionPos]uint64{}}
 	p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 	start := g.World.FindSpawn()
 	if saved != nil {
@@ -360,6 +373,13 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 			p.discovered[rp] = true
 		}
 		p.discoveredDirty = saved.DiscoveredDirty
+		if saved.Respawn != nil {
+			r := *saved.Respawn
+			p.respawn = &r
+		}
+		for _, rp := range saved.Stones {
+			p.stones[rp] = true
+		}
 		p.gearDirty = saved.GearDirty // objets ajoutés avant la connexion (arme de départ): à écrire à la première sauvegarde
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		p.mana = max(0, min(saved.Mana, p.stats.MaxMana))
@@ -382,6 +402,7 @@ func (g *Game) save(p *player) {
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 			Discovered: p.discoveredList(), DiscoveredDirty: p.discoveredDirty,
+			Respawn: p.respawn, Stones: p.stoneList(),
 		})
 		p.questsDirty, p.gearDirty, p.discoveredDirty = false, false, false
 	}
@@ -461,6 +482,9 @@ func (g *Game) blockedIn(z ZoneID, pos world.Pos) bool {
 	if _, occupied := g.monsterAt[pos]; occupied {
 		return true
 	}
+	if g.guardAt(pos) != nil { // un garde aussi
+		return true
+	}
 	_, npc := g.World.NPCAt(pos.X, pos.Y) // un PNJ occupe sa case
 	return npc
 }
@@ -507,6 +531,7 @@ func (g *Game) step() {
 		if p.cooldown > 0 {
 			p.cooldown--
 		}
+		p.expireBuffs(g.tick)
 		if p.fight != nil || p.talk != nil { // en combat ou en conversation: immobile
 			p.hasPending = false
 			continue
@@ -521,6 +546,10 @@ func (g *Game) step() {
 			continue
 		}
 		if p.zone == 0 {
+			if gd := g.guardAt(dst); gd != nil { // marcher sur un garde lui parle (ou l'affronte, si l'on est hors-la-loi)
+				g.bumpGuard(p, gd)
+				continue
+			}
 			if npc, ok := g.World.NPCAt(dst.X, dst.Y); ok { // marcher sur un PNJ lui adresse la parole
 				g.startTalk(p, npc)
 				continue
@@ -541,6 +570,8 @@ func (g *Game) step() {
 		p.cooldown = MoveCooldown
 		if inst := g.instances[p.zone]; inst != nil && inst.dmap.TileAt(dst.X, dst.Y) == world.Chest {
 			g.openChest(p, inst, dst) // marcher sur un coffre l'ouvre
+		} else if p.zone == 0 {
+			g.poiStep(p, dst) // feu de camp, sanctuaire, repaire, tour, pierre dressée
 		}
 	}
 
@@ -548,6 +579,7 @@ func (g *Game) step() {
 	g.expireIdleTalks(ids)
 	if g.tick%safeRegenEvery == 0 {
 		g.regenerate(g.healDue(ids))
+		g.regenBuffs(ids)
 	}
 	if g.tick%autosaveEvery == 0 {
 		for _, id := range ids {
@@ -558,10 +590,13 @@ func (g *Game) step() {
 	// Monstres: déplacement, puis apparitions/disparitions périodiques.
 	mids := g.sortedMonsterIDs()
 	g.stepMonsters(mids)
+	g.stepGuards()
 	if g.tick%spawnEvery == 0 {
 		g.despawnFar()
 		g.spawnMonsters()
 		g.activateGarrisons()
+		g.activateGuards()
+		g.activateLairs()
 		mids = g.sortedMonsterIDs()
 	}
 
@@ -613,6 +648,7 @@ func (g *Game) snapshotFor(p *player, monsterIDs []int) protocol.Snapshot {
 			snap.Monsters = append(snap.Monsters, protocol.Monster{ID: m.id, Kind: m.sp.Kind, X: m.pos.X, Y: m.pos.Y, Fighting: m.fight != nil})
 		}
 	}
+	snap.Monsters = g.appendGuards(snap.Monsters, p)
 	return snap
 }
 

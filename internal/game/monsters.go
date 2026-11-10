@@ -204,8 +204,8 @@ type monster struct {
 	sp       species
 	pos      world.Pos
 	home     world.Pos
-	cooldown int // ticks avant le prochain pas
-	calm     int // ticks pendant lesquels il reste inerte et n'engage pas (après une fuite ou une défaite)
+	cooldown int    // ticks avant le prochain pas
+	calm     int    // ticks pendant lesquels il reste inerte et n'engage pas (après une fuite ou une défaite)
 	fight    *fight // non nil pendant un combat: le monstre est figé
 
 	// Monstre de garnison: occupe un emplacement de forteresse, ne quitte pas
@@ -213,6 +213,10 @@ type monster struct {
 	slot   *world.SlotKey
 	bounds *world.Structure
 	leash  int
+
+	// guard : cet avatar prête sa fiche à un garde de village pour un combat (voir guards.go). Il n'est jamais
+	// enregistré dans g.monsters.
+	guard *guard
 }
 
 // leashDist est la distance maximale à laquelle le monstre s'éloigne de son origine en rôdant.

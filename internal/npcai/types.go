@@ -57,6 +57,10 @@ type Request struct {
 	// serveur et déjà localisés. Vide pour les autres PNJ.
 	Landmarks []Landmark
 
+	// Residents : les habitants du lieu que connaît un garde (métier, direction et distance en pas depuis lui),
+	// établis par le serveur. Vide pour les autres PNJ.
+	Residents []Resident
+
 	// Deeds : quêtes rendues dont ce PNJ a connaissance (renseigné par le service, pas par le jeu).
 	Deeds Deeds
 }
@@ -69,6 +73,14 @@ type Landmark struct {
 	Direction string // « à l'est »
 	Distance  string // « tout près », « à une bonne marche », « loin »
 	Note      string // fait notable (ex. garnison)
+}
+
+// Resident est un habitant du lieu tel que le décrit le serveur à un garde.
+type Resident struct {
+	Name      string // « Forgeron Aldric »
+	Job       string // « forgeron »
+	Direction string // « au nord-est »
+	Steps     int    // distance en pas
 }
 
 // Deeds sont les quêtes rendues connues d'un PNJ : celles de son interlocuteur et, en rumeur, celles des autres.

@@ -293,6 +293,12 @@ const (
 	Known    = 3
 	Esteemed = 8
 	Honored  = 15
+
+	// Suspect et Wanted sont les paliers négatifs : à Wanted, les gardes du lieu attaquent.
+	Suspect = -5
+	Wanted  = -10
+	// MinReputation borne la chute : au-delà, un lieu ne peut pas être plus hostile.
+	MinReputation = -20
 )
 
 // TierName donne le palier de réputation.
@@ -304,6 +310,10 @@ func TierName(points int) string {
 		return "Estimé"
 	case points >= Known:
 		return "Connu"
+	case points <= Wanted:
+		return "Recherché"
+	case points <= Suspect:
+		return "Suspect"
 	}
 	return "Inconnu"
 }
@@ -317,12 +327,20 @@ func TierLabel(l i18n.Lang, points int) string {
 		return i18n.T(l, "quest.tier.2")
 	case points >= Known:
 		return i18n.T(l, "quest.tier.1")
+	case points <= Wanted:
+		return i18n.T(l, "quest.tier.wanted")
+	case points <= Suspect:
+		return i18n.T(l, "quest.tier.suspect")
 	}
 	return i18n.T(l, "quest.tier.0")
 }
 
-// NextTier renvoie les points manquants pour le palier suivant (0 au maximum).
+// NextTier renvoie les points manquants pour le palier suivant (0 au maximum, et 0 pour un joueur mal vu :
+// il n'a pas de « palier suivant » à viser).
 func NextTier(points int) int {
+	if points < 0 {
+		return 0
+	}
 	for _, t := range []int{Known, Esteemed, Honored} {
 		if points < t {
 			return t - points
@@ -330,6 +348,9 @@ func NextTier(points int) int {
 	}
 	return 0
 }
+
+// IsWanted indique que le lieu considère le joueur comme un hors-la-loi.
+func IsWanted(points int) bool { return points <= Wanted }
 
 // DiscountPercent est la réduction des prix dans le lieu (soins, potions).
 func DiscountPercent(points int) int {

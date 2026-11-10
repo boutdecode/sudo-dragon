@@ -27,7 +27,8 @@ var mapZooms = [...]int{1, 2, 4, 8, 16}
 
 const (
 	defaultMapZoom = 8
-	exploreBlock   = 8 // côté, en tuiles, d'un bloc marqué comme exploré
+	exploreBlock   = 8  // côté, en tuiles, d'un bloc marqué comme exploré
+	towerReveal    = 96 // rayon, en tuiles, que révèle une tour de guet
 	maxMarkers     = 9
 	legendWidth    = 30
 	legendMinWidth = 90 // largeur d'écran minimale pour afficher la légende
@@ -45,8 +46,10 @@ type mapState struct {
 	dirty      bool        // exploration modifiée depuis la dernière sauvegarde
 	lastSave   time.Time
 	explored   map[[2]int]struct{}
-	blink      bool // phase du clignotement du curseur
-	gen        int  // invalide les minuteurs d'une carte déjà fermée
+	blink      bool      // phase du clignotement du curseur
+	gen        int       // invalide les minuteurs d'une carte déjà fermée
+	towerAt    world.Pos // dernière tour de guet gravie (évite de tout recalculer à chaque image)
+	onTower    bool
 }
 
 const mapBlinkEvery = 500 * time.Millisecond
@@ -92,6 +95,19 @@ func (m *Model) markExplored() {
 		for bx := fdiv(self.X-protocol.ViewHalfW, exploreBlock); bx <= fdiv(self.X+protocol.ViewHalfW, exploreBlock); bx++ {
 			m.wmap.explored[[2]int{bx, by}] = struct{}{}
 		}
+	}
+	// Du haut d'une tour de guet, on voit beaucoup plus loin (une seule fois par tour).
+	if m.world != nil && m.world.At(self.X, self.Y) == world.Tower {
+		if here := (world.Pos{X: self.X, Y: self.Y}); !m.wmap.onTower || m.wmap.towerAt != here {
+			m.wmap.onTower, m.wmap.towerAt = true, here
+			for by := fdiv(self.Y-towerReveal, exploreBlock); by <= fdiv(self.Y+towerReveal, exploreBlock); by++ {
+				for bx := fdiv(self.X-towerReveal, exploreBlock); bx <= fdiv(self.X+towerReveal, exploreBlock); bx++ {
+					m.wmap.explored[[2]int{bx, by}] = struct{}{}
+				}
+			}
+		}
+	} else {
+		m.wmap.onTower = false
 	}
 	if len(m.wmap.explored) != before {
 		m.wmap.dirty = true
@@ -140,6 +156,19 @@ func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.wmap.zoom = stepZoom(z, +1)
 	case "0", " ", "space":
 		m.wmap.curX, m.wmap.curY = m.snap.Self.X, m.snap.Self.Y
+	case "g":
+		// Marche automatique vers le curseur, puis fermeture de la carte.
+		m.worldMap = false
+		var save tea.Cmd
+		if m.wmap.dirty {
+			save = m.saveMap()
+		}
+		target := world.Pos{X: m.wmap.curX, Y: m.wmap.curY}
+		if m.hasSnap && m.world != nil {
+			target = m.walkableNear(target, 8)
+		}
+		m, walk := m.startGoto(target)
+		return m, tea.Batch(save, walk)
 	case "w":
 		return m.placeOrRenameMarker()
 	case "x":
@@ -257,6 +286,7 @@ const (
 	msFort
 	msMarker
 	msDungeon
+	msPOI
 	msOther
 	msSelf
 	numMapStyles
@@ -297,6 +327,7 @@ var baseMapStyles = [numMapStyles]lipgloss.Style{
 	msFort:     mfg(ui.ColHP).Bold(true),
 	msMarker:   mfg("#f472b6").Bold(true),
 	msDungeon:  mfg("#c084fc").Bold(true),
+	msPOI:      mfg("#fbbf24").Bold(true),
 	msOther:    mfg("#22d3ee").Bold(true),
 	msSelf:     lipgloss.NewStyle().Background(lipgloss.Color(ui.ColAccent)).Foreground(lipgloss.Color(ui.ColInk)).Bold(true),
 }
@@ -336,6 +367,16 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: ">", st: msDungeon}
 	case world.Rock:
 		return mapCell{r: "#", st: msUnknown}
+	case world.Campfire:
+		return mapCell{r: "&", st: msPOI}
+	case world.Shrine:
+		return mapCell{r: "o", st: msPOI}
+	case world.Tower:
+		return mapCell{r: "I", st: msPOI}
+	case world.Stone:
+		return mapCell{r: "|", st: msPOI}
+	case world.LairChest:
+		return mapCell{r: "x", st: msPOI}
 	default: // Wall
 		return mapCell{r: "#", st: msWall}
 	}
@@ -411,6 +452,14 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 			put(ctr, mapCell{r: "X", st: msFort})
 		} else {
 			put(ctr, mapCell{r: "H", st: msVillage})
+		}
+	}
+	// Un point d'intérêt est une seule case: le vote ci-dessus la noie dès que la carte est dézoomée.
+	for _, poi := range w.POIsWithin(cx, cy, radius) {
+		if st.isExplored(poi.Pos.X, poi.Pos.Y) {
+			cell := terrainCell(poi.Tile())
+			cell.st += climatShift(w.ClimateAt(poi.Pos.X, poi.Pos.Y))
+			put(poi.Pos, cell)
 		}
 	}
 	for _, p := range st.entrances {
@@ -526,6 +575,11 @@ func (m Model) legendLines(rows int, c world.Climate) []string {
 		entry("~", msWater, "map.leg.water"),
 		entry("=", msRoad, "map.leg.road"),
 		entry(">", msDungeon, "map.leg.dungeon"),
+		entry("&", msPOI, "map.leg.campfire"),
+		entry("o", msPOI, "map.leg.shrine"),
+		entry("x", msPOI, "map.leg.lair"),
+		entry("I", msPOI, "map.leg.tower"),
+		entry("|", msPOI, "map.leg.stone"),
 		entry("*", msMarker, "map.leg.marker"),
 		entry("░", msUnknown, "map.leg.unexplored"),
 	}

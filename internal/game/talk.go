@@ -153,7 +153,7 @@ func (g *Game) ask(p *player, text string, opening bool) {
 		},
 		Message: text, History: slices.Clone(t.history), Opening: opening,
 		Reputation: p.rep[t.npc.Region], Impression: i18n.T(p.lang, "hero.impression."+hero.Impression(p.stats.Scores.Mod(hero.CHA))), Offer: g.offerContext(p, t.npc),
-		Landmarks: g.landmarksIfKnown(t.npc, p.lang),
+		Landmarks: g.landmarksIfKnown(t.npc, p.lang), Residents: g.residentsFor(t.npc, p.lang),
 	}
 	id, gen := p.id, t.gen
 	g.Talker.Ask(req, func(rep npcai.Reply) {

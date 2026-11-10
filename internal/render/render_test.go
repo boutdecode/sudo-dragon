@@ -94,7 +94,7 @@ func TestEverySpeciesHasALook(t *testing.T) {
 		}
 	}
 	for kind := range monsterLooks {
-		if !slices.Contains(game.SpeciesKinds(), kind) {
+		if !slices.Contains(game.SpeciesKinds(), kind) && kind != "guard" { // le garde n'est pas une espèce de biome
 			t.Errorf("apparence pour l'espèce inexistante %q", kind)
 		}
 	}
