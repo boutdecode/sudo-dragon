@@ -49,13 +49,40 @@ func main() {
 	sites := flag.Bool("sites", false, "liste les structures de la zone et marque PNJ (M marchand, H soigneur) et garnisons (S soldat, K élite, B seigneur)")
 	territories := flag.Bool("territories", false, "dessine les contrées (une lettre chacune, une cellule = -step tuiles) au lieu du terrain, puis les nomme")
 	step := flag.Int("step", 40, "avec -territories : tuiles par cellule")
+	zoom := flag.Int("zoom", 1, "avec -raw : tuiles par cellule (vue d'ensemble du terrain)")
+	raw := flag.Bool("raw", false, "terrain brut seul (sans structures ni routes), échantillonné tous les -zoom tuiles")
+	gen := flag.Int("gen", world.GenLatest, "version du générateur de terrain")
 	flag.Parse()
 
-	wd := world.New(*seed)
+	wd := world.NewVersion(*seed, *gen)
 	x0, y0 := *cx-*w/2, *cy-*h/2
 
 	if *territories {
 		printTerritories(wd, *cx, *cy, *w, *h, max(1, *step))
+		return
+	}
+
+	if *raw {
+		z := max(1, *zoom)
+		var sb strings.Builder
+		counts := map[world.Tile]int{}
+		for j := 0; j < *h; j++ {
+			for i := 0; i < *w; i++ {
+				t := wd.Terrain(*cx+(i-*w/2)*z, *cy+(j-*h/2)*z)
+				counts[t]++
+				sb.WriteRune(t.Glyph())
+			}
+			sb.WriteByte('\n')
+		}
+		fmt.Print(sb.String())
+		total := float64(*w * *h)
+		for t := world.Tile(0); t < world.NumTiles; t++ {
+			if counts[t] == 0 {
+				continue
+			}
+			fmt.Printf("%c %.1f%%  ", t.Glyph(), 100*float64(counts[t])/total)
+		}
+		fmt.Println()
 		return
 	}
 

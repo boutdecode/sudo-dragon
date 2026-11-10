@@ -20,7 +20,7 @@ func dungeonsAround(w *World, n int) []*Dungeon {
 }
 
 func TestDungeonsExistAndAreDeterministic(t *testing.T) {
-	a, b := New(42), New(42)
+	a, b := newTestWorld(42), newTestWorld(42)
 	da, db := dungeonsAround(a, 8), dungeonsAround(b, 8)
 	if len(da) < 10 {
 		t.Fatalf("seulement %d donjons dans 289 régions", len(da))
@@ -37,7 +37,7 @@ func TestDungeonsExistAndAreDeterministic(t *testing.T) {
 }
 
 func TestDungeonEntrancesAreHiddenOnOpenGround(t *testing.T) {
-	w := New(7)
+	w := newTestWorld(7)
 	for _, d := range dungeonsAround(w, 6) {
 		if RegionOf(d.Entrance.X, d.Entrance.Y) != d.Region {
 			t.Errorf("%s: entrée hors de sa région", d.ID)
@@ -46,10 +46,8 @@ func TestDungeonEntrancesAreHiddenOnOpenGround(t *testing.T) {
 			t.Errorf("%s: entrée dans un lieu", d.ID)
 		}
 		// Une route peut la croiser (les routes ne sont pas calculées pour placer un donjon: voir dungeonSpotOK).
-		switch w.TileAt(d.Entrance.X, d.Entrance.Y) {
-		case Plain, Forest, Hills, Sand, Road:
-		default:
-			t.Errorf("%s: entrée sur %v", d.ID, w.TileAt(d.Entrance.X, d.Entrance.Y))
+		if t0 := w.TileAt(d.Entrance.X, d.Entrance.Y); !t0.ordinary() && t0 != Road {
+			t.Errorf("%s: entrée sur %v", d.ID, t0)
 		}
 		if got := w.DungeonAt(d.Entrance.X, d.Entrance.Y); got != d {
 			t.Errorf("%s: DungeonAt ne le retrouve pas", d.ID)
@@ -62,7 +60,7 @@ func TestDungeonEntrancesAreHiddenOnOpenGround(t *testing.T) {
 
 func TestDungeonNamesAreUniqueNearby(t *testing.T) {
 	for _, seed := range []int64{1, 42} {
-		w := New(seed)
+		w := newTestWorld(seed)
 		all := dungeonsAround(w, 9)
 		for i, a := range all {
 			for _, b := range all[i+1:] {
@@ -158,16 +156,16 @@ func TestDungeonMapIsStable(t *testing.T) {
 // Ajouter les donjons ne doit pas changer les plans existants (voir TestExistingLayoutsAreFrozen):
 // l'existence d'un donjon ne consomme aucun tirage du flux des lieux.
 func TestDungeonsDoNotMoveStructures(t *testing.T) {
-	w := New(42)
-	before := layoutFingerprint(42)
+	w := newTestWorld(42)
+	before := layoutFingerprint(42, testGen)
 	dungeonsAround(w, 6)
-	if layoutFingerprint(42) != before {
+	if layoutFingerprint(42, testGen) != before {
 		t.Error("les donjons ont modifié les plans")
 	}
 }
 
 func TestDungeonsWithinFindsOnlyCloseEntrances(t *testing.T) {
-	w := New(42)
+	w := newTestWorld(42)
 	for _, d := range dungeonsAround(w, 5) {
 		for _, r := range []int{0, 3, 20} {
 			found := false

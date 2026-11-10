@@ -19,10 +19,10 @@ var (
 func sharedWorld(seed int64) *World {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
-	if w, ok := sharedWorlds[seed]; ok {
+	if w, ok := sharedWorlds[seed]; ok && w.GenVersion == testGen {
 		return w
 	}
-	w := New(seed)
+	w := newTestWorld(seed)
 	sharedWorlds[seed] = w
 	return w
 }
@@ -47,7 +47,7 @@ func sameStructure(a, b *Structure) bool {
 
 func TestStructuresAreDeterministic(t *testing.T) {
 	for _, seed := range testSeeds {
-		a, b := New(seed), New(seed)
+		a, b := newTestWorld(seed), newTestWorld(seed)
 		for ry := -4; ry <= 4; ry++ {
 			for rx := -4; rx <= 4; rx++ {
 				sa, sb := a.structureForRegion(RegionPos{rx, ry}), b.structureForRegion(RegionPos{rx, ry})
@@ -58,7 +58,7 @@ func TestStructuresAreDeterministic(t *testing.T) {
 		}
 	}
 	// Une autre seed donne un autre monde.
-	a, b := allStructures(New(1), 4), allStructures(New(2), 4)
+	a, b := allStructures(newTestWorld(1), 4), allStructures(newTestWorld(2), 4)
 	if len(a) == len(b) {
 		same := true
 		for i := range a {
@@ -72,7 +72,7 @@ func TestStructuresAreDeterministic(t *testing.T) {
 
 // Le cache ne doit pas changer le résultat: vidé, il se reconstruit à l'identique.
 func TestStructureCacheRebuildsIdentically(t *testing.T) {
-	w := New(7)
+	w := newTestWorld(7)
 	before := allStructures(w, 3)
 	w.smu.Lock()
 	clear(w.structs)
@@ -337,7 +337,8 @@ func TestNoStructureNearSpawn(t *testing.T) {
 		if near := w.StructuresNear(sp, startClearance-1); len(near) != 0 {
 			t.Fatalf("seed %d: %v à moins de %d cases du point de départ %v", seed, near[0].Kind, startClearance, sp)
 		}
-		if tile := w.At(sp.X, sp.Y); tile != Plain && tile != Forest {
+		// Une route peut passer sur le point de départ: elle reste praticable.
+		if tile := w.At(sp.X, sp.Y); tile != Plain && tile != Forest && tile != Road {
 			t.Fatalf("seed %d: le point de départ est sur %d", seed, tile)
 		}
 	}
@@ -552,7 +553,7 @@ func TestStructureDistribution(t *testing.T) {
 }
 
 func TestFirstChunkGenerationIsFast(t *testing.T) {
-	w := New(1)
+	w := newTestWorld(1)
 	start := time.Now()
 	for cy := -5; cy < 5; cy++ {
 		for cx := -5; cx < 5; cx++ {
@@ -577,7 +578,7 @@ func TestWallsBlockAndDoorsOpen(t *testing.T) {
 
 func BenchmarkChunkWithStructures(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		w := New(int64(i % 5))
+		w := newTestWorld(int64(i % 5))
 		for cy := 0; cy < 8; cy++ {
 			for cx := 0; cx < 8; cx++ {
 				w.Chunk(ChunkPos{cx, cy})

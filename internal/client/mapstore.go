@@ -59,7 +59,16 @@ var (
 	mapStoreDone uint64        // dernière demande écrite (sous mapStoreMu)
 )
 
-func seedKey(seed int64) string { return strconv.FormatUint(uint64(seed), 16) }
+// seedKey est la clé d'un monde dans le fichier: la graine, suivie de la version du générateur de terrain au-delà de
+// la première (une même graine ne donne pas le même terrain d'une version à l'autre; les clés d'avant le
+// versionnage restent valables).
+func seedKey(seed int64, gen int) string {
+	k := strconv.FormatUint(uint64(seed), 16)
+	if gen > 1 {
+		k += "-g" + strconv.Itoa(gen)
+	}
+	return k
+}
 
 // readStore lit le fichier complet ; absent ou corrompu = vide.
 func readStore(path string) map[string]storedWorld {
@@ -73,14 +82,14 @@ func readStore(path string) map[string]storedWorld {
 }
 
 // loadMapState charge les repères et l'exploration enregistrés pour cette graine.
-func loadMapState(seed int64) mapState {
+func loadMapState(seed int64, gen int) mapState {
 	st := mapState{explored: map[[2]int]struct{}{}}
 	path := mapStorePath()
 	if path == "" {
 		return st
 	}
 	mapStoreMu.Lock()
-	sw := readStore(path)[seedKey(seed)]
+	sw := readStore(path)[seedKey(seed, gen)]
 	mapStoreMu.Unlock()
 	for _, b := range sw.Explored {
 		st.explored[b] = struct{}{}
@@ -95,7 +104,7 @@ func loadMapState(seed int64) mapState {
 
 // snapshotStore copie l'état à écrire (triée pour un fichier stable).
 func (m *Model) snapshotStore() (key string, sw storedWorld) {
-	key = seedKey(m.world.Seed)
+	key = seedKey(m.world.Seed, m.world.GenVersion)
 	sw.Markers = make([]storedMarker, len(m.wmap.markers))
 	for i, mk := range m.wmap.markers {
 		sw.Markers[i] = storedMarker{mk.Pos.X, mk.Pos.Y, mk.Name}

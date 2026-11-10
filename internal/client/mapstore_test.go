@@ -164,14 +164,14 @@ func TestMapStoreRoundTripKeepsOtherSeeds(t *testing.T) {
 	other.wmap = mapState{explored: map[[2]int]struct{}{{7, 8}: {}}}
 	other.saveMapNow()
 
-	got := loadMapState(1)
+	got := loadMapState(1, 1)
 	if len(got.markers) != 1 || got.markers[0].Name != "Camp" || got.markers[0].Pos != (world.Pos{X: 5, Y: -6}) {
 		t.Errorf("repères: %+v", got.markers)
 	}
 	if len(got.explored) != len(m.wmap.explored) || len(got.explored) == 0 {
 		t.Errorf("exploration: %d/%d", len(got.explored), len(m.wmap.explored))
 	}
-	if g2 := loadMapState(2); len(g2.explored) != 1 {
+	if g2 := loadMapState(2, 1); len(g2.explored) != 1 {
 		t.Errorf("la graine 2 a été écrasée: %+v", g2.explored)
 	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
@@ -181,17 +181,17 @@ func TestMapStoreRoundTripKeepsOtherSeeds(t *testing.T) {
 
 func TestMapStoreMissingOrCorrupt(t *testing.T) {
 	path := tempStore(t)
-	if st := loadMapState(1); len(st.markers) != 0 || st.explored == nil {
+	if st := loadMapState(1, 1); len(st.markers) != 0 || st.explored == nil {
 		t.Error("fichier absent : état vide non nil attendu")
 	}
 	os.MkdirAll(filepath.Dir(path), 0o700)
 	os.WriteFile(path, []byte("{pas du json"), 0o600)
-	if st := loadMapState(1); len(st.markers) != 0 {
+	if st := loadMapState(1, 1); len(st.markers) != 0 {
 		t.Error("fichier corrompu : état vide attendu")
 	}
 	m := mapModel(i18n.FR, 120, 40)
 	m.saveMapNow() // doit réécrire un fichier valide par-dessus
-	if st := loadMapState(1); len(st.explored) == 0 {
+	if st := loadMapState(1, 1); len(st.explored) == 0 {
 		t.Error("la sauvegarde devrait remplacer le fichier corrompu")
 	}
 }

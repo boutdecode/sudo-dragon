@@ -51,6 +51,15 @@ const (
 	Spring    // source ou oasis
 	Ruin      // ruines gardées
 
+	// River est une rivière: eau peu profonde, franchissable à gué (voir terrain2.go). Un pont est une route posée dessus.
+	River
+
+	// Biomes de la v2 (voir terrain2.go): tous franchissables.
+	Tundra // sol gelé des hautes latitudes
+	Desert // sable et roche des zones chaudes et sèches
+	Swamp  // marais, bas et humide
+	Jungle // forêt dense des zones chaudes et humides
+
 	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
 	NumTiles
 )
@@ -106,8 +115,28 @@ func (t Tile) Glyph() rune {
 		return 'v'
 	case Ruin:
 		return '/'
+	case River:
+		return '-'
+	case Tundra:
+		return ','
+	case Desert:
+		return ';'
+	case Swamp:
+		return 'm'
+	case Jungle:
+		return 'J'
 	}
 	return '?'
+}
+
+// ordinary indique un terrain naturel ordinaire: assez plat et sec pour un donjon caché, un point d'intérêt,
+// un trésor enterré ou une structure. Exclut l'eau, les montagnes, les rivières et les marais.
+func (t Tile) ordinary() bool {
+	switch t {
+	case Plain, Forest, Hills, Sand, Tundra, Desert, Jungle:
+		return true
+	}
+	return false
 }
 
 // Walkable indique si un joueur peut marcher sur la tuile.
@@ -134,9 +163,14 @@ type Chunk struct {
 // World génère et met en cache des chunks à partir d'une seed.
 type World struct {
 	Seed int64
+	// GenVersion est la version du générateur de terrain (voir GenLatest). Un monde déjà
+	// joué garde la sienne: changer le terrain d'une base existante rendrait incohérentes
+	// les positions sauvegardées.
+	GenVersion int
 
 	elevation opensimplex.Noise
 	moisture  opensimplex.Noise
+	noise2    noise2 // bruits du générateur v2
 
 	mu    sync.Mutex
 	cache map[ChunkPos]*Chunk
@@ -158,24 +192,43 @@ type World struct {
 
 	// Points d'intérêt (voir poi.go). pmu est indépendant des autres verrous : il n'est jamais tenu pendant un calcul.
 	pmu  sync.Mutex
-	pois map[RegionPos]*POI
+	pois map[RegionPos][]*POI
 
 	// Routes entre lieux (voir roads.go). rmu est pris avant smu, jamais après.
 	rmu   sync.Mutex
 	roads map[roadKey]*roadLink
 }
 
-// New crée un monde déterministe pour la seed donnée.
-func New(seed int64) *World {
+// Versions du générateur de terrain.
+const (
+	// GenV1 est le générateur d'origine (élévation + humidité, sans continents).
+	GenV1 = 1
+	// GenV2 ajoute continents, océans, îles, chaînes de montagnes, rivières et biomes (voir terrain2.go).
+	GenV2 = 2
+	// GenLatest est la version utilisée pour les nouveaux mondes.
+	GenLatest = GenV2
+)
+
+// New crée un monde déterministe pour la seed donnée, avec le générateur d'origine (v1).
+func New(seed int64) *World { return NewVersion(seed, GenV1) }
+
+// NewVersion crée un monde déterministe pour la seed et la version de générateur données.
+// Une version inconnue ou nulle retombe sur v1 (anciens clients et bases sans version).
+func NewVersion(seed int64, gen int) *World {
+	if gen < GenV1 || gen > GenV2 {
+		gen = GenV1
+	}
 	return &World{
-		Seed:      seed,
-		elevation: opensimplex.New(seed),
-		moisture:  opensimplex.New(seed ^ 0x5DEECE66D),
-		cache:     make(map[ChunkPos]*Chunk),
-		structs:   make(map[RegionPos]*Structure),
+		Seed:       seed,
+		GenVersion: gen,
+		noise2:     newNoise2(seed),
+		elevation:  opensimplex.New(seed),
+		moisture:   opensimplex.New(seed ^ 0x5DEECE66D),
+		cache:      make(map[ChunkPos]*Chunk),
+		structs:    make(map[RegionPos]*Structure),
 
 		dungeons:    make(map[RegionPos]*Dungeon),
-		pois:        make(map[RegionPos]*POI),
+		pois:        make(map[RegionPos][]*POI),
 		territories: make(map[TerritoryID]*Territory),
 		roads:       make(map[roadKey]*roadLink),
 	}
@@ -203,7 +256,7 @@ func (w *World) TileAt(x, y int) Tile {
 		return p.Tile()
 	}
 	t := w.terrainAt(x, y)
-	if roadCost(t) > 0 && onRoad(w.roadsAround(RegionOf(x, y)), x, y) {
+	if w.roadCostOf(t) > 0 && onRoad(w.roadsAround(RegionOf(x, y)), x, y) {
 		return Road
 	}
 	return t
@@ -212,6 +265,17 @@ func (w *World) TileAt(x, y int) Tile {
 // terrainAt calcule le terrain brut, sans structure. Le placement des
 // structures s'appuie sur lui (jamais sur TileAt, pour éviter toute circularité).
 func (w *World) terrainAt(x, y int) Tile {
+	if w.GenVersion >= GenV2 {
+		return w.terrainAtV2(x, y)
+	}
+	return w.terrainAtV1(x, y)
+}
+
+// Terrain est le terrain brut en (x, y), sans structure, POI ni route. Pour les outils de visualisation.
+func (w *World) Terrain(x, y int) Tile { return w.terrainAt(x, y) }
+
+// terrainAtV1 est le générateur d'origine, figé: ne pas le modifier (layout_golden_test).
+func (w *World) terrainAtV1(x, y int) Tile {
 	const scale = 0.02
 	fx, fy := float64(x)*scale, float64(y)*scale
 	e := fbm(w.elevation, fx, fy)
@@ -260,15 +324,15 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 	rp := RegionOf(cp.X*ChunkSize, cp.Y*ChunkSize)
 	s := w.structureForRegion(rp)
 	roads := w.roadsAround(rp)
-	poi := w.POIOfRegion(rp)
+	pois := w.POIsOfRegion(rp)
 	for ty := range ChunkSize {
 		for tx := range ChunkSize {
 			x, y := cp.X*ChunkSize+tx, cp.Y*ChunkSize+ty
 			if s != nil && s.Contains(x, y) {
 				c.Tiles[ty][tx] = s.TileAt(x, y)
-			} else if poi != nil && poi.Pos.X == x && poi.Pos.Y == y {
+			} else if poi := poiIn(pois, x, y); poi != nil {
 				c.Tiles[ty][tx] = poi.Tile()
-			} else if t := w.terrainAt(x, y); roadCost(t) > 0 && onRoad(roads, x, y) {
+			} else if t := w.terrainAt(x, y); w.roadCostOf(t) > 0 && onRoad(roads, x, y) {
 				c.Tiles[ty][tx] = Road
 			} else {
 				c.Tiles[ty][tx] = t

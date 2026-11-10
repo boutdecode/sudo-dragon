@@ -87,14 +87,14 @@ func run() error {
 		return runLorePurge(context.Background(), st, *lorePurge, os.Stdout)
 	}
 
-	seed, err := resolveSeed(st, *seedFlag, seedSet)
+	seed, gen, err := resolveSeed(st, *seedFlag, seedSet)
 	if err != nil {
 		return err
 	}
 
 	persister := store.NewPersister(st, 2*time.Second, log)
 	be := store.Backend{Store: st, Persister: persister}
-	wld := world.New(seed)
+	wld := world.NewVersion(seed, gen)
 	srv := server.New(wld, log, be)
 	srv.SetRegistrationLimit(*maxReg)
 	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}
@@ -166,27 +166,39 @@ func run() error {
 	return nil
 }
 
-// resolveSeed détermine la seed du monde et la fixe dans la base. Changer de
-// seed sur une base existante est refusé: les positions sauvegardées
-// pointeraient vers un autre terrain (eau, montagne…).
-func resolveSeed(st *store.Store, flagSeed int64, flagSet bool) (int64, error) {
+// resolveSeed détermine la seed et la version du générateur du monde, et les fixe dans la
+// base. Changer de seed sur une base existante est refusé: les positions sauvegardées
+// pointeraient vers un autre terrain (eau, montagne…). Une base sans version de générateur
+// est un monde d'avant le versionnage: elle reste en v1; un nouveau monde prend la dernière.
+func resolveSeed(st *store.Store, flagSeed int64, flagSet bool) (seed int64, gen int, err error) {
 	stored, ok, err := st.Meta("seed")
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if !ok {
 		if err := st.SetMeta("seed", strconv.FormatInt(flagSeed, 10)); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
-		return flagSeed, nil
+		if err := st.SetMeta("gen", strconv.Itoa(world.GenLatest)); err != nil {
+			return 0, 0, err
+		}
+		return flagSeed, world.GenLatest, nil
 	}
-	seed, err := strconv.ParseInt(stored, 10, 64)
+	seed, err = strconv.ParseInt(stored, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("seed corrompue dans la base (%q): %w", stored, err)
+		return 0, 0, fmt.Errorf("seed corrompue dans la base (%q): %w", stored, err)
 	}
 	if flagSet && flagSeed != seed {
-		return 0, fmt.Errorf("la base a été créée avec la seed %d; refus de démarrer avec -seed %d "+
+		return 0, 0, fmt.Errorf("la base a été créée avec la seed %d; refus de démarrer avec -seed %d "+
 			"(les positions sauvegardées seraient incohérentes). Utilisez une autre base (-db) pour un nouveau monde", seed, flagSeed)
 	}
-	return seed, nil
+	gen = world.GenV1
+	if g, ok, err := st.Meta("gen"); err != nil {
+		return 0, 0, err
+	} else if ok {
+		if gen, err = strconv.Atoi(g); err != nil {
+			return 0, 0, fmt.Errorf("version de générateur corrompue dans la base (%q): %w", g, err)
+		}
+	}
+	return seed, gen, nil
 }

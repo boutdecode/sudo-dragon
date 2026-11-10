@@ -305,10 +305,10 @@ func TestSpringHealsWithCooldownAndOasisBoost(t *testing.T) {
 	// Plein de vie : rien n'est bu, le délai ne court pas.
 	p.hp, p.mana = 100, 10
 	walkOnto(g, p, plain)
-	if _, wait := g.cooling(p, plain.Region, 1); wait {
+	if _, wait := g.cooling(p, plain.Key(), 1); wait {
 		t.Fatal("le délai court alors qu'il n'y avait rien à soigner")
 	}
-	delete(p.poiCooling, plain.Region)
+	delete(p.poiCooling, plain.Key())
 
 	p.hp, p.mana = 10, 0
 	walkOnto(g, p, plain)

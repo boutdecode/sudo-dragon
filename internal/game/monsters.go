@@ -51,6 +51,12 @@ var speciesList = []species{
 	{Kind: "goblin", Habitat: world.Hills, MoveEvery: 4, Aggro: 8, HP: 22, Size: hero.Medium, Hit: 3, Dmg: dice.D(1, 8, 0), XP: 15},
 	{Kind: "yeti", Habitat: world.Snow, MoveEvery: 4, Aggro: 7, HP: 34, Size: hero.Large, Hit: 5, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 30},
 
+	// Biomes du générateur v2 (voir world/terrain2.go).
+	{Kind: "scorpion", Habitat: world.Desert, MoveEvery: 4, Aggro: 4, HP: 14, Size: hero.Small, Hit: 3, Dmg: dice.D(1, 6, 0), Reduction: dice.D(1, 4, 0), XP: 12},
+	{Kind: "panther", Habitat: world.Jungle, MoveEvery: 3, Aggro: 9, HP: 24, Size: hero.Medium, DexMod: 2, Hit: 4, Dmg: dice.D(1, 8, 1), XP: 20},
+	{Kind: "toad", Habitat: world.Swamp, MoveEvery: 5, Aggro: 4, HP: 14, Size: hero.Small, Hit: 2, Dmg: dice.D(1, 6, 0), XP: 8},
+	{Kind: "bear", Habitat: world.Tundra, MoveEvery: 4, Aggro: 6, HP: 30, Size: hero.Large, Hit: 4, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 22},
+
 	// Garnisons de forteresse: sans habitat, voir garrison.go.
 	{Kind: "skeleton", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 36, Size: hero.Medium, Hit: 4, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 25},
 	{Kind: "knight", Garrison: true, MoveEvery: 4, Aggro: 7, HP: 90, Size: hero.Medium, DexMod: 2, Hit: 7, Dmg: dice.D(2, 8, 0), Reduction: dice.D(1, 8, 0), XP: 50},
@@ -100,7 +106,7 @@ const (
 )
 
 // packExtra donne le nombre maximal de compagnons qui apparaissent avec une espèce de biome.
-var packExtra = map[string]int{"rat": 2, "crab": 1, "wolf": 2, "goblin": 1, "yeti": 0}
+var packExtra = map[string]int{"rat": 2, "crab": 1, "wolf": 2, "goblin": 1, "yeti": 0, "scorpion": 1, "panther": 1, "toad": 2, "bear": 0}
 
 // gatherGroup renvoie m et les monstres libres et compatibles qui l'entourent (au plus maxGroup en tout, les
 // plus proches d'abord).

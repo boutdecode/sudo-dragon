@@ -50,6 +50,11 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.LairChest: fg("#f87171").Bold(true),
 	world.Spring:    fg("#38bdf8").Bold(true),
 	world.Ruin:      fg("#d6d3d1").Bold(true),
+	world.River:     fg("#38bdf8"),
+	world.Tundra:    fg("#a5b4a0"),
+	world.Desert:    fg("#e3b95f"),
+	world.Swamp:     fg("#5f8a5a"),
+	world.Jungle:    fg("#059669").Bold(true),
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -71,6 +76,12 @@ var monsterLooks = map[string]monsterLook{
 	"crab":   {'c', fg("#f87171")},
 	"goblin": {'g', fg("#a3e635").Bold(true)},
 	"yeti":   {'Y', fg("#bae6fd").Bold(true)},
+
+	// Biomes du générateur v2.
+	"scorpion": {'s', fg("#f59e0b").Bold(true)},
+	"panther":  {'p', fg("#a78bfa").Bold(true)},
+	"toad":     {'b', fg("#84cc16")},
+	"bear":     {'U', fg("#e7e5e4").Bold(true)},
 
 	// Garnisons de forteresse.
 	"skeleton": {'S', fg("#e5e7eb")},
@@ -212,6 +223,11 @@ var variants = map[world.Tile][]rune{
 	world.LairChest: []rune("xxxxxx"),
 	world.Spring:    []rune("vvvvvv"),
 	world.Ruin:      []rune("//////"),
+	world.River:     []rune("--~-~-"),
+	world.Tundra:    []rune(",,.,'.,"),
+	world.Desert:    []rune(";;.;:;."),
+	world.Swamp:     []rune("mm~m\"m,m"),
+	world.Jungle:    []rune("JJTJPJJ"),
 }
 
 // TerrainName renvoie le nom d'un terrain dans la langue l.
@@ -263,6 +279,16 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.spring")
 	case world.Ruin:
 		return i18n.T(l, "terrain.ruin")
+	case world.River:
+		return i18n.T(l, "terrain.river")
+	case world.Tundra:
+		return i18n.T(l, "terrain.tundra")
+	case world.Desert:
+		return i18n.T(l, "terrain.desert")
+	case world.Swamp:
+		return i18n.T(l, "terrain.swamp")
+	case world.Jungle:
+		return i18n.T(l, "terrain.jungle")
 	}
 	return "?"
 }

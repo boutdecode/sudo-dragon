@@ -5,7 +5,7 @@ import "testing"
 func TestClimateIsStablePerTerritoryAndVaried(t *testing.T) {
 	seen := map[Climate]bool{}
 	for seed := int64(1); seed <= 6; seed++ {
-		w := New(seed)
+		w := newTestWorld(seed)
 		for x := -5000; x <= 5000; x += 250 {
 			for y := -5000; y <= 5000; y += 250 {
 				c := w.ClimateAt(x, y)
@@ -14,7 +14,8 @@ func TestClimateIsStablePerTerritoryAndVaried(t *testing.T) {
 				}
 				seen[c] = true
 				id := territoryIDAt(w.Seed, x, y)
-				if c != climateOf(w.Seed, id) || c != w.ClimateAt(x, y) {
+				if c != w.TerritoryAt(x, y).climate || c != w.ClimateAt(x, y) ||
+					(w.GenVersion < GenV2 && c != climateOf(w.Seed, id)) {
 					t.Fatalf("le climat de %d,%d n'est pas celui de sa contrée", x, y)
 				}
 			}

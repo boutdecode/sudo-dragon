@@ -280,6 +280,10 @@ const (
 	msForest
 	msHills
 	msMountain
+	msTundra
+	msDesert
+	msSwamp
+	msJungle
 	msRoad
 	msWall
 	msVillage
@@ -297,7 +301,7 @@ const (
 var mapStyles = func() []lipgloss.Style {
 	base := baseMapStyles
 	all := append([]lipgloss.Style(nil), base[:]...)
-	recolor := map[int]world.Tile{msWater: world.Water, msSand: world.Sand, msPlain: world.Plain, msForest: world.Forest, msHills: world.Hills, msMountain: world.Mountain}
+	recolor := map[int]world.Tile{msWater: world.Water, msSand: world.Sand, msPlain: world.Plain, msForest: world.Forest, msHills: world.Hills, msMountain: world.Mountain, msTundra: world.Tundra, msDesert: world.Desert, msSwamp: world.Swamp, msJungle: world.Jungle}
 	for c := world.Climate(1); c < world.NumClimates; c++ {
 		block := base
 		for ms, tile := range recolor {
@@ -321,6 +325,10 @@ var baseMapStyles = [numMapStyles]lipgloss.Style{
 	msForest:   mfg("#15803d").Bold(true),
 	msHills:    mfg("#b08968"),
 	msMountain: mfg("#9ca3af"),
+	msTundra:   mfg("#a5b4a0"),
+	msDesert:   mfg("#e3b95f"),
+	msSwamp:    mfg("#5f8a5a"),
+	msJungle:   mfg("#059669").Bold(true),
 	msRoad:     mfg("#d9a441"),
 	msWall:     mfg("#cbd5e1"),
 	msVillage:  mfg(ui.ColAccent).Bold(true),
@@ -341,7 +349,7 @@ type mapCell struct {
 // terrainCell choisit le glyphe d'une tuile.
 func terrainCell(t world.Tile) mapCell {
 	switch t {
-	case world.DeepWater, world.Water:
+	case world.DeepWater, world.Water, world.River:
 		return mapCell{r: "~", st: msWater}
 	case world.Sand:
 		return mapCell{r: ".", st: msSand}
@@ -353,6 +361,14 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: "n", st: msHills}
 	case world.Mountain, world.Snow:
 		return mapCell{r: "▲", st: msMountain}
+	case world.Tundra:
+		return mapCell{r: ",", st: msTundra}
+	case world.Desert:
+		return mapCell{r: ":", st: msDesert}
+	case world.Swamp:
+		return mapCell{r: "m", st: msSwamp}
+	case world.Jungle:
+		return mapCell{r: "J", st: msJungle}
 	case world.Road:
 		return mapCell{r: "=", st: msRoad}
 	case world.Floor:
@@ -577,6 +593,10 @@ func (m Model) legendLines(rows int, c world.Climate) []string {
 		entry("^", msForest, "map.leg.forest"),
 		entry("▲", msMountain, "map.leg.mountain"),
 		entry("~", msWater, "map.leg.water"),
+		entry(":", msDesert, "map.leg.desert"),
+		entry("J", msJungle, "map.leg.jungle"),
+		entry("m", msSwamp, "map.leg.swamp"),
+		entry(",", msTundra, "map.leg.tundra"),
 		entry("=", msRoad, "map.leg.road"),
 		entry(">", msDungeon, "map.leg.dungeon"),
 		entry("&", msPOI, "map.leg.campfire"),

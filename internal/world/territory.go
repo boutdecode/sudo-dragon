@@ -33,10 +33,14 @@ const (
 	themeForest
 	themeHills
 	themeMountain // montagnes, neige
+	themeDesert
+	themeJungle
+	themeSwamp
+	themeTundra
 	numThemes
 )
 
-var themeKeys = [numThemes]string{"coast", "plain", "forest", "hills", "mountain"}
+var themeKeys = [numThemes]string{"coast", "plain", "forest", "hills", "mountain", "desert", "jungle", "swamp", "tundra"}
 
 // Taille de la famille de radicaux d'une contrée.
 const familySize = 8
@@ -46,6 +50,9 @@ type Territory struct {
 	ID    TerritoryID
 	Site  Pos
 	Theme terrainTheme
+
+	// climate est le climat visuel (voir climate.go): tiré de la graine en v1, du climat du germe en v2.
+	climate Climate
 
 	// Famille de noms de lieux de la contrée : familySize débuts et fins de placeStart/placeEnd.
 	starts, ends [familySize]int
@@ -123,6 +130,9 @@ func (w *World) TerritoryAt(x, y int) *Territory {
 
 func (w *World) buildTerritory(id TerritoryID) *Territory {
 	t := &Territory{ID: id, Site: siteOf(w.Seed, id.X, id.Y)}
+	t.climate = climateOf(w.Seed, id)
+	var sumTemp, sumWet float64 // climat réel moyen des points de terre (v2)
+	var nLand int
 	t.starts, t.ends = familyOf(w.Seed, id)
 	rng := territoryRNG(w.Seed, id, 20)
 	t.nameStart, t.nameEnd, t.variant = rng.IntN(familySize), rng.IntN(familySize), rng.IntN(2)
@@ -136,6 +146,12 @@ func (w *World) buildTerritory(id TerritoryID) *Territory {
 			if territoryIDAt(w.Seed, x, y) != id {
 				continue
 			}
+			if w.GenVersion >= GenV2 {
+				if e := w.elev2(x, y); e > 0.04 {
+					tp, wt := w.climate2(x, y, e)
+					sumTemp, sumWet, nLand = sumTemp+tp, sumWet+wt, nLand+1
+				}
+			}
 			switch w.terrainAt(x, y) {
 			case DeepWater:
 				// La haute mer ne nomme pas une contrée : seules ses côtes comptent.
@@ -147,10 +163,23 @@ func (w *World) buildTerritory(id TerritoryID) *Territory {
 				count[themeForest] += 2
 			case Hills:
 				count[themeHills] += 2
+			case Desert:
+				count[themeDesert] += 2
+			case Jungle:
+				count[themeJungle] += 2
+			case Swamp:
+				count[themeSwamp] += 2
+			case Tundra:
+				count[themeTundra] += 2
+			case River:
+				count[themeCoast]++
 			default: // Mountain, Snow
 				count[themeMountain] += 2
 			}
 		}
+	}
+	if nLand > 0 {
+		t.climate = climateFrom(sumTemp/float64(nLand), sumWet/float64(nLand))
 	}
 	t.Theme = themePlain // contrée presque entièrement marine : on la dit de plaine, à défaut
 	best := 0

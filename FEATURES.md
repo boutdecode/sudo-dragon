@@ -5,17 +5,20 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 ## Monde et génération (`internal/world/`)
 
 - **Monde infini** généré par bruit simplex depuis une seed, par chunks de 32×32.
-- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier. Tuiles de points d'intérêt : feu de camp, sanctuaire, tour de guet, pierre dressée, coffre de repaire, source, ruines (voir plus bas).
-- **Lieux** : au plus un par région de 256×256.
+- **Versions du générateur** (`World.GenVersion`) : un monde garde la version de terrain avec laquelle il a été créé (clé `gen` de la table `meta` ; une base sans cette clé est en **v1**, un nouveau monde en **v2**). Le serveur annonce la version dans le message `welcome` (`gen`, absent = 1) et le client construit le même terrain. La v1 est figée (`layout_golden_test`), la v2 l'est aussi.
+  - **v1** : une élévation et une humidité à une seule échelle (lacs, mers et reliefs en patchwork), sans rivières.
+  - **v2** (`world/terrain2.go`) : **continents** et **océans** (~600 cases, côtes déformées), **îles et archipels** en mer peu profonde, un continent garanti autour de l'origine, **chaînes de montagnes** (crêtes linéaires interrompues, bordées de collines), **rivières** qui serpentent (deux échelles de méandres, largeur de 2 à 5 cases mesurée à la distance de la ligne, variable le long du cours), naissent et meurent, et s'élargissent vers les côtes ; les chaînes de montagnes sont déformées de même, **lacs**, et un **climat** (température en bandes de latitude et en altitude, humidité à deux échelles et plus forte près de la mer, adouci autour de l'origine) qui donne les **biomes**. Les échelles sont resserrées pour que le paysage change toutes les 1 à 2 minutes de marche, et chaque biome contient ses **motifs locaux** (bosquets et clairières de 10 à 20 cases qui déchiquettent les lisières entre forêt et plaine, dunes, mares, taches de neige). La neige couvre les sommets des régions froides ; la plaine très froide est de la neige, puis de la toundra.
+- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige ; en v2, aussi **rivière** (`-`, praticable : un gué, et un pont quand une route la traverse), **toundra** (`,`), **désert** (`;`), **marais** (`m`) et **jungle** (`J`), tous praticables. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier. Tuiles de points d'intérêt : feu de camp, sanctuaire, tour de guet, pierre dressée, coffre de repaire, source, ruines (voir plus bas).
+- **Lieux** : au plus un par région de 256×256 (en v1 55 % des régions ont un lieu, 70 % en v2 ; les régions en partie sous l'eau en ont moins).
   - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
 - **Niveau de région** (`world/level.go`) : il croît avec l'éloignement de l'origine (0, 0), en distance de Chebyshev, de 1 à 20 : un niveau toutes les ~154 tuiles, soit quatre **tranches** de cinq niveaux (1-5, 6-10, 11-15, 16-20) larges de 3 régions (768 tuiles). Il ne dépend pas de la graine, donc le client le recalcule sans message. Il règle la force des monstres, le rang de l'équipement vendu et lâché, et le palier des donjons.
-- **Contrées** : pays nommés aux frontières irrégulières (Voronoi), noms selon le terrain dominant, en français et en anglais.
-- **Climats** (`world/climate.go`) : chaque contrée a un climat tiré de la graine (40 % **tempéré**, 20 % **tropical**, 20 % **aride**, 20 % **boréal**). Il est purement visuel (terrain, monstres et génération ne changent pas) et se recalcule des deux côtés sans message : franchir la frontière d'une contrée change les couleurs et les glyphes du terrain (tropical : verts vifs et mers turquoise ; aride : plaines jaunes, forêts olive clairsemées, collines rouges ; boréal : verts froids et bleutés). La neige, les routes des lieux, les structures et les donjons gardent leurs couleurs.
+- **Contrées** : pays nommés aux frontières irrégulières (Voronoi), noms selon le terrain dominant (côtes, plaines, forêts, collines, monts, et en v2 déserts, jungles, marais, toundras), en français et en anglais.
+- **Climats** (`world/climate.go`) : chaque contrée a un climat : en v1 tiré de la graine (40 % **tempéré**, 20 % **tropical**, 20 % **aride**, 20 % **boréal**) ; en v2 déduit de la température et de l'humidité réelles moyennes de ses terres (chaud et humide : tropical, chaud et sec : aride, froid : boréal, sinon tempéré), pour que les couleurs suivent les biomes. Il est purement visuel (terrain, monstres et génération ne changent pas) et se recalcule des deux côtés sans message : franchir la frontière d'une contrée change les couleurs et les glyphes du terrain (tropical : verts vifs et mers turquoise ; aride : plaines jaunes, forêts olive clairsemées, collines rouges ; boréal : verts froids et bleutés). La neige, les routes des lieux, les structures et les donjons gardent leurs couleurs.
 - **Routes entre lieux** (`roads.go`) : deux régions voisines (côte à côte, pas en diagonale) qui ont chacune un lieu sont reliées par une route.
   - Tracé par A* sur le terrain brut, confiné aux deux régions, donc identique quel que soit l'ordre de génération.
   - Les routes s'arrêtent au bord d'un lieu et rejoignent son chemin intérieur ; elles ne touchent jamais son emprise.
-  - Pont sur l'eau peu profonde (tuile `Road`) ; jamais d'eau profonde ni de montagne. Coût croissant selon le terrain (plaine < forêt < collines < neige).
+  - Pont sur les rivières (tuile `Road`) ; jamais d'eau profonde ni de montagne, et en v2 jamais d'eau du tout (mer, lacs, mares : les routes les contournent, des ports viendront plus tard) ; en v1 les routes gardent leur pont sur l'eau peu profonde. Coût croissant selon le terrain (plaine < forêt < collines < neige ; en v2 toundra et désert 2, marais 3, jungle 4, rivière 5).
 - **Donjons** (`dungeon.go`, `dungeonmap.go`) : environ une région sur cinq cache un donjon, dont l'**entrée secrète** est une case de terrain ordinaire (hors lieux et eau ; une route peut la croiser).
   - **Nom unique** dans un rayon de 3 régions (« Crypte de Valmor »…), en français et en anglais ; identifiant stable `x,y` de la région.
   - **Palier** de 1 à 5, tiré du niveau de région au centre de la région du donjon (1 + niveau / 4, soit un de plus toutes les 4 niveaux) ; il règle le nombre de salles (6 ou 7 au palier 1, jusqu'à 11 au palier 5), de gardes et d'élites.
@@ -38,7 +41,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - **Découverte** : passer à 3 cases ou moins d'une entrée la révèle, pour ce personnage seulement. Le serveur le dit au joueur (« Vous découvrez l'entrée secrète de… »), mémorise la découverte (table `discoveries`, sauvegardée tout de suite) et la renvoie à chaque connexion. Entrer dans un donjon révèle aussi l'entrée à tout le groupe.
   - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/goto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
   - Les quêtes de donjon (voir *PNJ, dialogues et quêtes*) révèlent aussi l'entrée du donjon visé, dès l'acceptation.
-- **Points d'intérêt** (`world/poi.go`, `game/poi.go`) : de petits repères en plein air, **une case chacun**, au plus un par région (~78 % des régions). Position, type et nom (« Menhir de Valmor »…, en français et en anglais) viennent de la seed par des flux dédiés : le client les recalcule sans message et aucun lieu ni donjon existant ne bouge. Ils sont **visibles d'emblée** (pas de découverte) ; on les place sur du terrain praticable, loin des lieux, du point de départ et des entrées de donjon, et les routes les contournent. Ils s'affichent sur la carte principale et sur la carte du monde (`M`, une fois la zone explorée), avec leur ligne de légende. On interagit en **marchant sur la case** :
+- **Points d'intérêt** (`world/poi.go`, `game/poi.go`) : de petits repères en plein air, **une case chacun**, au plus un par région en v1 (~78 % des régions) ; la v2 en ajoute jusqu'à **deux de plus** par région (55 % puis 30 %, à 40 cases au moins les uns des autres, jamais des pierres dressées : le réseau de pierres reste d'une par région), soit environ le double de points au total. Leur état (délais des feux, sources et sanctuaires ; repaires vidés) est tenu par point (région et indice). Position, type et nom (« Menhir de Valmor »…, en français et en anglais) viennent de la seed par des flux dédiés : le client les recalcule sans message et aucun lieu ni donjon existant ne bouge. Ils sont **visibles d'emblée** (pas de découverte) ; on les place sur du terrain praticable, loin des lieux, du point de départ et des entrées de donjon, et les routes les contournent. Ils s'affichent sur la carte principale et sur la carte du monde (`M`, une fois la zone explorée), avec leur ligne de légende. On interagit en **marchant sur la case** :
 
   | Point | Glyphe | Effet |
   |---|---|---|
@@ -76,7 +79,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 
 | Origine | Monstres |
 |---|---|
-| Biomes | rat (plaine), crabe (plage), loup (forêt), gobelin (collines), yéti (neige) |
+| Biomes | rat (plaine), crabe (plage), loup (forêt), gobelin (collines), yéti (neige) ; en v2 aussi scorpion (désert), panthère (jungle), crapaud (marais), ours (toundra) |
 | Forteresses | squelette, chevalier, seigneur de guerre (boss) |
 | Donjons | squelette, chevalier, **spectre**, **golem**, **liche** (boss) |
 
@@ -199,8 +202,8 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 - **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), point de réapparition, pierres dressées activées et cartes au trésor (colonnes de `characters`, migrations 17 et 18), lore, étalages (`npc_wares`).
 - Écriture asynchrone ; sauvegarde à la déconnexion, après chaque combat, toutes les 30 s, à l'arrêt propre.
-- La seed est fixée à la création de la base ; la changer sur une base existante est refusé.
-- **Côté client** : carte, repères et exploration dans `<UserConfigDir>/sudo-dragon/map.json` (une entrée par seed, écriture différée de 15 s). Le serveur n'en sait rien.
+- La seed est fixée à la création de la base ; la changer sur une base existante est refusé. La version du générateur de terrain l'est aussi (voir plus haut) : une base existante ne passe jamais à un autre terrain.
+- **Côté client** : carte, repères et exploration dans `<UserConfigDir>/sudo-dragon/map.json` (une entrée par seed, et par version du générateur au-delà de la v1 ; écriture différée de 15 s). Le serveur n'en sait rien.
 - Non persistés : le monde (recalculé de la seed), les garnisons et les repaires (réinitialisés au redémarrage), les bonus et cooldowns des points d'intérêt (en mémoire) et l'état des donjons (monstres vaincus, coffres ouverts : en mémoire, perdus au redémarrage du serveur). Seules les entrées découvertes sont sauvegardées.
 
 ## Réseau, multijoueur et exploitation (`internal/server/`, `internal/protocol/`)
@@ -229,7 +232,7 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 | `cmd/server` | serveur de jeu |
 | `cmd/client` | interface TUI (Bubble Tea v2, Lip Gloss) |
 | `cmd/bot` | joueurs automatiques pour les tests de charge |
-| `cmd/worldview` | dessine une zone du monde en ASCII (`-sites`, `-territories`) |
+| `cmd/worldview` | dessine une zone du monde en ASCII (`-sites`, `-territories`, `-gen` pour la version du générateur, `-raw -zoom N` pour une vue d'ensemble du terrain brut avec la part de chaque tuile) |
 
 `Makefile` : build, test, race, check, load, llm-smoke. Go 1.27 requis.
 

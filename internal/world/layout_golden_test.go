@@ -9,9 +9,9 @@ import (
 // layoutFingerprint résume ce qui définit les plans de 81 régions: type,
 // emplacement, tuiles, PNJ d'origine (type et position, sans les villageois) et postes de garnison. Les
 // noms et personnalités n'y figurent volontairement pas.
-func layoutFingerprint(seed int64) uint64 {
+func layoutFingerprint(seed int64, gen int) uint64 {
 	h := fnv.New64a()
-	w := New(seed)
+	w := NewVersion(seed, gen)
 	for ry := -4; ry <= 4; ry++ {
 		for rx := -4; rx <= 4; rx++ {
 			s := w.structureForRegion(RegionPos{rx, ry})
@@ -53,11 +53,28 @@ var goldenLayouts = map[int64]uint64{
 	1234: 0xe348716afb567060,
 }
 
+// goldenLayoutsV2 fige de même les plans du générateur v2, dès sa mise en service.
+var goldenLayoutsV2 = map[int64]uint64{
+	1:    0x1b75386754ae80d4,
+	2:    0x26d720c375a07de4,
+	7:    0xd279261500a54d6f,
+	42:   0xe059af7fba55c68e,
+	1234: 0xe6abf3c16efdb858,
+}
+
 func TestExistingLayoutsAreFrozen(t *testing.T) {
 	for seed, want := range goldenLayouts {
-		if got := layoutFingerprint(seed); got != want {
+		if got := layoutFingerprint(seed, GenV1); got != want {
 			t.Errorf("seed %d: les plans ont changé (empreinte 0x%016x, attendue 0x%016x): "+
 				"les mondes déjà joués seraient modifiés", seed, got, want)
+		}
+	}
+}
+
+func TestExistingLayoutsAreFrozenV2(t *testing.T) {
+	for seed, want := range goldenLayoutsV2 {
+		if got := layoutFingerprint(seed, GenV2); got != want {
+			t.Errorf("seed %d: les plans v2 ont changé (empreinte 0x%016x, attendue 0x%016x)", seed, got, want)
 		}
 	}
 }

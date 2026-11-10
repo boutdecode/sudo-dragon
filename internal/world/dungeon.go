@@ -212,9 +212,7 @@ func (w *World) dungeonEntrance(rp RegionPos) (Pos, bool) {
 func (w *World) dungeonSpotOK(rp RegionPos, x, y int) bool {
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
-			switch w.terrainAt(x+dx, y+dy) {
-			case Plain, Forest, Hills, Sand:
-			default:
+			if !w.terrainAt(x+dx, y+dy).ordinary() {
 				return false
 			}
 		}

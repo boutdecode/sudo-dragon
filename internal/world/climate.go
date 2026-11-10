@@ -44,7 +44,21 @@ func climateOf(seed int64, id TerritoryID) Climate {
 	return Boreal
 }
 
+// climateFrom déduit le climat d'une contrée de sa température et de son humidité moyennes (générateur v2): chaud
+// et humide donne le tropical, chaud et sec l'aride, froid le boréal. Les couleurs suivent ainsi les biomes du terrain.
+func climateFrom(temp, wet float64) Climate {
+	switch {
+	case temp > 0.35 && wet > 0.1:
+		return Tropical
+	case temp > 0.35:
+		return Arid
+	case temp < -0.35:
+		return Boreal
+	}
+	return Temperate
+}
+
 // ClimateAt renvoie le climat du point (x, y), celui de sa contrée.
 func (w *World) ClimateAt(x, y int) Climate {
-	return climateOf(w.Seed, territoryIDAt(w.Seed, x, y))
+	return w.TerritoryAt(x, y).climate
 }

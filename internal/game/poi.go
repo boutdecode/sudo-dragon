@@ -40,6 +40,7 @@ const (
 	ruinLevelBonus = 3     // idem pour le gardien d'une ruine
 	lairGearChance = 0.5   // part des coffres de repaire qui contiennent un objet
 	ruinGearChance = 0.8   // idem pour une ruine
+	lairSlotStride = 10    // écart entre les numéros d'emplacements de deux repaires d'une même région
 	lairSlotBase   = 100   // les emplacements d'un repaire sont numérotés à partir de là (ceux d'une forteresse, de 0)
 	lairGold       = 12    // or minimal par niveau du coffre ; le maximum est le double
 
@@ -131,15 +132,15 @@ func (g *Game) poiNotice(p *player, key string, args ...any) {
 // ticksToMinutes arrondit à la minute supérieure (une minute = 600 ticks).
 func ticksToMinutes(t uint64) int { return int((t + 599) / 600) }
 
-// cooling dit si le point de la région rp est encore sans effet pour p. Sinon, il arme le délai d.
-func (g *Game) cooling(p *player, rp world.RegionPos, d uint64) (left uint64, cooling bool) {
-	if until := p.poiCooling[rp]; g.tick < until {
+// cooling dit si le point k est encore sans effet pour p. Sinon, il arme le délai d.
+func (g *Game) cooling(p *player, k world.POIKey, d uint64) (left uint64, cooling bool) {
+	if until := p.poiCooling[k]; g.tick < until {
 		return until - g.tick, true
 	}
 	if len(p.poiCooling) > 256 {
 		clear(p.poiCooling)
 	}
-	p.poiCooling[rp] = g.tick + d
+	p.poiCooling[k] = g.tick + d
 	return 0, false
 }
 
@@ -176,13 +177,13 @@ func (g *Game) campfire(p *player, poi *world.POI) {
 		g.poiNotice(p, "poi.camp.set", name)
 		g.save(p)
 	}
-	if _, wait := g.cooling(p, poi.Region, campfireCooldown); wait {
+	if _, wait := g.cooling(p, poi.Key(), campfireCooldown); wait {
 		return
 	}
 	hp := min(p.stats.MaxHP-p.hp, (p.stats.MaxHP+1)/2)
 	mana := min(p.stats.MaxMana-p.mana, (p.stats.MaxMana+1)/2)
 	if hp <= 0 && mana <= 0 {
-		delete(p.poiCooling, poi.Region) // rien à soigner : le feu reste disponible
+		delete(p.poiCooling, poi.Key()) // rien à soigner : le feu reste disponible
 		return
 	}
 	p.hp += hp
@@ -210,7 +211,7 @@ func (g *Game) spring(p *player, poi *world.POI) {
 	if hp <= 0 && mana <= 0 {
 		return
 	}
-	if _, wait := g.cooling(p, poi.Region, springCooldown); wait {
+	if _, wait := g.cooling(p, poi.Key(), springCooldown); wait {
 		return
 	}
 	p.hp += hp
@@ -220,7 +221,7 @@ func (g *Game) spring(p *player, poi *world.POI) {
 
 func (g *Game) shrine(p *player, poi *world.POI) {
 	name := poi.NameIn(p.lang)
-	if left, wait := g.cooling(p, poi.Region, shrineCooldown); wait {
+	if left, wait := g.cooling(p, poi.Key(), shrineCooldown); wait {
 		g.poiNotice(p, "poi.shrine.cooling", name, ticksToMinutes(left))
 		return
 	}
@@ -272,7 +273,7 @@ func (g *Game) tower(p *player, poi *world.POI) {
 
 // lairKey est la clé de l'emplacement i du repaire poi.
 func lairKey(poi *world.POI, i int) world.SlotKey {
-	return world.SlotKey{Region: poi.Region, Index: lairSlotBase + i}
+	return world.SlotKey{Region: poi.Region, Index: lairSlotBase + poi.Index*lairSlotStride + i}
 }
 
 // activateLairs peuple les repaires proches d'un joueur, comme activateGarrisons pour les forteresses.
@@ -348,7 +349,7 @@ func (g *Game) openLairChest(p *player, poi *world.POI) {
 		g.poiNotice(p, prefix+".guarded")
 		return
 	}
-	if at, opened := g.lairOpened[poi.Region]; opened && g.tick-at < lairRespawn {
+	if at, opened := g.lairOpened[poi.Key()]; opened && g.tick-at < lairRespawn {
 		g.poiNotice(p, prefix+".empty")
 		return
 	}
@@ -366,7 +367,7 @@ func (g *Game) openLairChest(p *player, poi *world.POI) {
 		it := gear.MonsterLoot(p.lang, poi.Region, gear.TierForLevel(level)+1, g.rng.Uint64())
 		loot = &it
 	}
-	g.lairOpened[poi.Region] = g.tick
+	g.lairOpened[poi.Key()] = g.tick
 
 	gold := p.stats.AddGold(goldBase + g.rng.IntN(goldBase+1))
 	potions := p.stats.AddPotions(1 + g.rng.IntN(2))

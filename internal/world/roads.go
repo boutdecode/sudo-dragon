@@ -44,8 +44,26 @@ func roadCost(t Tile) int {
 		return 6
 	case Water:
 		return 10
+	case River:
+		return 5
+	case Tundra, Desert:
+		return 2
+	case Swamp:
+		return 3
+	case Jungle:
+		return 4
 	}
 	return 0
+}
+
+// roadCostOf est roadCost pour ce monde. À partir de la v2, une route ne traverse plus l'eau (mer, lacs, mares):
+// seules les rivières se franchissent, par un pont (on fera des ports plus tard). En v1, les routes existantes
+// gardent leur pont sur l'eau peu profonde.
+func (w *World) roadCostOf(t Tile) int {
+	if t == Water && w.GenVersion >= GenV2 {
+		return 0
+	}
+	return roadCost(t)
 }
 
 // roadsAround renvoie les liens touchant la région rp (au plus quatre).
@@ -186,7 +204,12 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 	}
 
 	// Une route ne traverse pas la case d'un point d'intérêt (voir poi.go) : elle la contournerait de toute façon à l'écran.
-	poiA, poiB := w.POIOfRegion(key.a), w.POIOfRegion(key.b)
+	poiTiles := map[Pos]bool{}
+	for _, rp := range [2]RegionPos{key.a, key.b} {
+		for _, p := range w.POIsOfRegion(rp) {
+			poiTiles[p.Pos] = true
+		}
+	}
 	terrain := make([]int8, bw*bh) // 0: pas encore calculé, -1: infranchissable
 	cost := func(x, y int) int {
 		p := Pos{x, y}
@@ -202,12 +225,12 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 			}
 			return 0
 		}
-		if (poiA != nil && p == poiA.Pos) || (poiB != nil && p == poiB.Pos) {
+		if poiTiles[p] {
 			return 0
 		}
 		i := (y-y0)*bw + (x - x0)
 		if terrain[i] == 0 {
-			if c := roadCost(w.terrainAt(x, y)); c > 0 {
+			if c := w.roadCostOf(w.terrainAt(x, y)); c > 0 {
 				terrain[i] = int8(c)
 			} else {
 				terrain[i] = -1

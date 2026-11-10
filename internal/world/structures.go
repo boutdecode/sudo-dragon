@@ -234,7 +234,7 @@ func (w *World) buildRegion(rp RegionPos) *Structure {
 		}
 	}
 
-	if rng.Float64() >= 0.55 { // pas de structure ici
+	if rng.Float64() >= w.structureChance() { // pas de structure ici
 		return nil
 	}
 	var kind Kind
@@ -331,8 +331,7 @@ func (w *World) siteQuality(kind Kind, ox, oy, W, H int) (flat, pref float64) {
 		for dx := 0; dx < W; dx += 3 {
 			n++
 			t := w.terrainAt(ox+dx, oy+dy)
-			switch t {
-			case Plain, Forest, Sand, Hills:
+			if t.ordinary() {
 				nFlat++
 				sumPref += preference(kind, t)
 			}
@@ -400,7 +399,7 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	origin := Pos{rp.X*RegionSize + x0, rp.Y*RegionSize + y0}
 	s := &Structure{Kind: kind, Region: rp, Origin: origin, W: c.w, H: c.h, tiles: c.t}
 	// Identités: flux séparés, pour ne pas décaler le tirage des plans.
-	s.Name, s.fort, s.base = placeName(kind, identityRNG(w.Seed, rp, 0), baseFor(w.Seed, rp))
+	s.Name, s.fort, s.base = placeName(kind, identityRNG(w.Seed, rp, 0), baseForGen(w.Seed, w.GenVersion, rp))
 	taken := map[string]bool{}
 	for i, n := range c.npcs {
 		// Deux PNJ d'un même lieu ne portent jamais le même nom: on retire avec un autre sel.
@@ -523,4 +522,13 @@ func (w *World) NPCsIn(x0, y0, x1, y1 int) []NPC {
 		}
 	}
 	return out
+}
+
+// structureChance est la part des régions qui portent un lieu. Le tirage consomme le même nombre de valeurs quel que
+// soit le seuil: en v1 il reste à 55 % (les mondes existants ne bougent pas), la v2 en met davantage.
+func (w *World) structureChance() float64 {
+	if w.GenVersion >= GenV2 {
+		return 0.7
+	}
+	return 0.55
 }

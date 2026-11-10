@@ -1,5 +1,7 @@
 package world
 
+import "slices"
+
 // Cases à creuser des cartes au trésor. Comme le reste du monde, elles sont ordinaires : rien n'indique la case sur la
 // carte. C'est la carte du joueur (voir game/treasure.go) qui en retient les coordonnées.
 
@@ -16,7 +18,7 @@ const (
 func (w *World) DigSpot(rp RegionPos, nonce uint64) (Pos, bool) {
 	rng := identityRNG(w.Seed, rp, digSalt+nonce%1_000_003)
 	anchor := w.spawnAnchor()
-	poi := w.POIOfRegion(rp)
+	pois := w.POIsOfRegion(rp)
 	var dun *Dungeon
 	if mayHideDungeon(w.Seed, rp) {
 		dun = w.DungeonOfRegion(rp)
@@ -27,7 +29,7 @@ func (w *World) DigSpot(rp RegionPos, nonce uint64) (Pos, bool) {
 		if abs(x-anchor.X) <= startClearance && abs(y-anchor.Y) <= startClearance {
 			continue
 		}
-		if poi != nil && max(abs(x-poi.Pos.X), abs(y-poi.Pos.Y)) <= digClearance {
+		if slices.ContainsFunc(pois, func(poi *POI) bool { return max(abs(x-poi.Pos.X), abs(y-poi.Pos.Y)) <= digClearance }) {
 			continue
 		}
 		if dun != nil && max(abs(x-dun.Entrance.X), abs(y-dun.Entrance.Y)) <= digClearance {
@@ -43,9 +45,7 @@ func (w *World) DigSpot(rp RegionPos, nonce uint64) (Pos, bool) {
 func (w *World) digSpotOK(rp RegionPos, x, y int) bool {
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
-			switch w.terrainAt(x+dx, y+dy) {
-			case Plain, Forest, Hills, Sand:
-			default:
+			if !w.terrainAt(x+dx, y+dy).ordinary() {
 				return false
 			}
 		}

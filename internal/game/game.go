@@ -92,11 +92,11 @@ type player struct {
 	sendDungeonsMsg func(protocol.Dungeons)
 
 	// Points d'intérêt (voir poi.go).
-	respawn    *world.Pos                 // dernier feu de camp : on y réapparaît après une défaite
-	stones     map[world.RegionPos]bool   // pierres dressées activées, par région
-	maps       []world.Pos                // cartes au trésor : cases à creuser (voir treasure.go)
-	buffs      []buff                     // bonus de sanctuaire en cours (pas persistés)
-	poiCooling map[world.RegionPos]uint64 // tick avant lequel le point de la région est sans effet pour ce joueur
+	respawn    *world.Pos               // dernier feu de camp : on y réapparaît après une défaite
+	stones     map[world.RegionPos]bool // pierres dressées activées, par région
+	maps       []world.Pos              // cartes au trésor : cases à creuser (voir treasure.go)
+	buffs      []buff                   // bonus de sanctuaire en cours (pas persistés)
+	poiCooling map[world.POIKey]uint64  // tick avant lequel le point est sans effet pour ce joueur
 }
 
 // Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
@@ -174,13 +174,13 @@ type Game struct {
 	talkSeq uint64 // dernier numéro de conversation attribué
 
 	monsters      map[int]*monster
-	monsterAt     map[world.Pos]int          // idem : carte principale seulement
-	slotMonster   map[world.SlotKey]int      // emplacement de forteresse -> monstre vivant
-	slotDefeated  map[world.SlotKey]uint64   // emplacement -> tick de la dernière victoire (repousse)
-	gd            guardState                 // gardes des villages et des villes (voir guards.go)
-	garrisonCount int                        // monstres de garnison vivants
-	car           caravanState               // marchands ambulants suivis (voir caravan.go)
-	lairOpened    map[world.RegionPos]uint64 // repaire -> tick de l'ouverture de son coffre (voir poi.go)
+	monsterAt     map[world.Pos]int        // idem : carte principale seulement
+	slotMonster   map[world.SlotKey]int    // emplacement de forteresse -> monstre vivant
+	slotDefeated  map[world.SlotKey]uint64 // emplacement -> tick de la dernière victoire (repousse)
+	gd            guardState               // gardes des villages et des villes (voir guards.go)
+	garrisonCount int                      // monstres de garnison vivants
+	car           caravanState             // marchands ambulants suivis (voir caravan.go)
+	lairOpened    map[world.POIKey]uint64  // repaire -> tick de l'ouverture de son coffre (voir poi.go)
 	nextMonsterID int
 
 	instances       map[ZoneID]*instance // instances de donjon (voir dungeon.go)
@@ -205,7 +205,7 @@ func New(w *world.World) *Game {
 		monsterAt:     make(map[world.Pos]int),
 		slotMonster:   make(map[world.SlotKey]int),
 		slotDefeated:  make(map[world.SlotKey]uint64),
-		lairOpened:    make(map[world.RegionPos]uint64),
+		lairOpened:    make(map[world.POIKey]uint64),
 		nextMonsterID: 1,
 		instances:     make(map[ZoneID]*instance),
 		dungeonZone:   make(map[string]ZoneID),
@@ -361,7 +361,7 @@ func (g *Game) join(name string, send func(protocol.Snapshot)) *player {
 // les valeurs hors bornes sont ramenées dans les bornes valides.
 func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved) *player {
 	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1,
-		discovered: map[world.RegionPos]bool{}, stones: map[world.RegionPos]bool{}, poiCooling: map[world.RegionPos]uint64{}}
+		discovered: map[world.RegionPos]bool{}, stones: map[world.RegionPos]bool{}, poiCooling: map[world.POIKey]uint64{}}
 	p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 	start := g.World.FindSpawn()
 	if saved != nil {

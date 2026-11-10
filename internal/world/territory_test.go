@@ -65,7 +65,7 @@ func TestTerritoriesAreOrganicAndAboutAThousandWide(t *testing.T) {
 }
 
 func TestTerritoryNamesAreStableLocalizedAndClean(t *testing.T) {
-	a, b := New(3), New(3)
+	a, b := newTestWorld(3), newTestWorld(3)
 	for _, p := range []Pos{{0, 0}, {900, 40}, {-3000, 2500}, {40000, -40000}} {
 		ta, tb := a.TerritoryAt(p.X, p.Y), b.TerritoryAt(p.X, p.Y)
 		fr, en := ta.NameIn(i18n.FR), ta.NameIn(i18n.EN)
@@ -123,7 +123,7 @@ func TestEveryThemeHasNamesInBothLanguages(t *testing.T) {
 }
 
 func TestStemsOfAPlaceBelongToItsTerritoryFamily(t *testing.T) {
-	w := New(1)
+	w := newTestWorld(1)
 	inFamily := func(base string, starts, ends [familySize]int) bool {
 		for _, a := range starts {
 			for _, b := range ends {

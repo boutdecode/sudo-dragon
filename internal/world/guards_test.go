@@ -18,7 +18,7 @@ func townsAndVillages(w *World) []*Structure {
 }
 
 func TestVillagesAndTownsHaveGuards(t *testing.T) {
-	w := New(1)
+	w := newTestWorld(1)
 	seenVillage, seenTown := false, false
 	for _, s := range townsAndVillages(w) {
 		want := guardsPerKind[s.Kind]
@@ -62,7 +62,7 @@ func TestVillagesAndTownsHaveGuards(t *testing.T) {
 }
 
 func TestGuardsAreDeterministicAndNeverPlacedInFortresses(t *testing.T) {
-	a, b := New(7), New(7)
+	a, b := newTestWorld(7), newTestWorld(7)
 	for _, s := range a.StructuresNear(a.FindSpawn(), 1500) {
 		o := b.StructureOfRegion(s.Region)
 		if len(o.Guards) != len(s.Guards) {

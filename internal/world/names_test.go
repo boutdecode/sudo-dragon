@@ -81,7 +81,7 @@ func TestFortressNamesLookLikeFortresses(t *testing.T) {
 
 // Mêmes identités pour tous, à chaque démarrage et après vidage du cache.
 func TestIdentitiesAreDeterministic(t *testing.T) {
-	a, b := New(42), New(42)
+	a, b := newTestWorld(42), newTestWorld(42)
 	for ry := -4; ry <= 4; ry++ {
 		for rx := -4; rx <= 4; rx++ {
 			sa, sb := a.structureForRegion(RegionPos{rx, ry}), b.structureForRegion(RegionPos{rx, ry})
@@ -145,7 +145,7 @@ func TestIdentitiesVaryBetweenPlacesAndSeeds(t *testing.T) {
 
 // Les identités ne dépendent pas de l'ordre dans lequel on visite les régions.
 func TestIdentityDoesNotDependOnVisitOrder(t *testing.T) {
-	forward, backward := New(7), New(7)
+	forward, backward := newTestWorld(7), newTestWorld(7)
 	var regions []RegionPos
 	for ry := -3; ry <= 3; ry++ {
 		for rx := -3; rx <= 3; rx++ {
@@ -331,7 +331,7 @@ func TestIdentityListsMatchTheCatalog(t *testing.T) {
 // Aucun radical de nom n'est partagé par deux lieux voisins (rayon des rumeurs et des quêtes).
 func TestPlaceStemsAreDistinctWithinClashRadius(t *testing.T) {
 	for _, seed := range []int64{1, 2, 7, 42, 1234} {
-		w := New(seed)
+		w := newTestWorld(seed)
 		type placed struct {
 			rp   RegionPos
 			base string
@@ -374,7 +374,7 @@ func TestMostPlacesKeepTheirOriginalName(t *testing.T) {
 }
 
 func TestStartVillageHasAStableName(t *testing.T) {
-	a, b := New(1), New(1)
+	a, b := newTestWorld(1), newTestWorld(1)
 	pos := a.FindSpawn()
 	sa, sb := a.StructureOfRegion(RegionOf(pos.X, pos.Y)), b.StructureOfRegion(RegionOf(pos.X, pos.Y))
 	if sa == nil || sa.Name == "" || sa.Name != sb.Name {
@@ -383,7 +383,7 @@ func TestStartVillageHasAStableName(t *testing.T) {
 }
 
 func TestPlaceNamesAreDeterministic(t *testing.T) {
-	a, b := New(5), New(5)
+	a, b := newTestWorld(5), newTestWorld(5)
 	for ry := -5; ry <= 5; ry++ {
 		for rx := -5; rx <= 5; rx++ {
 			rp := RegionPos{rx, ry}

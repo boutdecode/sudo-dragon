@@ -25,7 +25,7 @@ func (w *World) roadFor(k roadKey) *roadLink {
 }
 
 func TestRoadsExistAndAreDeterministic(t *testing.T) {
-	a, b := New(1), New(1)
+	a, b := newTestWorld(1), newTestWorld(1)
 	pairs := linkedPairs(a, 3)
 	if len(pairs) == 0 {
 		t.Fatal("aucune route générée entre les régions voisines")
@@ -47,7 +47,7 @@ func TestRoadsExistAndAreDeterministic(t *testing.T) {
 // Une route ne touche jamais l'emprise d'une structure, et la tuile vue par At
 // (chunks) est celle de TileAt.
 func TestRoadsStayOutsideStructuresAndAreWalkable(t *testing.T) {
-	w := New(1)
+	w := newTestWorld(1)
 	for _, k := range linkedPairs(w, 3) {
 		l := w.roadFor(k)
 		for p := range l.tiles {
@@ -66,7 +66,7 @@ func TestRoadsStayOutsideStructuresAndAreWalkable(t *testing.T) {
 
 // Deux lieux reliés sont joignables à pied par les tuiles praticables.
 func TestRoadsConnectTheirPlaces(t *testing.T) {
-	w := New(1)
+	w := newTestWorld(1)
 	checked := 0
 	for _, k := range linkedPairs(w, 3) {
 		sa, sb := w.structureForRegion(k.a), w.structureForRegion(k.b)
@@ -105,7 +105,7 @@ func TestRoadsConnectTheirPlaces(t *testing.T) {
 }
 
 func TestRoadRoutesAreOrderedContinuousAndOnRoads(t *testing.T) {
-	w := New(1)
+	w := newTestWorld(1)
 	routes := w.RoadRoutesNear(0, 0, 4*RegionSize)
 	if len(routes) == 0 {
 		t.Fatal("aucune route près de l'origine")

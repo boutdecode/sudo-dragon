@@ -211,7 +211,13 @@ func rawStem(seed int64, rp RegionPos) stem {
 // voisine (rayon nameClashRadius) antérieure dans l'ordre (Y puis X) a le même : il en tire alors un autre, jamais
 // égal à celui d'une voisine. Le test ne regarde que les tirages bruts, pas les structures : pas de génération
 // de plan, et le résultat ne dépend pas de ce que contiennent les voisines.
-func baseFor(seed int64, rp RegionPos) string {
+func baseFor(seed int64, rp RegionPos) string { return baseForGen(seed, GenV1, rp) }
+
+// baseForGen est baseFor pour une version de générateur: à partir de la v2, quand les quatre candidats de la tranche
+// sont tous pris par des voisines, on cherche dans toute la famille au lieu de retomber sur un radical déjà porté
+// (la v2 a plus de lieux, donc ce cas, rare en v1, s'y voit). La v1 garde son comportement: les noms des mondes
+// existants ne changent pas.
+func baseForGen(seed int64, gen int, rp RegionPos) string {
 	raw := rawStem(seed, rp)
 	starts, ends := familyOf(seed, territoryIDAt(seed, rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2))
 	taken := make(map[stem]bool, 48)
@@ -243,10 +249,21 @@ func baseFor(seed int64, rp RegionPos) string {
 	}
 	rot := identityRNG(seed, rp, 9000).IntN(len(slice))
 	cand := slice[rot]
+	free := false
 	for i := range slice {
 		if c := slice[(rot+i)%len(slice)]; !taken[c] {
-			cand = c
+			cand, free = c, true
 			break
+		}
+	}
+	if !free && gen >= GenV2 {
+		n := familySize * familySize
+		for i := range n {
+			k := (class + 16*rot + i) % n
+			if c := (stem{starts[k/familySize], ends[k%familySize]}); !taken[c] {
+				cand = c
+				break
+			}
 		}
 	}
 	return cand.String()

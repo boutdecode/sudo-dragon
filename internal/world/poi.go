@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
@@ -47,20 +48,54 @@ var poiWeights = []struct {
 	w    int
 }{{POICampfire, 30}, {POIShrine, 20}, {POILair, 20}, {POITower, 15}, {POIStone, 15}}
 
+// En v2, une région peut porter jusqu'à poiExtraMax points de plus que le principal, pour que le monde ne paraisse
+// pas vide. Ils ont leurs propres flux d'identité (jamais ceux du point principal) et ne sont pas des pierres dressées :
+// le réseau des pierres est indexé par région.
+const (
+	poiExtraMax  = 2
+	poiExtraSalt = 3_000_000 // + 10 par point supplémentaire; au-delà de la plage des cases à creuser (digSalt + nonce)
+	poiExtraGap  = 40        // distance minimale entre deux points d'une même région
+)
+
+// poiExtraChance est la probabilité de chaque point supplémentaire (le premier, puis le second).
+var poiExtraChance = [poiExtraMax]float64{0.55, 0.3}
+
+// poiExtraWeights règle la fréquence des types d'un point supplémentaire (somme 100).
+var poiExtraWeights = []struct {
+	kind POIKind
+	w    int
+}{{POICampfire, 25}, {POIShrine, 20}, {POILair, 20}, {POITower, 15}, {POISpring, 10}, {POIRuin, 10}}
+
+// POIKey identifie un point pour l'état du jeu (délais, repaires): sa région et son indice dans la région.
+type POIKey struct {
+	Region RegionPos
+	Index  int
+}
+
 // POI est un point d'intérêt posé dans une région.
 type POI struct {
 	Kind   POIKind
 	Region RegionPos
-	Pos    Pos
-	Seed   int64 // graine propre au point (nom, tirages du jeu)
+	// Index vaut 0 pour le point principal de la région, 1 ou 2 pour un point supplémentaire (v2).
+	Index int
+	Pos   Pos
+	Seed  int64 // graine propre au point (nom, tirages du jeu)
 	// Slots est la liste des emplacements de monstres d'un repaire ou d'une ruine (vide pour les autres types).
 	Slots []Pos
 
 	stem stem
 }
 
-// ID est l'identifiant stable du point : « x,y » de sa région.
-func (p *POI) ID() string { return fmt.Sprintf("%d,%d", p.Region.X, p.Region.Y) }
+// ID est l'identifiant stable du point : « x,y » de sa région, suivi de « #k » pour un point supplémentaire.
+func (p *POI) ID() string {
+	if p.Index > 0 {
+		return fmt.Sprintf("%d,%d#%d", p.Region.X, p.Region.Y, p.Index)
+	}
+	return fmt.Sprintf("%d,%d", p.Region.X, p.Region.Y)
+}
+
+// Key est la clé du point pour l'état du jeu.
+func (p *POI) Key() POIKey { return POIKey{p.Region, p.Index} }
 
 // Tile est la tuile que le point pose sur la carte.
 func (p *POI) Tile() Tile {
@@ -104,23 +139,49 @@ func poiNameKey(k POIKind) string {
 	return "poi.name.stone"
 }
 
-// POIOfRegion renvoie le point d'intérêt de la région rp, ou nil s'il n'y en a pas.
+// POIOfRegion renvoie le point d'intérêt principal de la région rp, ou nil s'il n'y en a pas.
 func (w *World) POIOfRegion(rp RegionPos) *POI {
+	for _, p := range w.POIsOfRegion(rp) {
+		if p.Index == 0 {
+			return p
+		}
+	}
+	return nil
+}
+
+// POIsOfRegion renvoie tous les points de la région rp: le principal d'abord, puis les supplémentaires (v2).
+func (w *World) POIsOfRegion(rp RegionPos) []*POI {
 	w.pmu.Lock()
-	if p, ok := w.pois[rp]; ok {
+	if l, ok := w.pois[rp]; ok {
 		w.pmu.Unlock()
-		return p
+		return l
 	}
 	w.pmu.Unlock()
 
-	p := w.buildPOI(rp) // hors verrou : touche aux structures
+	var l []*POI
+	if p := w.buildPOI(rp); p != nil { // hors verrou : touche aux structures
+		l = append(l, p)
+	}
+	if w.GenVersion >= GenV2 {
+		l = append(l, w.buildExtraPOIs(rp, l)...)
+	}
 	w.pmu.Lock()
 	if len(w.pois) >= poiCacheMax {
 		clear(w.pois)
 	}
-	w.pois[rp] = p
+	w.pois[rp] = l
 	w.pmu.Unlock()
-	return p
+	return l
+}
+
+// poiIn renvoie le point de la liste dont la tuile est (x, y), ou nil.
+func poiIn(list []*POI, x, y int) *POI {
+	for _, p := range list {
+		if p.Pos.X == x && p.Pos.Y == y {
+			return p
+		}
+	}
+	return nil
 }
 
 // POIsWithin renvoie les points à au plus r cases (distance de Chebyshev) de (x, y).
@@ -129,8 +190,10 @@ func (w *World) POIsWithin(x, y, r int) []*POI {
 	var out []*POI
 	for ry := lo.Y; ry <= hi.Y; ry++ {
 		for rx := lo.X; rx <= hi.X; rx++ {
-			if p := w.POIOfRegion(RegionPos{rx, ry}); p != nil && max(abs(p.Pos.X-x), abs(p.Pos.Y-y)) <= r {
-				out = append(out, p)
+			for _, p := range w.POIsOfRegion(RegionPos{rx, ry}) {
+				if max(abs(p.Pos.X-x), abs(p.Pos.Y-y)) <= r {
+					out = append(out, p)
+				}
 			}
 		}
 	}
@@ -139,10 +202,53 @@ func (w *World) POIsWithin(x, y, r int) []*POI {
 
 // POIAt renvoie le point dont la tuile est exactement (x, y).
 func (w *World) POIAt(x, y int) *POI {
-	if p := w.POIOfRegion(RegionOf(x, y)); p != nil && p.Pos.X == x && p.Pos.Y == y {
-		return p
+	return poiIn(w.POIsOfRegion(RegionOf(x, y)), x, y)
+}
+
+// buildExtraPOIs tire les points supplémentaires de la région rp (v2), à distance des points déjà posés.
+func (w *World) buildExtraPOIs(rp RegionPos, placed []*POI) []*POI {
+	var out []*POI
+	for k := 1; k <= poiExtraMax; k++ {
+		salt := uint64(poiExtraSalt + 10*k)
+		if identityRNG(w.Seed, rp, salt).Float64() >= poiExtraChance[k-1] {
+			continue
+		}
+		var avoid []Pos
+		for _, p := range placed {
+			avoid = append(avoid, p.Pos)
+		}
+		for _, p := range out {
+			avoid = append(avoid, p.Pos)
+		}
+		pos, ok := w.poiSpotWith(rp, salt+1, avoid)
+		if !ok {
+			continue
+		}
+		kr := identityRNG(w.Seed, rp, salt+2).IntN(100)
+		var kind POIKind
+		for _, e := range poiExtraWeights {
+			if kr < e.w {
+				kind = e.kind
+				break
+			}
+			kr -= e.w
+		}
+		nr := identityRNG(w.Seed, rp, salt+3)
+		out = append(out, newPOI(kind, rp, k, pos, int64(identityRNG(w.Seed, rp, salt+4).Uint64()), stem{nr.IntN(len(placeStart)), nr.IntN(len(placeEnd))}))
 	}
-	return nil
+	return out
+}
+
+// newPOI assemble un point et ses emplacements de monstres.
+func newPOI(kind POIKind, rp RegionPos, index int, pos Pos, seed int64, st stem) *POI {
+	p := &POI{Kind: kind, Region: rp, Index: index, Pos: pos, Seed: seed, stem: st}
+	switch kind {
+	case POILair:
+		p.Slots = []Pos{{pos.X - 2, pos.Y - 1}, {pos.X + 2, pos.Y - 1}, {pos.X, pos.Y + 2}}
+	case POIRuin:
+		p.Slots = []Pos{{pos.X, pos.Y + 2}} // un seul gardien
+	}
+	return p
 }
 
 func (w *World) buildPOI(rp RegionPos) *POI {
@@ -171,27 +277,17 @@ func (w *World) buildPOI(rp RegionPos) *POI {
 		}
 	}
 	nr := identityRNG(w.Seed, rp, poiNameSalt)
-	p := &POI{
-		Kind:   kind,
-		Region: rp,
-		Pos:    pos,
-		Seed:   int64(identityRNG(w.Seed, rp, poiSeedSalt).Uint64()),
-		stem:   stem{nr.IntN(len(placeStart)), nr.IntN(len(placeEnd))},
-	}
-	switch kind {
-	case POILair:
-		p.Slots = []Pos{{pos.X - 2, pos.Y - 1}, {pos.X + 2, pos.Y - 1}, {pos.X, pos.Y + 2}}
-	case POIRuin:
-		p.Slots = []Pos{{pos.X, pos.Y + 2}} // un seul gardien
-	}
-	return p
+	return newPOI(kind, rp, 0, pos, int64(identityRNG(w.Seed, rp, poiSeedSalt).Uint64()), stem{nr.IntN(len(placeStart)), nr.IntN(len(placeEnd))})
 }
 
 // poiSpot cherche la case du point : du terrain naturel praticable sur poiClear cases alentour, loin des lieux, du
 // point de départ et de l'entrée d'un éventuel donjon. Comme pour les donjons, seul le terrain brut compte (pas de
 // TileAt, trop coûteux à cause des routes) : un point peut donc se trouver sur une route.
-func (w *World) poiSpot(rp RegionPos) (Pos, bool) {
-	rng := identityRNG(w.Seed, rp, poiSpotSalt)
+func (w *World) poiSpot(rp RegionPos) (Pos, bool) { return w.poiSpotWith(rp, poiSpotSalt, nil) }
+
+// poiSpotWith est poiSpot avec son propre flux d'identité (salt) et des positions à tenir à distance (avoid).
+func (w *World) poiSpotWith(rp RegionPos, salt uint64, avoid []Pos) (Pos, bool) {
+	rng := identityRNG(w.Seed, rp, salt)
 	anchor := w.spawnAnchor()
 	var dun *Dungeon
 	if mayHideDungeon(w.Seed, rp) {
@@ -206,6 +302,9 @@ func (w *World) poiSpot(rp RegionPos) (Pos, bool) {
 		if dun != nil && max(abs(x-dun.Entrance.X), abs(y-dun.Entrance.Y)) <= poiDungeonKm {
 			continue
 		}
+		if slices.ContainsFunc(avoid, func(a Pos) bool { return max(abs(x-a.X), abs(y-a.Y)) <= poiExtraGap }) {
+			continue
+		}
 		if w.poiSpotOK(rp, x, y) {
 			return Pos{x, y}, true
 		}
@@ -216,9 +315,7 @@ func (w *World) poiSpot(rp RegionPos) (Pos, bool) {
 func (w *World) poiSpotOK(rp RegionPos, x, y int) bool {
 	for dy := -poiClear; dy <= poiClear; dy++ {
 		for dx := -poiClear; dx <= poiClear; dx++ {
-			switch w.terrainAt(x+dx, y+dy) {
-			case Plain, Forest, Hills, Sand:
-			default:
+			if !w.terrainAt(x+dx, y+dy).ordinary() {
 				return false
 			}
 		}
