@@ -1044,6 +1044,29 @@ func TestBackgroundPaintedUnlessTransparent(t *testing.T) {
 	}
 }
 
+func TestBackgroundPaintedInCells(t *testing.T) {
+	m := playingModel(t, 80, 24)
+	base := themeSGR()
+	lines := strings.Split(m.View().Content, "\n")
+	if len(lines) != 24 {
+		t.Fatalf("%d lignes, attendu 24", len(lines))
+	}
+	for i, l := range lines {
+		if !strings.HasPrefix(l, base) {
+			t.Fatalf("ligne %d sans fond peint", i)
+		}
+		// Tout reset interne doit être suivi du fond.
+		for _, part := range strings.Split(l, "\x1b[m")[1:] {
+			if part != "" && !strings.HasPrefix(part, base) {
+				t.Fatalf("ligne %d : fond perdu après un reset", i)
+			}
+		}
+	}
+	if c := m.WithTransparent(true).View().Content; strings.Contains(c, base) {
+		t.Error("--transparent ne doit rien peindre")
+	}
+}
+
 func TestViewFillsWholeTerminal(t *testing.T) {
 	for _, sz := range [][2]int{{80, 24}, {120, 40}, {200, 60}, {300, 90}} {
 		m := playingModel(t, sz[0], sz[1])
