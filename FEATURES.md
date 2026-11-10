@@ -36,7 +36,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - **Côté client** (`client/dungeon.go`) : le plan est recalculé d'après la seed du message `zone`, comme le monde. Seules les cases à moins de 7 cases du joueur ont été vues (le reste est de la roche, tuile `Rock` dessinée en `#` gris sombre ; seule la première couche de roche, au contact d'une salle ou d'un couloir diagonales comprises, reste en `#` blanc pour souligner les murs) ; un coffre ouvert apparaît vide. Le titre du panneau donne le nom du donjon et les coordonnées du plan ; `M` ouvre le plan déjà exploré avec le palier, et se referme avec `M` ou Échap.
   - Les donjons sont activés sur le serveur (`Game.Dungeons`, désactivé par défaut dans `game.New`, comme dans les tests).
   - **Découverte** : passer à 3 cases ou moins d'une entrée la révèle, pour ce personnage seulement. Le serveur le dit au joueur (« Vous découvrez l'entrée secrète de… »), mémorise la découverte (table `discoveries`, sauvegardée tout de suite) et la renvoie à chaque connexion. Entrer dans un donjon révèle aussi l'entrée à tout le groupe.
-  - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/moveto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
+  - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/goto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
   - Les quêtes de donjon (voir *PNJ, dialogues et quêtes*) révèlent aussi l'entrée du donjon visé, dès l'acceptation.
 - **Zones sûres** : village ou ville plus 3 cases de marge. Pas de monstres, pas de poursuite, régénération de 1 PV par seconde.
 
@@ -45,8 +45,9 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Touches** : flèches, `Z Q S D`, `W A S D`, `h j k l`, diagonales `y u b n`.
 - **Cadence** : 5 cases par seconde ; les monstres sont plus lents.
 - **Vision** : ±40×±20 cases ; le serveur n'envoie que les entités qui ont changé.
-- **Marche automatique `/moveto`** (`client/moveto.go`, `client/pathfind.go`) :
-  - `/moveto x y`, ou par nom de repère ou de lieu découvert (casse ignorée, ambiguïtés signalées).
+- **Marche automatique `/goto`** (`client/goto.go`, `client/pathfind.go`) :
+  - `/goto x y`, ou par nom de repère ou de lieu découvert (casse ignorée, ambiguïtés signalées).
+  - **Complétion par Tab** dans le chat : après `/goto `, Tab complète le nom (repères, lieux découverts avec ou sans type, entrées de donjon ; sous terre `escalier`/`coffre`). Plusieurs noms possibles : complète le préfixe commun, puis liste les choix au Tab suivant.
   - Sous terre : par `escalier` ou `coffre` (le plus proche déjà vu, pas encore ouvert), ou par coordonnées du plan. La marche automatique ne traverse jamais un escalier de donjon ni une entrée de donjon, sauf si c'est la destination.
   - Recalcul du chemin après 4 ticks sans progrès, abandon après 8.
   - Interrompue par une direction, Échap, `q`, `i`, `c` ou `m`. Le serveur reste juge des collisions.
@@ -143,10 +144,10 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 | `/g`, `/global` | chat global |
 | `/me` | émote locale |
 | `/w`, `/msg`, `/whisper` pseudo message | message privé |
-| `/moveto x y` ou `/moveto nom` | marche automatique (côté client) |
+| `/goto x y` ou `/goto nom` | marche automatique (côté client) |
 | `/help`, `/?` | aide |
 
-Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'historique, `Ctrl+↑` / `Ctrl+↓` redimensionnent la discussion.
+Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'historique, `Ctrl+↑` / `Ctrl+↓` redimensionnent la discussion. Dans la saisie du chat, `↑` / `↓` rappellent les 100 dernières lignes envoyées (commandes comprises), la saisie en cours est retrouvée en bas.
 
 ## Touches clavier
 

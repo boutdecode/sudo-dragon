@@ -94,27 +94,27 @@ func TestFindMarker(t *testing.T) {
 	}
 }
 
-func TestParseMovetoName(t *testing.T) {
+func TestParseGotoName(t *testing.T) {
 	for _, c := range []struct {
 		in   string
 		name string
 		ok   bool
 	}{
-		{"/moveto Puits", "Puits", true},
-		{"/MOVETO mon  camp", "mon camp", true},
-		{"/moveto 3 -4", "", false},
-		{"/moveto 3", "3", true},
-		{"/moveto", "", false},
+		{"/goto Puits", "Puits", true},
+		{"/GOTO mon  camp", "mon camp", true},
+		{"/goto 3 -4", "", false},
+		{"/goto 3", "3", true},
+		{"/goto", "", false},
 		{"/g puits", "", false},
 	} {
-		name, ok := parseMovetoName(c.in)
+		name, ok := parseGotoName(c.in)
 		if name != c.name || ok != c.ok {
 			t.Errorf("%q: %q %v", c.in, name, ok)
 		}
 	}
 }
 
-func TestMovetoMarker(t *testing.T) {
+func TestGotoMarker(t *testing.T) {
 	m := mapModel(i18n.FR, 120, 40)
 	// Une ligne de cinq cases praticables : le joueur au début, le repère à la fin.
 	var start world.Pos
@@ -138,16 +138,16 @@ search:
 	m.snap.Self.X, m.snap.Self.Y = start.X, start.Y
 	m.snap.Others = nil
 	m.wmap.markers = []marker{{target, "Puits"}, {world.Pos{X: 300, Y: 300}, "Pic"}}
-	m2, _ := m.movetoName("pui")
+	m2, _ := m.gotoName("pui")
 	if !m2.walking || m2.walkTarget != target {
 		t.Errorf("marche non lancée: %v %v", m2.walking, m2.walkTarget)
 	}
-	m3, _ := m.movetoName("nope")
+	m3, _ := m.gotoName("nope")
 	if m3.walking || len(m3.chat) == 0 || !strings.Contains(m3.chat[len(m3.chat)-1].Text, "nope") {
 		t.Error("repère inconnu : message attendu")
 	}
 	m.wmap.markers[1].Name = "Puits 2"
-	m4, _ := m.movetoName("pui")
+	m4, _ := m.gotoName("pui")
 	if m4.walking || len(m4.chat) == 0 {
 		t.Error("préfixe ambigu : pas de marche")
 	}
@@ -259,7 +259,7 @@ func entityAt(p world.Pos, e protocol.Entity) protocol.Entity {
 	return e
 }
 
-func TestMovetoDiscoveredPlace(t *testing.T) {
+func TestGotoDiscoveredPlace(t *testing.T) {
 	m, s := placeModel(t, true)
 	name := s.NameIn(m.lang)
 	got, n := m.findTarget(strings.ToUpper(name))
@@ -272,7 +272,7 @@ func TestMovetoDiscoveredPlace(t *testing.T) {
 	if _, n := m.findTarget(name[:3]); n < 1 {
 		t.Errorf("préfixe %q non reconnu", name[:3])
 	}
-	m2, _ := m.movetoName(name)
+	m2, _ := m.gotoName(name)
 	if !m2.walking {
 		t.Fatalf("marche non lancée: %v", m2.chat)
 	}
@@ -281,12 +281,12 @@ func TestMovetoDiscoveredPlace(t *testing.T) {
 	}
 }
 
-func TestMovetoUndiscoveredPlaceIsUnknown(t *testing.T) {
+func TestGotoUndiscoveredPlaceIsUnknown(t *testing.T) {
 	m, s := placeModel(t, false)
 	if _, n := m.findTarget(s.NameIn(m.lang)); n != 0 {
 		t.Fatalf("un lieu non découvert ne doit pas être trouvé (n=%d)", n)
 	}
-	m2, _ := m.movetoName(s.NameIn(m.lang))
+	m2, _ := m.gotoName(s.NameIn(m.lang))
 	if m2.walking || len(m2.chat) == 0 {
 		t.Error("message « inconnu » attendu")
 	}

@@ -149,7 +149,7 @@ func (m Model) dungeonMapView(w, h int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, ui.Panel(m.zone.Name, grid, w, h-1))
 }
 
-// dungeonTarget résout, sous terre, une destination de /moveto par son nom: l'escalier de sortie ou un coffre
+// dungeonTarget résout, sous terre, une destination de /goto par son nom: l'escalier de sortie ou un coffre
 // pas encore ouvert déjà vu (le plus proche). Renvoie le nombre de correspondances (0 ou 1).
 func (m Model) dungeonTarget(query string) (target, int) {
 	q := strings.ToLower(strings.TrimSpace(query))

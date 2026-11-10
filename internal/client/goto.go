@@ -1,17 +1,20 @@
 package client
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/render"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Marche automatique (/moveto x y): le client calcule un chemin puis envoie
+// Marche automatique (/goto x y): le client calcule un chemin puis envoie
 // un pas à intervalle régulier, comme si le joueur appuyait sur les touches.
 // Le serveur reste seul juge des collisions.
 
@@ -34,11 +37,11 @@ func walkTick(c *Conn, gen int) tea.Cmd {
 	return tea.Tick(walkEvery, func(time.Time) tea.Msg { return walkTickMsg{c, gen} })
 }
 
-// parseMoveto reconnaît "/moveto x y". isCmd est vrai si le texte est la
+// parseGoto reconnaît "/goto x y". isCmd est vrai si le texte est la
 // commande (même mal formée); ok est faux si les arguments sont invalides.
-func parseMoveto(text string) (target world.Pos, isCmd, ok bool) {
+func parseGoto(text string) (target world.Pos, isCmd, ok bool) {
 	f := strings.Fields(text)
-	if len(f) == 0 || !strings.EqualFold(f[0], "/moveto") {
+	if len(f) == 0 || !strings.EqualFold(f[0], "/goto") {
 		return world.Pos{}, false, false
 	}
 	if len(f) != 3 {
@@ -52,14 +55,14 @@ func parseMoveto(text string) (target world.Pos, isCmd, ok bool) {
 	return world.Pos{X: x, Y: y}, true, true
 }
 
-// parseMovetoName reconnaît "/moveto nom du repère" : la commande avec des arguments qui ne sont pas
+// parseGotoName reconnaît "/goto nom du repère" : la commande avec des arguments qui ne sont pas
 // deux entiers. Le nom est l'ensemble des arguments, séparés par une espace.
-func parseMovetoName(text string) (name string, ok bool) {
+func parseGotoName(text string) (name string, ok bool) {
 	f := strings.Fields(text)
-	if len(f) < 2 || !strings.EqualFold(f[0], "/moveto") {
+	if len(f) < 2 || !strings.EqualFold(f[0], "/goto") {
 		return "", false
 	}
-	if _, _, valid := parseMoveto(text); valid {
+	if _, _, valid := parseGoto(text); valid {
 		return "", false
 	}
 	return strings.Join(f[1:], " "), true
@@ -197,22 +200,22 @@ func (m Model) walkableNear(p world.Pos, radius int) world.Pos {
 	return p
 }
 
-// movetoName lance la marche vers un repère ou un lieu découvert désigné par son nom.
-func (m Model) movetoName(name string) (Model, tea.Cmd) {
+// gotoName lance la marche vers un repère ou un lieu découvert désigné par son nom.
+func (m Model) gotoName(name string) (Model, tea.Cmd) {
 	t, n := m.findTarget(name)
 	switch {
 	case n == 0:
-		m.sysLine("cli.moveto.unknown_marker", name)
+		m.sysLine("cli.goto.unknown_marker", name)
 		return m, nil
 	case n > 1:
-		m.sysLine("cli.moveto.ambiguous", name)
+		m.sysLine("cli.goto.ambiguous", name)
 		return m, nil
 	}
 	pos := t.Pos
 	if t.place {
 		pos = m.walkableNear(pos, 8)
 	}
-	return m.startMoveto(pos)
+	return m.startGoto(pos)
 }
 
 func (m Model) selfPos() world.Pos { return world.Pos{X: m.snap.Self.X, Y: m.snap.Self.Y} }
@@ -252,25 +255,25 @@ func (m Model) freeFnTo(to world.Pos) func(world.Pos) bool {
 	}
 }
 
-// startMoveto lance la marche vers target.
-func (m Model) startMoveto(target world.Pos) (Model, tea.Cmd) {
+// startGoto lance la marche vers target.
+func (m Model) startGoto(target world.Pos) (Model, tea.Cmd) {
 	m.walkGen++
 	m.walking, m.walkPath = false, nil
 	if !m.hasSnap || m.world == nil {
 		return m, nil
 	}
 	if m.selfPos() == target {
-		m.sysLine("cli.moveto.arrived")
+		m.sysLine("cli.goto.arrived")
 		return m, nil
 	}
 	path := m.findWalkPath(m.selfPos(), target, m.freeFnTo(target))
 	if path == nil {
-		m.sysLine("cli.moveto.unreachable", target.X, target.Y)
+		m.sysLine("cli.goto.unreachable", target.X, target.Y)
 		return m, nil
 	}
 	m.walking, m.walkTarget, m.walkPath = true, target, path
 	m.walkLast, m.walkStuck = world.Pos{X: 1 << 30}, 0
-	m.sysLine("cli.moveto.start", target.X, target.Y, len(path))
+	m.sysLine("cli.goto.start", target.X, target.Y, len(path))
 	return m, walkTick(m.conn, m.walkGen)
 }
 
@@ -292,12 +295,12 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.combat != nil || m.npc != nil {
-		m.stopWalk("cli.moveto.interrupted")
+		m.stopWalk("cli.goto.interrupted")
 		return m, nil
 	}
 	self := m.selfPos()
 	if self == m.walkTarget {
-		m.stopWalk("cli.moveto.arrived")
+		m.stopWalk("cli.goto.arrived")
 		return m, nil
 	}
 	again := walkTick(m.conn, m.walkGen)
@@ -307,7 +310,7 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 	if self == m.walkLast {
 		m.walkStuck++
 		if m.walkStuck >= walkGiveUpAt {
-			m.stopWalk("cli.moveto.interrupted")
+			m.stopWalk("cli.goto.interrupted")
 			return m, nil
 		}
 		if m.walkStuck < 2 {
@@ -338,7 +341,7 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 			if m.walkStuck > 0 {
 				return m, again // peut-être un obstacle passager
 			}
-			m.stopWalk("cli.moveto.unreachable_now")
+			m.stopWalk("cli.goto.unreachable_now")
 			return m, nil
 		}
 	}
@@ -349,4 +352,127 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 		m.conn.Send(protocol.TMove, protocol.Move{DX: next.X - self.X, DY: next.Y - self.Y})
 	}
 	return m, again
+}
+
+// gotoCandidates liste les noms que /goto sait résoudre (pour la complétion par Tab): repères,
+// lieux découverts (nom seul et libellé « Village Foo ») et entrées de donjon; sous terre,
+// l'escalier et les coffres.
+func (m Model) gotoCandidates() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	if m.dmap != nil {
+		add(render.TerrainName(m.lang, world.Stairs))
+		add(render.TerrainName(m.lang, world.Chest))
+	} else {
+		for _, mk := range m.wmap.markers {
+			add(mk.Name)
+		}
+		for _, s := range m.discoveredPlaces() {
+			add(s.NameIn(m.lang))
+			add(m.placeLabel(s))
+		}
+		for _, d := range m.dungeons {
+			add(d.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// completeGoto complète « /goto début » avec les candidats dont le nom commence par ce début (casse
+// ignorée). Renvoie le nouveau texte et les correspondances; le texte est inchangé si l'entrée n'est
+// pas un /goto par nom ou s'il n'y a aucune correspondance.
+func completeGoto(input string, cands []string) (string, []string) {
+	const cmd = "/goto "
+	if len(input) < len(cmd) || !strings.EqualFold(input[:len(cmd)], cmd) {
+		return input, nil
+	}
+	prefix := strings.TrimLeft(input[len(cmd):], " ")
+	if f := strings.Fields(prefix); len(f) == 2 {
+		_, e1 := strconv.Atoi(f[0])
+		_, e2 := strconv.Atoi(f[1])
+		if e1 == nil && e2 == nil {
+			return input, nil
+		}
+	}
+	low := strings.ToLower(prefix)
+	var matches []string
+	for _, c := range cands {
+		if strings.HasPrefix(strings.ToLower(c), low) {
+			matches = append(matches, c)
+		}
+	}
+	if len(matches) == 0 {
+		return input, nil
+	}
+	common := []rune(matches[0])
+	for _, c := range matches[1:] {
+		r := []rune(c)
+		n := 0
+		for n < len(common) && n < len(r) && unicode.ToLower(common[n]) == unicode.ToLower(r[n]) {
+			n++
+		}
+		common = common[:n]
+	}
+	if len(common) < len([]rune(prefix)) { // ne jamais raccourcir ce que le joueur a tapé
+		return input, matches
+	}
+	return input[:len(cmd)] + string(common), matches
+}
+
+// completeChat gère Tab dans le chat: complète un /goto et, si rien ne progresse alors que
+// plusieurs noms conviennent, les liste dans le chat.
+func (m *Model) completeChat() {
+	cur := m.chatInput.Value()
+	next, matches := completeGoto(cur, m.gotoCandidates())
+	if next != cur {
+		m.chatInput.SetValue(next)
+		m.chatInput.CursorEnd()
+		return
+	}
+	if len(matches) > 1 {
+		m.addChat(chatLine{Channel: protocol.ChanSystem, Text: strings.Join(matches, " · ")})
+	}
+}
+
+const maxChatHist = 100
+
+// pushHistory mémorise une ligne envoyée depuis le chat (sans doublon consécutif) et ramène le
+// rappel à la saisie en cours.
+func (m *Model) pushHistory(text string) {
+	if text != "" && (len(m.chatHist) == 0 || m.chatHist[len(m.chatHist)-1] != text) {
+		m.chatHist = append(m.chatHist, text)
+		if len(m.chatHist) > maxChatHist {
+			m.chatHist = m.chatHist[len(m.chatHist)-maxChatHist:]
+		}
+	}
+	m.histPos, m.histDraft = len(m.chatHist), ""
+}
+
+// recallHistory remonte (-1) ou redescend (+1) dans les lignes déjà envoyées; en bas on retrouve la
+// saisie en cours.
+func (m *Model) recallHistory(dir int) {
+	if m.histPos > len(m.chatHist) { // historique raccourci entre-temps
+		m.histPos = len(m.chatHist)
+	}
+	pos := m.histPos + dir
+	if pos < 0 || pos > len(m.chatHist) {
+		return
+	}
+	if m.histPos == len(m.chatHist) {
+		m.histDraft = m.chatInput.Value()
+	}
+	m.histPos = pos
+	if pos == len(m.chatHist) {
+		m.chatInput.SetValue(m.histDraft)
+	} else {
+		m.chatInput.SetValue(m.chatHist[pos])
+	}
+	m.chatInput.CursorEnd()
 }

@@ -120,7 +120,7 @@ func TestMapKeyShowsTheDungeonPlan(t *testing.T) {
 	}
 }
 
-func TestMovetoInsideADungeon(t *testing.T) {
+func TestGotoInsideADungeon(t *testing.T) {
 	m, dm := intoDungeon(t)
 	// L'escalier se trouve par son nom, pas les repères ni les lieux de la surface.
 	tg, n := m.findTarget("escal")
@@ -140,7 +140,7 @@ func TestMovetoInsideADungeon(t *testing.T) {
 	m.hasSnap = true
 	free := m.freeFnTo(goal)
 	if free(dm.Exit) {
-		t.Error("l'escalier ne doit pas être traversé par /moveto")
+		t.Error("l'escalier ne doit pas être traversé par /goto")
 	}
 	path := m.findWalkPath(m.selfPos(), goal, free)
 	if path == nil {
@@ -157,7 +157,7 @@ func TestMovetoInsideADungeon(t *testing.T) {
 	}
 }
 
-func TestMovetoNeverCrossesADungeonEntrance(t *testing.T) {
+func TestGotoNeverCrossesADungeonEntrance(t *testing.T) {
 	w := world.New(1)
 	var d *world.Dungeon
 	for _, c := range w.DungeonsNear(0, 0, 4) {
@@ -258,7 +258,7 @@ func TestDiscoveredDungeonShowsOnTheWorldMapAndLegend(t *testing.T) {
 	}
 }
 
-func TestMovetoADiscoveredDungeonStopsInFrontOfIt(t *testing.T) {
+func TestGotoADiscoveredDungeonStopsInFrontOfIt(t *testing.T) {
 	m, info := discovered(t)
 	prefix := strings.ToLower(strings.Fields(info.Name)[0])
 	tg, n := m.findTarget(prefix)

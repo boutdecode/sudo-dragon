@@ -40,21 +40,21 @@ func TestFindPathUnreachable(t *testing.T) {
 	}
 }
 
-func TestParseMoveto(t *testing.T) {
+func TestParseGoto(t *testing.T) {
 	cases := []struct {
 		in      string
 		cmd, ok bool
 		x, y    int
 	}{
-		{"/moveto 3 -4", true, true, 3, -4},
-		{"/MOVETO 1 2", true, true, 1, 2},
-		{"/moveto a 2", true, false, 0, 0},
-		{"/moveto 1", true, false, 0, 0},
+		{"/goto 3 -4", true, true, 3, -4},
+		{"/GOTO 1 2", true, true, 1, 2},
+		{"/goto a 2", true, false, 0, 0},
+		{"/goto 1", true, false, 0, 0},
 		{"bonjour", false, false, 0, 0},
 		{"/g hello", false, false, 0, 0},
 	}
 	for _, c := range cases {
-		p, cmd, ok := parseMoveto(c.in)
+		p, cmd, ok := parseGoto(c.in)
 		if cmd != c.cmd || ok != c.ok || (ok && (p.X != c.x || p.Y != c.y)) {
 			t.Errorf("%q: got %v %v %v", c.in, p, cmd, ok)
 		}
@@ -96,5 +96,52 @@ func TestFindWalkPathLongOffRoad(t *testing.T) {
 	free := func(p world.Pos) bool { return p.X >= -5 && p.X <= 400 && p.Y >= -5 && p.Y <= 400 }
 	if m.findWalkPath(world.Pos{}, world.Pos{X: 300, Y: 300}, free) == nil {
 		t.Fatal("marche hors route de 300 cases introuvable")
+	}
+}
+
+func TestCompleteGoto(t *testing.T) {
+	cands := []string{"Puits", "Village Foo", "Village Fou", "mon camp"}
+	cases := []struct {
+		in, out string
+		n       int
+	}{
+		{"/goto pu", "/goto Puits", 1},
+		{"/GOTO MON", "/GOTO mon camp", 1},
+		{"/goto vill", "/goto Village Fo", 2},
+		{"/goto Village Fo", "/goto Village Fo", 2},
+		{"/goto zzz", "/goto zzz", 0},
+		{"/goto 3 4", "/goto 3 4", 0},
+		{"hello pu", "hello pu", 0},
+	}
+	for _, c := range cases {
+		out, matches := completeGoto(c.in, cands)
+		if out != c.out || len(matches) != c.n {
+			t.Errorf("%q -> %q (%d), attendu %q (%d)", c.in, out, len(matches), c.out, c.n)
+		}
+	}
+}
+
+func TestChatHistory(t *testing.T) {
+	m := playingModel(t, 100, 30)
+	m.pushHistory("/goto Puits")
+	m.pushHistory("bonjour")
+	m.pushHistory("bonjour") // doublon consécutif ignoré
+	m.chatInput.SetValue("brouillon")
+	m.recallHistory(-1)
+	if v := m.chatInput.Value(); v != "bonjour" {
+		t.Fatalf("haut: %q", v)
+	}
+	m.recallHistory(-1)
+	if v := m.chatInput.Value(); v != "/goto Puits" {
+		t.Fatalf("haut x2: %q", v)
+	}
+	m.recallHistory(-1) // au plus ancien: inchangé
+	if v := m.chatInput.Value(); v != "/goto Puits" {
+		t.Fatalf("butée haute: %q", v)
+	}
+	m.recallHistory(+1)
+	m.recallHistory(+1)
+	if v := m.chatInput.Value(); v != "brouillon" {
+		t.Fatalf("retour au brouillon: %q", v)
 	}
 }

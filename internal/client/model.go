@@ -127,6 +127,9 @@ type Model struct {
 	chatScroll int // lignes de recul dans l'historique (0 = en bas)
 	chatH      int // hauteur voulue de la discussion (0 = chatLines), agrandie par ctrl+haut
 	chatInput  textinput.Model
+	chatHist   []string        // lignes envoyées depuis le chat (la plus récente en dernier), rappelées par haut/bas
+	histPos    int             // position dans chatHist pendant le rappel (len(chatHist) = saisie en cours)
+	histDraft  string          // saisie en cours mise de côté pendant le rappel
 	markName   textinput.Model // nom d'un repère de la carte en cours de saisie
 	chatting   bool
 
@@ -185,7 +188,7 @@ type Model struct {
 	locInPlace   bool
 	locBand      int // tranche de niveaux de région de la dernière position
 
-	// Marche automatique /moveto (voir moveto.go).
+	// Marche automatique /goto (voir goto.go).
 	walking    bool
 	walkTarget world.Pos
 	walkPath   []world.Pos
@@ -533,7 +536,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if !m.chatting && m.walking {
 		k := msg.String()
 		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" || k == "c" || k == "m" {
-			m.stopWalk("cli.moveto.interrupted")
+			m.stopWalk("cli.goto.interrupted")
 			if isDir || k == "esc" {
 				return m, nil
 			}
@@ -542,6 +545,15 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if m.chatting {
 		switch msg.String() {
+		case "tab":
+			m.completeChat()
+			return m, nil
+		case "up":
+			m.recallHistory(-1)
+			return m, nil
+		case "down":
+			m.recallHistory(+1)
+			return m, nil
 		case "esc":
 			m.chatting = false
 			m.chatInput.Reset()
@@ -549,18 +561,19 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			text := strings.TrimSpace(m.chatInput.Value())
+			m.pushHistory(text)
 			m.chatting = false
 			m.chatInput.Reset()
 			m.chatInput.Blur()
-			if target, isCmd, ok := parseMoveto(text); isCmd {
+			if target, isCmd, ok := parseGoto(text); isCmd {
 				if !ok {
-					if name, isName := parseMovetoName(text); isName {
-						return m.movetoName(name)
+					if name, isName := parseGotoName(text); isName {
+						return m.gotoName(name)
 					}
-					m.sysLine("cli.err.usage_moveto")
+					m.sysLine("cli.err.usage_goto")
 					return m, nil
 				}
-				return m.startMoveto(target)
+				return m.startGoto(target)
 			}
 			if text != "" && m.conn != nil {
 				m.conn.Send(protocol.TChatSend, protocol.ChatSend{Text: text})
@@ -599,6 +612,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.String() == "enter" {
 		m.chatting = true
+		m.histPos, m.histDraft = len(m.chatHist), ""
 		return m, m.chatInput.Focus()
 	}
 	if dx, dy, ok := dirOf(msg.String()); ok && m.conn != nil {

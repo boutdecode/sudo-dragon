@@ -38,7 +38,7 @@ func findPath(from, to world.Pos, free func(world.Pos) bool, maxNodes int) []wor
 	return findPathCost(from, to, free, func(world.Pos) int { return 1 }, 1, maxNodes)
 }
 
-// Coûts de marche de /moveto: une case de route coûte moins qu'une case hors
+// Coûts de marche de /goto: une case de route coûte moins qu'une case hors
 // route, donc le chemin fait un détour (jusqu'à 1,5 fois plus long) pour la suivre.
 const (
 	roadStepCost = 2
@@ -49,7 +49,7 @@ const (
 	fallbackMaxNodes = 250000
 )
 
-// findWalkPath cherche un chemin de /moveto qui préfère les routes.
+// findWalkPath cherche un chemin de /goto qui préfère les routes.
 func (m Model) findWalkPath(from, to world.Pos, free func(world.Pos) bool) []world.Pos {
 	cost := func(p world.Pos) int {
 		if m.dmap == nil && m.world.At(p.X, p.Y) == world.Road {
