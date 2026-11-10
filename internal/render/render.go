@@ -195,6 +195,7 @@ func init() {
 	npcStyle[""] = len(styles) // PNJ inconnu
 	styles = append(styles, unknownNPC.style)
 	addClimateStyles()
+	buildNightStyles()
 }
 
 // variants donne plusieurs glyphes par terrain pour éviter l'effet « mur de
@@ -392,10 +393,17 @@ func Viewport(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monster
 	return ViewportReady(w, cx, cy, cols, rows, ents, monsters, selfID, nil, nil)
 }
 
-// ViewportReady est Viewport pour un joueur qui a des quêtes à rendre : les PNJ de readyGivers
+// ViewportReady est ViewportNight en plein jour.
+func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool, idle func(world.NPCKey) bool) string {
+	return ViewportNight(w, cx, cy, cols, rows, ents, monsters, selfID, readyGivers, idle, 0)
+}
+
+// ViewportNight est ViewportReady avec un niveau d'obscurité (0 = jour, voir NightLevel):
+// seul le terrain s'assombrit. Les PNJ de readyGivers
 // (donneurs d'une quête prête) s'affichent « ? » au lieu de « ! », et ceux pour qui idle est vrai (donneurs qui
 // n'ont rien à confier maintenant) comme de simples villageois.
-func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool, idle func(world.NPCKey) bool) string {
+func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool, idle func(world.NPCKey) bool, night int) string {
+	night = max(0, min(night, NightLevels-1))
 	type key struct{ x, y int }
 	mons := make(map[key]protocol.Monster, len(monsters))
 	for _, m := range monsters {
@@ -439,7 +447,7 @@ func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 		cur := -1
 		flush := func() {
 			if run.Len() > 0 {
-				out.WriteString(styles[cur].Render(run.String()))
+				out.WriteString(styleAt(cur).Render(run.String()))
 				run.Reset()
 			}
 		}
@@ -476,6 +484,9 @@ func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 					c = cl.ClimateAt(x, y)
 				}
 				ch, st = glyphIn(c, t, x, y), styleFor(c, t)
+				if night > 0 && !lit(t) { // la nuit n'assombrit que le terrain
+					st += night * len(styles)
+				}
 			}
 			if st != cur {
 				flush()

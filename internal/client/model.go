@@ -79,6 +79,28 @@ func gameClock(tick uint64) (day, hour int) {
 	return h/24 + 1, h % 24
 }
 
+// clockTick est le tick de jeu estimé maintenant. Le serveur n'envoie un
+// instantané que si la vue change: le tick du dernier reçu est donc prolongé
+// par le temps écoulé depuis (un tick = 100 ms).
+func (m Model) clockTick() uint64 {
+	if m.snapAt.IsZero() {
+		return m.snap.Tick
+	}
+	return m.snap.Tick + uint64(time.Since(m.snapAt)/(100*time.Millisecond))
+}
+
+// skyIcon est l'indicateur de moment de la journée de l'en-tête (ASCII pur).
+func skyIcon(tick uint64) string {
+	switch d := render.Daylight(tick); {
+	case d >= 1:
+		return "*"
+	case d <= 0:
+		return "("
+	default:
+		return "~"
+	}
+}
+
 func pingTick(c *Conn) tea.Cmd {
 	return tea.Tick(pingEvery, func(time.Time) tea.Msg { return pingTickMsg{c} })
 }
@@ -122,6 +144,7 @@ type Model struct {
 	self       protocol.Welcome
 	world      *world.World
 	snap       protocol.Snapshot
+	snapAt     time.Time // réception du dernier instantané: sert à prolonger l'horloge entre deux
 	hasSnap    bool
 	snapCount  int
 	chat       []chatLine
@@ -683,7 +706,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 	case protocol.TSnapshot:
 		var s protocol.Snapshot
 		if err := ev.Env.Payload(&s); err == nil {
-			m.snap, m.hasSnap = s, true
+			m.snap, m.hasSnap, m.snapAt = s, true, time.Now()
 			if m.dmap != nil {
 				m.revealAround() // sous terre: ni lieux, ni exploration du monde
 			} else {
@@ -1123,7 +1146,11 @@ func (m Model) viewPlaying() string {
 
 	self := m.snap.Self
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
-	mapStr := render.ViewportReady(m.terrain(), self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers(), m.giverIdle)
+	night := 0
+	if !m.inDungeon() { // le cycle jour/nuit ne se voit pas sous terre
+		night = render.NightLevel(m.clockTick())
+	}
+	mapStr := render.ViewportNight(m.terrain(), self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers(), m.giverIdle, night)
 
 	var top string
 	switch {
@@ -1157,8 +1184,9 @@ func (m Model) headerLine(w int) string {
 	if m.hasPing {
 		parts = append(parts, ui.OK.Render(fmt.Sprintf("%d ms", m.pingMS)))
 	}
-	day, hour := gameClock(m.snap.Tick)
-	parts = append(parts, m.t("hud.day", day, hour))
+	tick := m.clockTick()
+	day, hour := gameClock(tick)
+	parts = append(parts, m.t("hud.day", day, hour)+" "+skyIcon(tick))
 	right := dimStyle.Render(parts[0])
 	for _, p := range parts[1:] {
 		right += dimStyle.Render(" · ") + p

@@ -995,6 +995,22 @@ func TestHeaderShowsOnlinePingAndTime(t *testing.T) {
 	}
 }
 
+func TestHeaderSkyIconAndClockExtrapolation(t *testing.T) {
+	m := playingModel(t, 110, 34)
+	m.snap.Tick = 0 // 08 h: jour
+	if !strings.Contains(ansi.Strip(m.View().Content), "Jour 1, 08h *") {
+		t.Error("jour: indicateur * attendu")
+	}
+	m.snap.Tick = 16 * ticksPerGameHour // 00 h: nuit
+	if !strings.Contains(ansi.Strip(m.View().Content), "Jour 2, 00h (") {
+		t.Error("nuit: indicateur ( attendu")
+	}
+	m.snap.Tick, m.snapAt = 0, time.Now().Add(-time.Minute) // 1 min réelle = 1 h de jeu
+	if got := m.clockTick(); got < ticksPerGameHour || got > ticksPerGameHour+20 {
+		t.Errorf("clockTick = %d, want ~%d", got, ticksPerGameHour)
+	}
+}
+
 func TestPongSetsPing(t *testing.T) {
 	m, _ := withConn(playingModel(t, 110, 34))
 	m.pingSent = time.Now().Add(-40 * time.Millisecond)

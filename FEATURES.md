@@ -196,6 +196,7 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 - Panneau latéral de 34 colonnes (jauges XP/PV/PM, caractéristiques) et zone de discussion redimensionnable.
 - Terrain avec variantes de glyphes et couleurs, selon le climat de la contrée (`render/climate.go`; pas de climat sous terre) ; joueurs en combat affichés en rouge.
 - Latence mesurée par ping/pong et affichée.
+- **Cycle jour / nuit** : l'en-tête affiche « Jour N, Hh » suivi d'un indicateur (`*` jour, `~` aube ou crépuscule, `(` nuit). Le terrain s'assombrit vers un bleu nuit (6 niveaux, `render/daylight.go`) : nuit de 21 h à 5 h, aube de 5 h à 8 h, crépuscule de 19 h à 21 h. Joueurs, monstres, PNJ et **feux de camp** gardent leur couleur ; aucun effet sous terre ni sur la carte du monde. Purement visuel, calculé par le client à partir du tick du serveur (prolongé entre deux instantanés, car le serveur n'en envoie que si la vue change).
 - Options du client : `-addr`, `-name`, `-transparent`, `-lang`.
 
 ## Sauvegarde et persistance (`internal/store/`)
