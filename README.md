@@ -358,13 +358,12 @@ quelques secondes, certains attendent plusieurs secondes ; augmenter `-login-wor
 
 - **Le trafic croît comme le carré du nombre de joueurs dans une même zone** : chaque instantané contient toutes les entités visibles.
   Une codification en différences (ajouts, retraits, déplacements) et un index spatial des joueurs seraient la prochaine optimisation.
-- **Un combat oppose un joueur à un monstre** ; pas de combat en groupe. Pas de classes, de quêtes, de PNJ, d'inventaire riche ni d'économie.
+- **Un combat oppose un joueur à des monstres** ; pas de combat en groupe entre joueurs.
 - **Le monde n'est pas modifiable** : il se régénère toujours à l'identique depuis la seed, donc ni chunk ni lieu n'est persisté.
 - **Mondes existants** : la génération des lieux ne change pas la seed, mais des villages et des forteresses apparaissent là où il n'y avait que du terrain.
   Un personnage sauvegardé dans ce qui est devenu un mur est replacé sur la case libre la plus proche à sa connexion.
-- **Le marchand ne vend que des potions** et il n'y a ni équipement, ni autre objet : l'or n'a donc qu'un usage, ce qui borne l'économie.
 - Les garnisons de forteresse ne se retrouvent qu'en mémoire : un redémarrage du serveur les remet toutes en place, y compris le seigneur de guerre.
 - **Pas de reconnexion automatique** : après une coupure, le client revient à l'écran de connexion.
 - Un joueur qui coupe sa connexion en plein combat garde ses PV du moment sans subir la défaite éventuelle.
 - Un seul processus serveur, sans montée en charge horizontale.
-- Le serveur et la base sont en français (messages, journaux) ; il n'y a pas de couche de traduction.
+- Seuls les journaux et les options du serveur sont en français ; les messages envoyés aux joueurs sont traduits (voir « Langue »).

@@ -243,7 +243,10 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 - Pas de compétences ni de sorts à apprendre : la magie est un style d'attaque lié à l'arme.
 - Pas de reconnexion automatique après une coupure.
 - Un seul processus serveur, sans montée en charge horizontale.
-- Le README est en partie périmé (Défendre, limites connues, carte, i18n).
+- Le README est en partie périmé (Défendre, carte, i18n) ; sa section « Limites connues » a été revérifiée.
+- Le trafic croît comme le carré du nombre de joueurs d'une même zone : chaque instantané contient toutes les entités visibles, sans index spatial ni encodage en différences.
+- Les garnisons de forteresse ne sont pas sauvegardées : un redémarrage les remet toutes en place, y compris le seigneur de guerre.
+- Un joueur qui se déconnecte en plein combat garde ses PV du moment sans subir la défaite éventuelle.
 - **Donjons** :
   - Le client recalcule tout le monde depuis la seed, donc il connaît la position de toutes les entrées : seuls l'affichage et la marche automatique passent par les découvertes, un client modifié pourrait lire les autres.
   - L'état d'un donjon n'est pas sauvegardé en base et n'est jamais libéré tant que son boss vit : un serveur qui tourne longtemps garde en mémoire tous les donjons visités et non terminés.
