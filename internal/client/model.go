@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,7 +25,7 @@ import (
 const (
 	minWidth   = 60
 	minHeight  = 20
-	sideWidth  = 28
+	sideWidth  = 34
 	chatLines  = 5 // hauteur par défaut (et minimale) de la discussion
 	chatStep   = 3 // lignes gagnées ou perdues par ctrl+haut / ctrl+bas
 	minMapH    = 8 // hauteur de carte conservée quand la discussion grandit
@@ -274,6 +275,43 @@ func addMargin(s string, mx, my, w int) string {
 		out = append(out, blank)
 	}
 	return strings.Join(out, "\n")
+}
+
+var sgrRe = regexp.MustCompile("\x1b\\[([0-9;]*)m")
+
+// themeSGR renvoie la séquence SGR qui applique le fond et le texte du thème.
+func themeSGR() string {
+	rgb := func(hex string) (int, int, int) {
+		var r, g, b int
+		fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+		return r, g, b
+	}
+	br, bg, bb := rgb(ui.ColInk)
+	fr, fg, fb := rgb(ui.ColText)
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm\x1b[38;2;%d;%d;%dm", br, bg, bb, fr, fg, fb)
+}
+
+// paintBackground peint le fond du thème dans les cellules elles-mêmes (le
+// changement de fond demandé au terminal par OSC 11 n'est pas partout
+// supporté) : chaque ligne est complétée à w colonnes, le tout à h lignes, et
+// le fond est rétabli après chaque remise à zéro des styles internes.
+func paintBackground(s string, w, h int) string {
+	base := themeSGR()
+	lines := strings.Split(s, "\n")
+	for len(lines) < h {
+		lines = append(lines, "")
+	}
+	for i, l := range lines {
+		l = sgrRe.ReplaceAllStringFunc(l, func(seq string) string {
+			switch sgrRe.FindStringSubmatch(seq)[1] {
+			case "", "0", "49", "39":
+				return seq + base
+			}
+			return seq
+		})
+		lines[i] = base + ui.Fit(l, w) + "\x1b[m"
+	}
+	return strings.Join(lines, "\n")
 }
 
 // WithTransparent choisit de ne pas peindre le fond du thème.
@@ -536,7 +574,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Une touche de déplacement, Échap, q ou i interrompt la marche automatique.
 	if !m.chatting && m.walking {
 		k := msg.String()
-		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" || k == "c" || k == "m" {
+		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" || k == "p" || k == "m" {
 			m.stopWalk("cli.goto.interrupted")
 			if isDir || k == "esc" {
 				return m, nil
@@ -599,7 +637,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "m" {
 		return m.openMap()
 	}
-	if msg.String() == "c" {
+	if msg.String() == "p" {
 		m.sheet = true
 		return m, nil
 	}
@@ -999,6 +1037,9 @@ func (m Model) View() tea.View {
 		s = inner.viewLogin()
 	}
 	s = addMargin(s, mx, my, m.width)
+	if !m.transparent {
+		s = paintBackground(s, m.width, m.height)
+	}
 	v := tea.NewView(s)
 	v.AltScreen = true
 	if !m.transparent {
@@ -1151,10 +1192,6 @@ func (m Model) sidePanel() string {
 		gauge(m.t("hud.xp"), ui.FlatBar(st.XP, st.XPNext, barW, ui.ColGold), st.XP, st.XPNext),
 		gauge(m.t("hud.hp"), ui.Bar(st.HP, st.MaxHP, barW), st.HP, st.MaxHP),
 	}
-	if m.dmap == nil && m.world != nil {
-		lo, hi := world.LevelRange(world.LevelAt(self.X, self.Y))
-		lines = append(lines, m.t("hud.region", world.LevelAt(self.X, self.Y), lo, hi))
-	}
 	if st.MaxMana > 0 {
 		lines = append(lines, gauge(m.t("hud.mana"), ui.FlatBar(st.Mana, st.MaxMana, barW, ui.ColMana), st.Mana, st.MaxMana))
 	}
@@ -1225,7 +1262,7 @@ func (m Model) helpLine() string {
 	case m.combat != nil:
 		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}
-	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"c", m.t("key.sheet")}, [2]string{"m", m.t("key.map")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
+	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"p", m.t("key.sheet")}, [2]string{"m", m.t("key.map")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
 }
 
 func abs(a int) int {

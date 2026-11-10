@@ -5,7 +5,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 ## Monde et génération (`internal/world/`)
 
 - **Monde infini** généré par bruit simplex depuis une seed, par chunks de 32×32.
-- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier. Tuiles de points d'intérêt : feu de camp, sanctuaire, tour de guet, pierre dressée, coffre de repaire (voir plus bas).
+- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige. Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier. Tuiles de points d'intérêt : feu de camp, sanctuaire, tour de guet, pierre dressée, coffre de repaire, source, ruines (voir plus bas).
 - **Lieux** : au plus un par région de 256×256.
   - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
   - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
@@ -38,15 +38,18 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - **Découverte** : passer à 3 cases ou moins d'une entrée la révèle, pour ce personnage seulement. Le serveur le dit au joueur (« Vous découvrez l'entrée secrète de… »), mémorise la découverte (table `discoveries`, sauvegardée tout de suite) et la renvoie à chaque connexion. Entrer dans un donjon révèle aussi l'entrée à tout le groupe.
   - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/goto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
   - Les quêtes de donjon (voir *PNJ, dialogues et quêtes*) révèlent aussi l'entrée du donjon visé, dès l'acceptation.
-- **Points d'intérêt** (`world/poi.go`, `game/poi.go`) : de petits repères en plein air, **une case chacun**, au plus un par région (~60 % des régions). Position, type et nom (« Menhir de Valmor »…, en français et en anglais) viennent de la seed par des flux dédiés : le client les recalcule sans message et aucun lieu ni donjon existant ne bouge. Ils sont **visibles d'emblée** (pas de découverte) ; on les place sur du terrain praticable, loin des lieux, du point de départ et des entrées de donjon, et les routes les contournent. Ils s'affichent sur la carte principale et sur la carte du monde (`M`, une fois la zone explorée), avec leur ligne de légende. On interagit en **marchant sur la case** :
+- **Points d'intérêt** (`world/poi.go`, `game/poi.go`) : de petits repères en plein air, **une case chacun**, au plus un par région (~78 % des régions). Position, type et nom (« Menhir de Valmor »…, en français et en anglais) viennent de la seed par des flux dédiés : le client les recalcule sans message et aucun lieu ni donjon existant ne bouge. Ils sont **visibles d'emblée** (pas de découverte) ; on les place sur du terrain praticable, loin des lieux, du point de départ et des entrées de donjon, et les routes les contournent. Ils s'affichent sur la carte principale et sur la carte du monde (`M`, une fois la zone explorée), avec leur ligne de légende. On interagit en **marchant sur la case** :
 
   | Point | Glyphe | Effet |
   |---|---|---|
   | **Feu de camp** (30 %) | `&` | Soigne la moitié des PV et du mana (une fois par 5 min et par feu) et en fait votre **point de réapparition** : après une défaite, on se réveille près du dernier feu allumé au lieu du point de départ (sauvegardé avec le personnage ; message dédié). Un donjon renvoie toujours devant son entrée. |
-  | **Sanctuaire** (20 %) | `o` | Bonus de 5 min selon le **climat** de la contrée : tempéré +2 DEF, tropical +1 PV/s hors combat, aride +2 au toucher, boréal +50 % d'XP. Cooldown de 10 min par sanctuaire ; le bonus n'est pas sauvegardé et figure sur la fiche de personnage (`C`). |
+  | **Sanctuaire** (20 %) | `o` | Bonus de 5 min selon le **climat** de la contrée : tempéré +2 DEF, tropical +1 PV/s hors combat, aride +2 au toucher, boréal +50 % d'XP. Cooldown de 10 min par sanctuaire ; le bonus n'est pas sauvegardé et figure sur la fiche de personnage (`P`). |
   | **Repaire** (20 %) | `x` (coffre) | Trois **gardiens** (bêtes du biome, 2 niveaux de région de plus) restent à moins de 6 cases de leur poste ; activés à moins de 40 cases d'un joueur, repoussent 30 min après leur défaite. Le **coffre** reste fermé tant qu'un gardien vit, puis donne de l'or, 1-2 potions et, une fois sur deux, un équipement (rang de la région + 1) ; il se remplit de nouveau 30 min après son ouverture. Sac plein : le coffre reste fermé. État en mémoire. |
   | **Tour de guet** (15 %) | `I` | Révèle les entrées de donjon à 12 cases ou moins (comme une découverte) et, côté client, **marque comme exploré** un rayon de 96 cases sur la carte du monde. |
   | **Pierre dressée** (15 %) | `\|` | S'**active** au premier passage (sauvegardé). Debout sur une pierre activée, `/menhir` liste les autres pierres activées avec leur prix, `/menhir <n° ou nom>` y téléporte contre de l'or (15 or par région de distance, 20 au minimum). Impossible en combat ou en conversation. |
+  | **Source** (~18 % des régions) | `v` | Rend 30 % des PV et 50 % du mana, avec 2 min de délai par source et par joueur (le délai ne court que si l'on a bu). En climat **aride**, c'est une **oasis** : 60 % des PV et tout le mana. Ne change pas le point de réapparition. |
+  | **Ruines** (~8 % des régions) | `/` | Un **gardien** d'élite (bête du biome, 3 niveaux de région de plus, repousse en 30 min) protège le coffre. Une fois le gardien vaincu, le coffre donne or (×1,5 d'un repaire), 1-2 potions et, 4 fois sur 5, un équipement (rang de la région + 1) ; il se remplit de nouveau 30 min après son ouverture. Il livre aussi un **fragment de lore** (texte statique, sept variantes) et révèle l'**entrée du donjon le plus proche** (3 régions au plus) si on ne la connaît pas déjà. |
+- **Cartes au trésor** (`game/treasure.go`, `world/dig.go`) : une carte retient la **case à creuser**, une case ordinaire de terrain praticable, à 40 cases au moins de l'endroit où on l'a trouvée et dans une région à 2 régions au plus. On en trouve dans le coffre d'une ruine (60 %) ou d'un repaire (25 %), et sur les monstres de la surface (2 %, 6 % pour un chevalier ou un boss). On en porte 5 au plus ; le journal donne les coordonnées (`/goto x y` pour s'y rendre) et la fiche de personnage (`C`) liste les cartes avec la distance. **Arriver exactement sur la case** déterre le trésor : or (25 × niveau de région, jusqu'au double), 1-2 potions et un équipement du rang de la région + 1. Sac plein : rien n'est creusé, la carte reste. Les cartes sont sauvegardées avec le personnage (colonne `maps`, migration 18).
 - **Zones sûres** : village ou ville plus 3 cases de marge. Pas de monstres, pas de poursuite, régénération de 1 PV par seconde.
 
 ## Déplacement et exploration
@@ -59,7 +62,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - **Complétion par Tab** dans le chat : après `/goto `, Tab complète le nom (repères, lieux découverts avec ou sans type, entrées de donjon ; sous terre `escalier`/`coffre`). Plusieurs noms possibles : complète le préfixe commun, puis liste les choix au Tab suivant.
   - Sous terre : par `escalier` ou `coffre` (le plus proche déjà vu, pas encore ouvert), ou par coordonnées du plan. La marche automatique ne traverse jamais un escalier de donjon ni une entrée de donjon, sauf si c'est la destination.
   - Recalcul du chemin après 4 ticks sans progrès, abandon après 8.
-  - Interrompue par une direction, Échap, `q`, `i`, `c` ou `m`. Le serveur reste juge des collisions.
+  - Interrompue par une direction, Échap, `q`, `i`, `p` ou `m`. Le serveur reste juge des collisions.
 - **Carte du monde (`M`)** (`client/worldmap.go`) :
   - Zoom 1, 2, 4, 8 ou 16 tuiles par cellule (`+` / `-`), curseur clignotant aux flèches, `0` ou espace pour recentrer.
   - Les couleurs du terrain suivent le climat de chaque contrée (palette partagée avec la vue de jeu, `render.TileHex`) ; le titre du panneau donne la contrée et son climat, et la légende prend les couleurs du climat sous le curseur.
@@ -67,7 +70,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, points d'intérêt (feu de camp, sanctuaire, repaire, tour, pierre), forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
 - **Aller au curseur** : `G` lance la marche automatique (`/goto`) vers la case du curseur (case libre la plus proche) et ferme la carte.
 - **Repères** : `W` pose ou renomme (24 caractères, noms uniques, 9 au plus), `X` supprime.
-- **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le panneau latéral donne la région (niveau et tranche) ; le journal annonce chaque nouvelle contrée (avec son climat) ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
+- **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le journal annonce chaque nouvelle contrée (avec son climat) ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
 
 ## Monstres (`internal/game/monsters.go`, `garrison.go`)
 
@@ -112,7 +115,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 - **Mana** : base de classe + 2 par niveau + niveau × modificateur de SAG ; un sort coûte 2 mana.
 - **Style d'attaque** déduit de l'arme : mêlée (FOR), distance (AGI), magie (INT). Sans mana, une arme magique sert de gourdin.
 - **Charisme** : ±2 % par point de modificateur sur les prix, borné à ±10 %.
-- **Fiche (`C`)** : classe, niveau, PV, mana, attaque, défense, or, position, palmarès (victoires, boss, morts), caractéristiques, équipement, **bénédictions de sanctuaire** en cours (bonus et temps restant, qui décompte côté client et disparaît à l'échéance ; la DEF affichée les inclut), réputation.
+- **Fiche (`P`)** : classe, niveau, PV, mana, attaque, défense, or, position, palmarès (victoires, boss, morts), caractéristiques, équipement, **bénédictions de sanctuaire** en cours (bonus et temps restant, qui décompte côté client et disparaît à l'échéance ; la DEF affichée les inclut), **cartes au trésor** détenues, réputation.
 - Les anciens personnages repassent par la création à leur prochaine connexion.
 
 ## Inventaire, équipement et commerce (`internal/gear/`, `client/bag.go`, `game/shop.go`)
@@ -130,6 +133,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
 ## PNJ, dialogues et quêtes
 
 - **PNJ** (`game/npc.go`) : marchand, soigneur, forgeron, armurier, chef de village / maire, villageois, villageois à quêtes, soldats, gardes (mobiles, voir plus bas). On leur parle en marchant dessus (abandon après 60 s).
+- **Marchand ambulant** (`game/caravan.go`, `world/caravan.go`) : une route entre deux lieux voisins sur deux porte une **caravane** (forgeron ou armurier ambulant, nom propre). Elle fait l'aller-retour sur la route à une case par seconde, avec 30 s d'arrêt à chaque bout ; sa position ne dépend que de l'heure du serveur (rien à sauvegarder) et elle n'est suivie qu'à moins de 40 cases d'un joueur. Envoyée aux clients comme un monstre de type `caravan` (glyphe `E`), on lui parle en marchant sur elle ; elle s'arrête pendant la conversation et attend si la route est barrée. Elle vend de l'équipement **un rang au-dessus** des forges de sa région (assortiment du repli déterministe, sans modèle de langage ni écriture en base) qui **change chaque jour de jeu** (un achat décidé la veille est refusé). Achat et revente seulement : ni vol, ni quête, ni discussion libre. Les routes gardent leur tracé ordonné (`world.RoadRoutesNear`).
 - **Services** : potion à 20 or (revente 8 or) ; soins complets gratuits au niveau 1, ensuite 4 or × niveau. Le chef et le maire renseignent sur les lieux dans un rayon de 3 régions, même sans clé Mistral.
 - **Dialogues libres** (Mistral, touche `D` / `T` en anglais) :
   - Le modèle ne produit que du texte, sans effet sur l'or, les objets ou les stats.
@@ -173,7 +177,7 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 | Contexte | Touches |
 |---|---|
-| Jeu | déplacement (voir plus haut), `Entrée` chat, `I` sac, `C` fiche, `M` carte, `Q` quêtes |
+| Jeu | déplacement (voir plus haut), `Entrée` chat, `I` sac, `P` fiche, `M` carte, `Q` quêtes |
 | Quitter | `Ctrl+C` |
 | Connexion | `Tab` / `↑↓` changent de champ, `Ctrl+R` bascule connexion/création |
 | Création | `R` relance, `↑↓←→` choix |
@@ -185,15 +189,15 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 
 ## Interface et affichage (`internal/ui/`, `internal/render/`)
 
-- Plein écran, fond sombre peint (option `--transparent` pour garder le fond du terminal), logo.
-- Panneau latéral (jauges XP/PV/PM, caractéristiques) et zone de discussion redimensionnable.
+- Plein écran, fond sombre peint cellule par cellule, sans dépendre du terminal (option `--transparent` pour garder le fond du terminal), logo.
+- Panneau latéral de 34 colonnes (jauges XP/PV/PM, caractéristiques) et zone de discussion redimensionnable.
 - Terrain avec variantes de glyphes et couleurs, selon le climat de la contrée (`render/climate.go`; pas de climat sous terre) ; joueurs en combat affichés en rouge.
 - Latence mesurée par ping/pong et affichée.
 - Options du client : `-addr`, `-name`, `-transparent`, `-lang`.
 
 ## Sauvegarde et persistance (`internal/store/`)
 
-- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), point de réapparition et pierres dressées activées (colonnes de `characters`, migration 17), lore, étalages (`npc_wares`).
+- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), point de réapparition, pierres dressées activées et cartes au trésor (colonnes de `characters`, migrations 17 et 18), lore, étalages (`npc_wares`).
 - Écriture asynchrone ; sauvegarde à la déconnexion, après chaque combat, toutes les 30 s, à l'arrêt propre.
 - La seed est fixée à la création de la base ; la changer sur une base existante est refusé.
 - **Côté client** : carte, repères et exploration dans `<UserConfigDir>/sudo-dragon/map.json` (une entrée par seed, écriture différée de 15 s). Le serveur n'en sait rien.

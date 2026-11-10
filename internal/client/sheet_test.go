@@ -47,10 +47,10 @@ func TestSheetShowsEverythingAndInventoryNoLongerShowsAbilities(t *testing.T) {
 
 func TestSheetKeyOpensAndClosesAndFitsEverySize(t *testing.T) {
 	m := sheetModel(i18n.FR, 80, 24)
-	tm, _ := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	tm, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = tm.(Model)
 	if !m.sheet {
-		t.Fatal("la touche c devrait ouvrir la fiche")
+		t.Fatal("la touche p devrait ouvrir la fiche")
 	}
 	tm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if tm.(Model).sheet {
@@ -97,6 +97,23 @@ func TestSheetShowsSanctuaryBlessings(t *testing.T) {
 		m.bagAt = time.Now().Add(-time.Minute)
 		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, "+50 %") || !strings.Contains(out, "+2 DEF") {
 			t.Errorf("%s: les bonus échus ne disparaissent pas:\n%s", lang, out)
+		}
+	}
+}
+
+func TestSheetShowsTreasureMaps(t *testing.T) {
+	for _, lang := range []i18n.Lang{i18n.FR, i18n.EN} {
+		m := sheetModel(lang, 120, 40)
+		m.sheet = true
+		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, m.t("sheet.maps")) {
+			t.Errorf("%s: section des cartes affichée sans carte", lang)
+		}
+		m.bag.Maps = []protocol.TreasureMap{{X: 112, Y: -3}}
+		out := ansi.Strip(m.sheetView(116, 30))
+		for _, want := range []string{m.t("sheet.maps"), "(112, -3)", "100"} { // la fiche est en (12, -3)
+			if !strings.Contains(out, want) {
+				t.Errorf("%s: fiche sans %q\n%s", lang, want, out)
+			}
 		}
 	}
 }

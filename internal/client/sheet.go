@@ -15,13 +15,13 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// Fiche de personnage (touche C) : tout ce que le serveur établit sur le joueur. Les valeurs viennent
+// Fiche de personnage (touche P) : tout ce que le serveur établit sur le joueur. Les valeurs viennent
 // de l'instantané (PV, mana, Atq/Déf effectives), du sac (classe, caractéristiques, palmarès) et du
 // livre de quêtes (réputation).
 
 func (m Model) updateSheetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc", "c":
+	case "esc", "p":
 		m.sheet = false
 	}
 	return m, nil
@@ -105,6 +105,13 @@ func (m Model) sheetRight(w int) []string {
 	if bl := m.blessingLines(w); len(bl) > 0 {
 		lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.blessings")))
 		lines = append(lines, bl...)
+	}
+	if len(m.bag.Maps) > 0 {
+		lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.maps")))
+		self := m.snap.Self
+		for _, mp := range m.bag.Maps {
+			lines = append(lines, " "+ui.Fit(m.t("sheet.map_line", mp.X, mp.Y, max(abs(mp.X-self.X), abs(mp.Y-self.Y))), w))
+		}
 	}
 	open, ready := m.readyQuests()
 	lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.reputation")))
