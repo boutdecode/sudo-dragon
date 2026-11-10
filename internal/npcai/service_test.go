@@ -993,7 +993,7 @@ func TestOpeningAsksTheNPCToSpeakFirstAndWritesNothing(t *testing.T) {
 func TestOpeningForAKnownTravellerMentionsHeAlreadyIntroducedHimself(t *testing.T) {
 	r := newRig(t, Config{CardCooldown: time.Second}, "aldric")
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
-		return reply("Ravi.", &lore.Intro{Alias: "Aldric", Role: "forgeron"}, ""), nil
+		return reply("Ravi.", &lore.Intro{Alias: "Aldric", Role: "forgeron"}, "Aldric est forgeron."), nil
 	}
 	r.ask("aldric", "Je suis Aldric le forgeron.")
 

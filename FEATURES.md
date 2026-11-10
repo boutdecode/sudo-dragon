@@ -142,7 +142,7 @@ Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), ét
   - Le modèle ne produit que du texte, sans effet sur l'or, les objets ou les stats.
   - Modération des entrées, budget de jetons par jour, avis de confidentialité avec accord par compte.
   - Sans clé : fonction absente, phrase d'ambiance des villageois.
-- **Mémoire et lore** (`lore/`) : fiche de présentation du joueur (8 lieux au plus), rumeurs (portée 1 région : le lieu et les régions adjacentes, délai de 1 h vers la région voisine, morts non répétées hors du lieu, oubli après 14 jours), résumé privé par PNJ, faits vérifiés (niveau, boss, morts, quêtes rendues).
+- **Mémoire et lore** (`lore/`) : fiche de présentation du joueur (8 lieux au plus), rumeurs (portée 1 région : le lieu et les régions adjacentes, délai de 1 h vers la région voisine, morts non répétées hors du lieu, oubli après 14 jours), résumé privé par PNJ (seul signe qu'un PNJ a déjà parlé au joueur : un PNJ jamais rencontré ne le connaît que par rumeurs, ne le salue pas en familier et le traite en inconnu), faits vérifiés (niveau, boss, morts, quêtes rendues).
 - **Quêtes** (`internal/quest/`, `client/quests.go`) :
   - Le modèle propose, le serveur décide : objectifs vérifiables, récompenses plafonnées, textes nettoyés. Accepter/Refuser avec `A`/`R`.
   - Objectifs : tuer 3 à 12 monstres d'une espèce, entrer dans un lieu voisin, vaincre le seigneur de guerre (niveau 10 minimum), **vaincre le maître d'un donjon secret**.

@@ -67,6 +67,7 @@ type interlocutorJSON struct {
 	Pseudo       string          `json:"pseudo"`
 	Certain      factsJSON       `json:"faits_certains"`
 	Presentation *cardJSON       `json:"sa_presentation"`
+	Hearsay      *cardJSON       `json:"ce_qu_on_raconte_de_lui,omitempty"` // fiche reçue par rumeur: le PNJ ne l'a jamais rencontré
 	Memory       string          `json:"mon_souvenir_de_lui"`
 	Reputation   *reputationJSON `json:"reputation_ici,omitempty"`      // fait établi par le serveur
 	DeedsDone    []deedJSON      `json:"quetes_rendues_ici,omitempty"`  // faits établis par le serveur
@@ -218,6 +219,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	b.WriteString(i18n.T(l, "prompt.system_rules"))
 	b.WriteString("\n\n")
 
+	met := memory != "" // seul un souvenir privé prouve que ce PNJ a déjà parlé à ce joueur
 	data := dataJSON{Interlocutor: interlocutorJSON{
 		Pseudo: req.Speaker.Account,
 		Certain: factsJSON{
@@ -229,7 +231,11 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	for _, h := range heard {
 		if h.Self {
 			c := cardOf(h.Intro)
-			data.Interlocutor.Presentation = &c
+			if met {
+				data.Interlocutor.Presentation = &c
+			} else {
+				data.Interlocutor.Hearsay = &c
+			}
 			continue
 		}
 		prov := i18n.T(l, "prompt.prov.here", age(l, h.Age))
@@ -300,15 +306,23 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	b.WriteString("\n")
 	b.Write(bytes.TrimSpace(buf.Bytes()))
 	b.WriteString("\n\n")
-	if data.Interlocutor.Presentation == nil {
+	hasCard := data.Interlocutor.Presentation != nil || data.Interlocutor.Hearsay != nil
+	if !met {
+		b.WriteString(i18n.T(l, "prompt.first_meeting"))
+		b.WriteString("\n\n")
+	}
+	if !hasCard {
 		b.WriteString(i18n.T(l, "prompt.not_introduced"))
 		b.WriteString("\n\n")
 	}
 	if req.Opening {
-		if data.Interlocutor.Presentation == nil {
-			b.WriteString(i18n.T(l, "prompt.opening.stranger"))
-		} else {
+		switch {
+		case met && hasCard:
 			b.WriteString(i18n.T(l, "prompt.opening.known"))
+		case hasCard:
+			b.WriteString(i18n.T(l, "prompt.opening.heard"))
+		default:
+			b.WriteString(i18n.T(l, "prompt.opening.stranger"))
 		}
 		b.WriteString("\n\n")
 	}

@@ -140,7 +140,7 @@ func TestPromptDataBlockHasOnlyExpectedKeys(t *testing.T) {
 	inter := data["interlocuteur"].(map[string]any)
 	for k := range inter {
 		switch k {
-		case "pseudo", "faits_certains", "sa_presentation", "mon_souvenir_de_lui":
+		case "pseudo", "faits_certains", "sa_presentation", "mon_souvenir_de_lui", "ce_qu_on_raconte_de_lui":
 		default:
 			t.Errorf("clé inattendue dans l'interlocuteur: %q (rien d'autre que le pseudo de jeu ne doit partir)", k)
 		}
@@ -168,7 +168,7 @@ func TestPromptAsksToIntroduceOnlyWhenUnknown(t *testing.T) {
 		t.Error("un inconnu devrait être invité à se présenter")
 	}
 	self := lore.Heard{Account: "brenna", Self: true, Intro: lore.Intro{Alias: "Brenna l'archère"}}
-	known := BuildMessages(testReq("x"), []lore.Heard{self}, "", 12, nil)[0].Content
+	known := BuildMessages(testReq("x"), []lore.Heard{self}, "Il cherche un remède.", 12, nil)[0].Content
 	if strings.Contains(known, ask) {
 		t.Error("un voyageur déjà présenté ne doit plus être invité à le faire")
 	}
@@ -177,6 +177,27 @@ func TestPromptAsksToIntroduceOnlyWhenUnknown(t *testing.T) {
 		t.Fatalf("présentation: %v", pres)
 	}
 }
+
+func TestPromptFirstMeetingTreatsCardAsHearsay(t *testing.T) {
+	self := lore.Heard{Account: "brenna", Self: true, Intro: lore.Intro{Alias: "Brenna l'archère"}}
+	sys := BuildMessages(testReq("x"), []lore.Heard{self}, "", 12, nil)[0].Content
+	if !strings.Contains(sys, "pour la première fois") {
+		t.Error("sans souvenir, le PNJ doit savoir qu'il rencontre le voyageur pour la première fois")
+	}
+	if strings.Contains(sys, ask0) {
+		t.Error("une fiche connue par rumeur ne doit pas redemander la présentation")
+	}
+	inter := dataBlock(t, sys)["interlocuteur"].(map[string]any)
+	if inter["sa_presentation"] != nil || inter["ce_qu_on_raconte_de_lui"] == nil {
+		t.Fatalf("la fiche doit passer en ouï-dire: %v", inter)
+	}
+	met := BuildMessages(testReq("x"), []lore.Heard{self}, "Souvenir.", 12, nil)[0].Content
+	if strings.Contains(met, "pour la première fois") {
+		t.Error("avec un souvenir, ce n'est plus une première rencontre")
+	}
+}
+
+const ask0 = "ne s'est pas encore présenté"
 
 func TestPromptLabelsRumorsByProvenance(t *testing.T) {
 	heard := []lore.Heard{
