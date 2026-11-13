@@ -349,7 +349,7 @@ type mapCell struct {
 // terrainCell choisit le glyphe d'une tuile.
 func terrainCell(t world.Tile) mapCell {
 	switch t {
-	case world.DeepWater, world.Water, world.River:
+	case world.DeepWater, world.Water, world.River, world.FishNode: // un banc se voit sur la rivière qui le porte
 		return mapCell{r: "~", st: msWater}
 	case world.Sand:
 		return mapCell{r: ".", st: msSand}

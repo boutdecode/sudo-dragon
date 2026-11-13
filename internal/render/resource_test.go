@@ -44,3 +44,25 @@ func TestNodeKeepsTerrainGlyph(t *testing.T) {
 	}
 	t.Skip("aucun arbre près de l'origine")
 }
+
+// Un banc de poissons garde le glyphe de la rivière qui le porte.
+func TestFishNodeKeepsRiverGlyph(t *testing.T) {
+	w := world.NewVersion(1, world.GenV3)
+	for y := -300; y < 300; y++ {
+		for x := -300; x < 300; x++ {
+			if w.At(x, y) != world.FishNode {
+				continue
+			}
+			kind, base, _ := w.NodeAt(x, y)
+			if base != world.River {
+				t.Fatalf("banc %s sur %d", kind, base)
+			}
+			line := plain(Viewport(w, x, y, 3, 3, nil, nil, 0))[1]
+			if want := glyphIn(w.ClimateAt(x, y), world.River, x, y); rune(line[1]) != want {
+				t.Fatalf("glyphe %q, attendu %q", line[1], want)
+			}
+			return
+		}
+	}
+	t.Skip("aucun banc près de l'origine")
+}

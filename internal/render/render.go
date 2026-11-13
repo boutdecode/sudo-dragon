@@ -59,6 +59,7 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.TreeNode:  fg("#4ade80").Bold(true),
 	world.OreNode:   fg("#94a3b8").Bold(true),
 	world.HerbNode:  fg("#bef264").Bold(true),
+	world.FishNode:  fg("#7dd3fc").Bold(true),
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -237,6 +238,7 @@ var variants = map[world.Tile][]rune{
 	world.TreeNode:  []rune("TTTPTT"),
 	world.OreNode:   []rune("nnnnnn"),
 	world.HerbNode:  []rune("\"\"\",\"\"\""),
+	world.FishNode:  []rune("--~-~-"),
 }
 
 // TerrainName renvoie le nom d'un terrain dans la langue l.
@@ -304,6 +306,8 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.orenode")
 	case world.HerbNode:
 		return i18n.T(l, "terrain.herbnode")
+	case world.FishNode:
+		return i18n.T(l, "terrain.fishnode")
 	}
 	return "?"
 }
@@ -437,7 +441,7 @@ func (s spentTerrain) NodeAt(x, y int) (resource.Kind, world.Tile, bool) {
 func (s spentTerrain) At(x, y int) world.Tile {
 	t := s.Terrain.At(x, y)
 	switch t {
-	case world.TreeNode, world.OreNode, world.HerbNode:
+	case world.TreeNode, world.OreNode, world.HerbNode, world.FishNode:
 		if s.spent[[2]int{x, y}] {
 			return s.base(x, y)
 		}
@@ -549,7 +553,7 @@ func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 					c = cl.ClimateAt(x, y)
 				}
 				ch, st = glyphIn(c, t, x, y), styleFor(c, t)
-				if hasNodes && (t == world.TreeNode || t == world.OreNode || t == world.HerbNode) {
+				if hasNodes && (t == world.TreeNode || t == world.OreNode || t == world.HerbNode || t == world.FishNode) {
 					// Un nœud garde le glyphe du terrain qu'il recouvre; sa couleur dit la ressource.
 					if kind, base, ok := nd.NodeAt(x, y); ok {
 						ch = glyphIn(c, base, x, y)

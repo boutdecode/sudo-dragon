@@ -64,6 +64,7 @@ const (
 	TreeNode // arbre à abattre (bois)
 	OreNode  // filon de minerai ou affleurement de pierre
 	HerbNode // touffe de plantes
+	FishNode // banc de poissons, dans une rivière
 
 	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
 	NumTiles
@@ -136,6 +137,8 @@ func (t Tile) Glyph() rune {
 		return '0'
 	case HerbNode:
 		return 'h'
+	case FishNode:
+		return 'f'
 	}
 	return '?'
 }

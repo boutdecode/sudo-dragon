@@ -9,6 +9,7 @@ const (
 	Wood Category = iota
 	Ore
 	Herb
+	Fish
 	NumCategories
 )
 
@@ -19,6 +20,8 @@ func (c Category) Key() string {
 		return "ore"
 	case Herb:
 		return "herb"
+	case Fish:
+		return "fish"
 	}
 	return "wood"
 }
@@ -58,6 +61,14 @@ var all = []Info{
 	{"iron", Ore, 3, nil},
 	{"silver", Ore, 3, nil},
 	{"gold", Ore, 4, nil},
+
+	{"gudgeon", Fish, 1, nil},
+	{"trout", Fish, 1, []int{Temperate, Boreal}},
+	{"carp", Fish, 2, []int{Temperate, Tropical, Arid}},
+	{"pike", Fish, 2, nil},
+	{"salmon", Fish, 3, []int{Temperate, Boreal}},
+	{"eel", Fish, 3, nil},
+	{"sturgeon", Fish, 4, nil},
 
 	{"sage", Herb, 1, []int{Temperate, Arid}},
 	{"nettle", Herb, 1, nil},

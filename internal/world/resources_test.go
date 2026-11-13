@@ -8,7 +8,7 @@ func TestNodesOnlyInV3(t *testing.T) {
 		for y := -60; y < 60; y++ {
 			for x := -60; x < 60; x++ {
 				switch w.At(x, y) {
-				case TreeNode, OreNode, HerbNode:
+				case TreeNode, OreNode, HerbNode, FishNode:
 					t.Fatalf("nœud en v%d à (%d,%d)", gen, x, y)
 				}
 			}
@@ -26,7 +26,7 @@ func TestV3NodesSitOnV2Terrain(t *testing.T) {
 				t.Fatalf("terrain brut différent en (%d,%d)", x, y)
 			}
 			switch v3.At(x, y) {
-			case TreeNode, OreNode, HerbNode:
+			case TreeNode, OreNode, HerbNode, FishNode:
 				nodes++
 				if !v2.At(x, y).Walkable() && v2.At(x, y) != Wall {
 					t.Fatalf("nœud sur une case bloquante en (%d,%d)", x, y)
@@ -49,7 +49,7 @@ func TestNodesAreCoherentAndExcluded(t *testing.T) {
 				t.Fatalf("TileAt et At divergent en (%d,%d)", x, y)
 			}
 			k, ok := w.ResourceAt(x, y)
-			isNode := tile == TreeNode || tile == OreNode || tile == HerbNode
+			isNode := tile == TreeNode || tile == OreNode || tile == HerbNode || tile == FishNode
 			if ok != isNode {
 				t.Fatalf("ResourceAt=%v mais tuile %d en (%d,%d)", ok, tile, x, y)
 			}

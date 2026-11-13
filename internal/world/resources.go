@@ -39,6 +39,10 @@ func nodeCategory(t Tile, u int) (resource.Category, bool) {
 		if u < 4 {
 			return resource.Ore, true
 		}
+	case River:
+		if u < 25 {
+			return resource.Fish, true
+		}
 	case Sand:
 		if u < 2 {
 			return resource.Ore, true
@@ -92,18 +96,20 @@ func nodeTileOf(c resource.Category) Tile {
 		return OreNode
 	case resource.Herb:
 		return HerbNode
+	case resource.Fish:
+		return FishNode
 	}
 	return TreeNode
 }
 
 // ResourceAt renvoie la ressource récoltable sur la case (x, y): celle d'un nœud visible (TileAt/At donnent
-// TreeNode, OreNode ou HerbNode). Faux si la case n'en porte pas.
+// TreeNode, OreNode, HerbNode ou FishNode). Faux si la case n'en porte pas.
 func (w *World) ResourceAt(x, y int) (resource.Kind, bool) {
 	if w.GenVersion < GenV3 {
 		return "", false
 	}
 	switch w.At(x, y) {
-	case TreeNode, OreNode, HerbNode:
+	case TreeNode, OreNode, HerbNode, FishNode:
 	default:
 		return "", false
 	}
@@ -115,7 +121,7 @@ func (w *World) ResourceAt(x, y int) (resource.Kind, bool) {
 // client reprend le glyphe, seule la couleur dit la ressource). Faux si la case ne porte pas de nœud.
 func (w *World) NodeAt(x, y int) (resource.Kind, Tile, bool) {
 	switch w.At(x, y) {
-	case TreeNode, OreNode, HerbNode:
+	case TreeNode, OreNode, HerbNode, FishNode:
 		base := w.terrainAt(x, y)
 		if _, kind, ok := w.nodeAt(x, y, base); ok {
 			return kind, base, true

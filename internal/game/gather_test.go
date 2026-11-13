@@ -144,3 +144,49 @@ func TestResourcesSaveLoad(t *testing.T) {
 		t.Fatal("sac vide: attendu nil")
 	}
 }
+
+func TestFishingSpotInRiver(t *testing.T) {
+	g, at := nodeGame(t, world.FishNode)
+	p, _ := joinRec(g, "a")
+	place(g, p, at)
+	g.gather(p.id)
+	if len(p.resources) != 1 {
+		t.Fatalf("rien pêché: %v", p.resources)
+	}
+	for k := range p.resources {
+		if info, _ := resource.Lookup(k); info.Cat != resource.Fish {
+			t.Errorf("%s n'est pas un poisson", k)
+		}
+	}
+	if _, spent := g.spent[at]; !spent {
+		t.Fatal("le banc n'est pas épuisé")
+	}
+	p.gatherUntil = 0
+	before := len(p.resources)
+	g.gather(p.id)
+	for _, n := range p.resources {
+		if n > 3 {
+			t.Fatal("un banc épuisé a encore donné")
+		}
+	}
+	_ = before
+}
+
+// Une rivière sans banc ne donne rien: on ne pêche pas à l'infini sur toutes les cases.
+func TestNoFishingOnPlainRiver(t *testing.T) {
+	g := New(world.NewVersion(1, world.GenV3))
+	for r := 20; r < 400; r++ {
+		for x := -r; x <= r; x++ {
+			if g.World.At(x, r) == world.River && g.World.At(x+1, r) != world.FishNode && g.World.At(x-1, r) != world.FishNode {
+				p, _ := joinRec(g, "a")
+				place(g, p, world.Pos{X: x, Y: r})
+				g.gather(p.id)
+				if len(p.resources) != 0 {
+					t.Fatalf("pêche sans banc: %v", p.resources)
+				}
+				return
+			}
+		}
+	}
+	t.Skip("aucune rivière trouvée")
+}

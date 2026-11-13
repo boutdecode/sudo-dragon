@@ -16,6 +16,8 @@ var resourceHex = map[resource.Kind]string{
 	"oak": "#c2742b", "pine": "#2dd4bf", "birch": "#f8fafc", "ebony": "#a78bfa", "yew": "#a3e635",
 	// minerais
 	"stone": "#9ca3af", "coal": "#6b7280", "copper": "#f97316", "tin": "#cbd5e1", "iron": "#b8a89a", "silver": "#e2e8f0", "gold": "#facc15",
+	// poissons (pas de nœud sur la carte: la couleur sert aux listes)
+	"gudgeon": "#7dd3fc", "trout": "#fda4af", "carp": "#d6a35a", "pike": "#4d7c0f", "salmon": "#fb7185", "eel": "#475569", "sturgeon": "#94a3b8",
 	// plantes
 	"sage": "#8b72be", "nettle": "#3b82f6", "mint": "#5eead4", "lavender": "#d8b4fe", "mushroom": "#f87171", "mandrake": "#fb923c",
 }
