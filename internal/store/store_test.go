@@ -886,3 +886,18 @@ func TestDecodeResourcesIgnoresGarbage(t *testing.T) {
 		t.Errorf("décodage %v", got)
 	}
 }
+
+func TestSkillsRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	sk := map[string]int{"wood": 120, "fish": 7}
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10, Skills: sk}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil || got.Skills["wood"] != 120 || got.Skills["fish"] != 7 || len(got.Skills) != 2 {
+		t.Fatalf("métiers relus %+v (%v)", got, err)
+	}
+}

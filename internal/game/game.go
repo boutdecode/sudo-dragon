@@ -94,8 +94,9 @@ type player struct {
 	sendDungeonsMsg func(protocol.Dungeons)
 
 	// Matières premières (voir gather.go).
-	resources    map[resource.Kind]int // sac de matières : quantité par ressource
-	gatherUntil  uint64                // tick avant lequel on ne peut pas récolter de nouveau
+	resources    map[resource.Kind]int     // sac de matières : quantité par ressource
+	skills       map[resource.Category]int // expérience cumulée de chaque métier de récolte
+	gatherUntil  uint64                    // tick avant lequel on ne peut pas récolter de nouveau
 	sendNodesMsg func(protocol.Nodes)
 	nodesVer     uint64    // version de g.spent à l'envoi du dernier message Nodes
 	nodesAt      world.Pos // où le joueur se trouvait à ce moment
@@ -141,6 +142,8 @@ type Saved struct {
 
 	// Sac de matières : quantité par identifiant de ressource (voir gather.go).
 	Resources map[string]int
+	// Expérience cumulée des métiers de récolte, par clé de catégorie (resource.Category.Key).
+	Skills map[string]int
 }
 
 // Game est l'état du monde vivant.
@@ -399,6 +402,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 		}
 		p.maps = slices.Clone(saved.Maps)
 		p.resources = loadResources(saved.Resources)
+		p.skills = loadSkills(saved.Skills)
 		for _, rp := range saved.Stones {
 			p.stones[rp] = true
 		}
@@ -424,7 +428,7 @@ func (g *Game) save(p *player) {
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 			Discovered: p.discoveredList(), DiscoveredDirty: p.discoveredDirty,
-			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps), Resources: saveResources(p.resources),
+			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps), Resources: saveResources(p.resources), Skills: saveSkills(p.skills),
 		})
 		p.questsDirty, p.gearDirty, p.discoveredDirty = false, false, false
 	}

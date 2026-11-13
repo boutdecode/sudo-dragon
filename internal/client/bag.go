@@ -63,6 +63,17 @@ func (m *Model) applyBag(b protocol.Bag) {
 		}
 		b.Scores = sc
 	}
+	jobs := make([]protocol.JobInfo, 0, min(len(b.Jobs), int(resource.NumCategories)))
+	for _, j := range b.Jobs {
+		if len(jobs) >= int(resource.NumCategories) {
+			break
+		}
+		j.Job = textsafe.Clean(j.Job, 8)
+		j.Level, j.XP, j.Next = max(1, min(j.Level, 99)), max(0, min(j.XP, 1<<20)), max(0, min(j.Next, 1<<20))
+		j.Used, j.Cap, j.Chance = max(0, min(j.Used, 9999)), max(0, min(j.Cap, 9999)), max(0, min(j.Chance, 100))
+		jobs = append(jobs, j)
+	}
+	b.Jobs = jobs
 	m.bag = b
 	m.bagSel = max(0, min(m.bagSel, len(items)-1))
 	for _, n := range b.Notice {
@@ -187,6 +198,7 @@ func (m Model) inventoryView(w, h int) string {
 		}
 		left = append(left, line)
 	}
+	left = append(left, m.resourceLines()...)
 
 	var detail []string
 	if m.bagSel < len(m.bag.Items) {
@@ -201,7 +213,6 @@ func (m Model) inventoryView(w, h int) string {
 		detail = []string{"", " " + titleStyle.Render(m.t("bag.potion_name")), " " + dimStyle.Render(m.t("bag.consumable")), "",
 			m.t("bag.potion_line1"), m.t("bag.potion_line2"), "", " " + dimStyle.Render(m.t("bag.potion_line3")), " " + dimStyle.Render(m.t("bag.potion_line4"))}
 	}
-	detail = append(detail, m.resourceLines()...)
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		ui.Panel(m.t("bag.title", m.snap.Self.Name), strings.Join(left, "\n"), listW, h),
 		ui.Panel(m.t("bag.detail"), strings.Join(detail, "\n"), detailW, h),
@@ -213,14 +224,26 @@ var _ = fmt.Sprintf
 // maxResourceRows borne les matières affichées (le serveur n'en envoie pas plus que le catalogue).
 const maxResourceRows = 64
 
-// resourceLines liste les matières récoltées, groupées par catégorie.
+// jobOf renvoie le métier d'une catégorie reçu du serveur (le zéro s'il manque).
+func (m Model) jobOf(c resource.Category) protocol.JobInfo {
+	for _, j := range m.bag.Jobs {
+		if j.Job == c.Key() {
+			return j
+		}
+	}
+	return protocol.JobInfo{Job: c.Key(), Level: 1}
+}
+
+// resourceLines liste les matières récoltées, groupées par catégorie, chacune sous l'en-tête de son métier
+// (niveau et remplissage du sac). Les quatre catégories sont toujours présentes, même vides.
 func (m Model) resourceLines() []string {
-	if len(m.bag.Resources) == 0 {
+	if len(m.bag.Jobs) == 0 && len(m.bag.Resources) == 0 {
 		return nil
 	}
 	lines := []string{"", " " + titleStyle.Render(m.t("bag.materials"))}
 	for c := resource.Category(0); c < resource.NumCategories; c++ {
-		head := false
+		j := m.jobOf(c)
+		lines = append(lines, " "+dimStyle.Render(m.t("bag.job_line", m.t("job."+c.Key()), j.Level, j.Used, j.Cap)))
 		for i, r := range m.bag.Resources {
 			if i >= maxResourceRows {
 				break
@@ -228,10 +251,6 @@ func (m Model) resourceLines() []string {
 			info, ok := resource.Lookup(resource.Kind(r.ID))
 			if !ok || info.Cat != c || r.Qty <= 0 {
 				continue
-			}
-			if !head {
-				lines = append(lines, " "+dimStyle.Render(m.t("resource.cat."+c.Key())))
-				head = true
 			}
 			lines = append(lines, "   "+m.t("resource."+r.ID)+dimStyle.Render(" ×"+strconv.Itoa(min(r.Qty, 9999))))
 		}

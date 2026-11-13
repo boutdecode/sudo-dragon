@@ -15,7 +15,7 @@ import (
 const (
 	nodeRespawn    = 6000 // 10 min (10 ticks par seconde)
 	gatherCooldown = 8    // délai minimal entre deux récoltes d'un joueur
-	maxResourceQty = 99   // quantité maximale portée par ressource
+	maxResourceQty = 99   // plafond d'une pile relue d'une sauvegarde (le sac est borné par le métier)
 	nodeNearby     = 160  // rayon (en cases) des nœuds épuisés envoyés au client
 	nodeResync     = 40   // distance parcourue qui force un nouvel envoi
 	maxNodesSent   = 512
@@ -47,18 +47,33 @@ func (g *Game) gather(id int) {
 			sawSpent = true
 			continue
 		}
-		if p.resources[kind] >= maxResourceQty {
-			g.poiNotice(p, "gather.full", resourceName(p, kind))
+		info, _ := resource.Lookup(kind)
+		level := resource.LevelOf(p.skills[info.Cat])
+		if usedIn(p.resources, info.Cat) >= resource.Capacity(level) { // sac de la catégorie plein: le nœud n'est pas touché
+			g.poiNotice(p, "gather.full", jobName(p, info.Cat))
 			return
 		}
-		n := min(1+g.rng.IntN(3), maxResourceQty-p.resources[kind])
+		g.spent[pos] = g.tick // réussie ou non, la tentative épuise le nœud
+		g.spentVer++
+		if g.rng.IntN(100) >= resource.Chance(level) {
+			g.poiNotice(p, "gather.fail", resourceName(p, kind))
+			return
+		}
 		if p.resources == nil {
 			p.resources = map[resource.Kind]int{}
 		}
-		p.resources[kind] += n
-		g.spent[pos] = g.tick
-		g.spentVer++
-		g.poiNotice(p, "gather.got", n, resourceName(p, kind), p.resources[kind])
+		p.resources[kind]++
+		if p.skills == nil {
+			p.skills = map[resource.Category]int{}
+		}
+		p.skills[info.Cat] += resource.GainXP(info.Tier)
+		now := resource.LevelOf(p.skills[info.Cat])
+		p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "gather.got", resourceName(p, kind),
+			usedIn(p.resources, info.Cat), resource.Capacity(now)))
+		if now > level {
+			p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "gather.levelup", jobName(p, info.Cat), now))
+		}
+		g.sendBag(p)
 		return
 	}
 	if sawSpent {
@@ -145,6 +160,56 @@ func saveResources(m map[resource.Kind]int) map[string]int {
 	out := make(map[string]int, len(m))
 	for k, n := range m {
 		out[string(k)] = n
+	}
+	return out
+}
+
+// usedIn est le nombre d'unités portées pour une catégorie, toutes déclinaisons confondues.
+func usedIn(m map[resource.Kind]int, cat resource.Category) int {
+	n := 0
+	for k, q := range m {
+		if info, ok := resource.Lookup(k); ok && info.Cat == cat {
+			n += q
+		}
+	}
+	return n
+}
+
+// jobName est le nom du métier associé à une catégorie, dans la langue du joueur.
+func jobName(p *player, c resource.Category) string { return i18n.T(p.lang, "job."+c.Key()) }
+
+// jobInfos décrit les métiers du joueur pour le client, dans l'ordre des catégories.
+func jobInfos(p *player) []protocol.JobInfo {
+	out := make([]protocol.JobInfo, 0, resource.NumCategories)
+	for c := resource.Category(0); c < resource.NumCategories; c++ {
+		level, in, next := resource.Progress(p.skills[c])
+		out = append(out, protocol.JobInfo{Job: c.Key(), Level: level, XP: in, Next: next,
+			Used: usedIn(p.resources, c), Cap: resource.Capacity(level), Chance: resource.Chance(level)})
+	}
+	return out
+}
+
+// loadSkills relit l'expérience sauvegardée en écartant les catégories inconnues.
+func loadSkills(saved map[string]int) map[resource.Category]int {
+	out := map[resource.Category]int{}
+	for c := resource.Category(0); c < resource.NumCategories; c++ {
+		if xp := saved[c.Key()]; xp > 0 {
+			out[c] = xp
+		}
+	}
+	return out
+}
+
+// saveSkills est l'inverse de loadSkills.
+func saveSkills(m map[resource.Category]int) map[string]int {
+	var out map[string]int
+	for c, xp := range m {
+		if xp > 0 {
+			if out == nil {
+				out = map[string]int{}
+			}
+			out[c.Key()] = xp
+		}
 	}
 	return out
 }

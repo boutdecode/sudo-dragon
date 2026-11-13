@@ -11,6 +11,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/resource"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
@@ -111,6 +112,17 @@ func (m Model) sheetRight(w int) []string {
 		self := m.snap.Self
 		for _, mp := range m.bag.Maps {
 			lines = append(lines, " "+ui.Fit(m.t("sheet.map_line", mp.X, mp.Y, max(abs(mp.X-self.X), abs(mp.Y-self.Y))), w))
+		}
+	}
+	if len(m.bag.Jobs) > 0 {
+		lines = append(lines, "", " "+titleStyle.Render(m.t("sheet.jobs")))
+		for c := resource.Category(0); c < resource.NumCategories; c++ {
+			j := m.jobOf(c)
+			xp := m.t("sheet.job_max")
+			if j.Next > 0 {
+				xp = fmt.Sprintf("%d/%d", j.XP, j.Next)
+			}
+			lines = append(lines, " "+ui.Fit(m.t("sheet.job_line", m.t("job."+c.Key()), j.Level, xp, j.Chance, j.Used, j.Cap), w))
 		}
 	}
 	open, ready := m.readyQuests()

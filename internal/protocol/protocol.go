@@ -356,6 +356,22 @@ type Bag struct {
 
 	// Matières récoltées (sac de matières, voir internal/resource), triées par catégorie puis identifiant.
 	Resources []ResourceStack `json:"res,omitempty"`
+
+	// Métiers de récolte, un par catégorie de ressource, dans l'ordre du catalogue.
+	Jobs []JobInfo `json:"jobs,omitempty"`
+}
+
+// JobInfo décrit un métier de récolte (bûcheron, mineur, herboriste, pêcheur): Job est la clé de catégorie
+// (resource.Category.Key), Used et Cap le remplissage du sac de la catégorie, Chance le pourcentage de réussite.
+// Next vaut 0 au niveau maximal.
+type JobInfo struct {
+	Job    string `json:"job"`
+	Level  int    `json:"lvl"`
+	XP     int    `json:"xp"`
+	Next   int    `json:"next,omitempty"`
+	Used   int    `json:"used"`
+	Cap    int    `json:"cap"`
+	Chance int    `json:"chance"`
 }
 
 // ResourceStack est une quantité de matière: ID est l'identifiant du catalogue (voir resource.Kind).

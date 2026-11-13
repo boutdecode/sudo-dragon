@@ -1,6 +1,8 @@
 package game
 
 import (
+	"math/rand/v2"
+	"strings"
 	"testing"
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
@@ -25,49 +27,85 @@ func nodeGame(t *testing.T, tile world.Tile) (*Game, world.Pos) {
 	return nil, world.Pos{}
 }
 
-func TestGatherAddsResourceAndSpendsNode(t *testing.T) {
+// forceRoll règle l'aléa du jeu pour que le prochain jet de récolte réussisse (ou échoue) au niveau donné.
+func forceRoll(g *Game, level int, success bool) {
+	for seed := uint64(0); ; seed++ {
+		if (rand.New(rand.NewPCG(seed, 1)).IntN(100) < resource.Chance(level)) == success {
+			g.rng = rand.New(rand.NewPCG(seed, 1))
+			return
+		}
+	}
+}
+
+func total(p *player) int {
+	n := 0
+	for _, q := range p.resources {
+		n += q
+	}
+	return n
+}
+
+func TestGatherSuccessGivesOneUnitAndXP(t *testing.T) {
 	g, at := nodeGame(t, world.TreeNode)
 	p, _ := joinRec(g, "a")
 	place(g, p, at)
 	var bag protocol.Bag
 	p.sendBagMsg = func(b protocol.Bag) { bag = b }
-
+	forceRoll(g, 1, true)
 	g.gather(p.id)
-	total := 0
-	for _, n := range p.resources {
-		total += n
+	if total(p) != 1 {
+		t.Fatalf("%d unités, attendu 1 (%v)", total(p), p.resources)
 	}
-	if total < 1 || total > 3 {
-		t.Fatalf("récolte de %d unités, attendu 1 à 3 (%v)", total, p.resources)
+	kind, _ := g.World.ResourceAt(at.X, at.Y)
+	info, _ := resource.Lookup(kind)
+	if p.skills[resource.Wood] != resource.GainXP(info.Tier) {
+		t.Errorf("XP %d, attendu %d", p.skills[resource.Wood], resource.GainXP(info.Tier))
 	}
-	if len(bag.Resources) != 1 || bag.Resources[0].Qty != total {
-		t.Fatalf("sac envoyé %v", bag.Resources)
+	if len(bag.Resources) != 1 || len(bag.Jobs) != int(resource.NumCategories) {
+		t.Fatalf("sac envoyé %+v", bag)
 	}
 	if _, spent := g.spent[at]; !spent {
 		t.Fatal("le nœud n'est pas épuisé")
 	}
-
-	// Épuisé: une seconde récolte ne donne rien.
+	// Épuisé: pas de seconde récolte; puis il repousse.
 	p.gatherUntil = 0
 	g.gather(p.id)
-	again := 0
-	for _, n := range p.resources {
-		again += n
+	if total(p) != 1 {
+		t.Fatal("un nœud épuisé a donné des matières")
 	}
-	if again != total {
-		t.Fatalf("un nœud épuisé a donné des matières (%d -> %d)", total, again)
-	}
-
-	// Il repousse.
 	g.tick += nodeRespawn
 	g.expireNodes()
 	if len(g.spent) != 0 {
 		t.Fatalf("nœud non repoussé: %v", g.spent)
 	}
-	p.gatherUntil = 0
+}
+
+func TestGatherFailureSpendsNodeWithoutXP(t *testing.T) {
+	g, at := nodeGame(t, world.TreeNode)
+	p, _ := joinRec(g, "a")
+	place(g, p, at)
+	forceRoll(g, 1, false)
 	g.gather(p.id)
+	if total(p) != 0 || p.skills[resource.Wood] != 0 {
+		t.Fatalf("échec récompensé: %v %v", p.resources, p.skills)
+	}
 	if _, spent := g.spent[at]; !spent {
-		t.Fatal("le nœud repoussé n'a pas pu être récolté")
+		t.Fatal("un échec doit épuiser le nœud")
+	}
+}
+
+func TestGatherLevelUp(t *testing.T) {
+	g, at := nodeGame(t, world.TreeNode)
+	p, _ := joinRec(g, "a")
+	place(g, p, at)
+	p.skills = map[resource.Category]int{resource.Wood: resource.XPToNext(1) - 1}
+	forceRoll(g, 1, true)
+	g.gather(p.id)
+	if resource.LevelOf(p.skills[resource.Wood]) != 2 {
+		t.Fatalf("niveau %d, attendu 2", resource.LevelOf(p.skills[resource.Wood]))
+	}
+	if n := notices(p); !strings.Contains(n, "2") {
+		t.Errorf("pas d'annonce de niveau: %q", n)
 	}
 }
 
@@ -75,6 +113,7 @@ func TestGatherFromNeighbourTile(t *testing.T) {
 	g, at := nodeGame(t, world.OreNode)
 	p, _ := joinRec(g, "a")
 	place(g, p, world.Pos{X: at.X + 1, Y: at.Y})
+	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if len(p.resources) != 1 {
 		t.Fatalf("rien récolté depuis la case voisine: %v", p.resources)
@@ -98,18 +137,27 @@ func TestGatherNothingAndCooldown(t *testing.T) {
 	}
 }
 
-func TestGatherCapsQuantity(t *testing.T) {
+// Le sac d'une catégorie plein refuse la récolte sans toucher au nœud; le niveau du métier l'agrandit.
+func TestGatherBagCapacityFollowsLevel(t *testing.T) {
 	g, at := nodeGame(t, world.HerbNode)
 	p, _ := joinRec(g, "a")
 	place(g, p, at)
-	kind, _ := g.World.ResourceAt(at.X, at.Y)
-	p.resources = map[resource.Kind]int{kind: maxResourceQty}
+	p.resources = map[resource.Kind]int{"sage": resource.Capacity(1)}
+	forceRoll(g, 1, true)
 	g.gather(p.id)
-	if p.resources[kind] != maxResourceQty {
-		t.Fatalf("quantité %d au-delà du plafond", p.resources[kind])
+	if total(p) != resource.Capacity(1) {
+		t.Fatalf("le sac plein a grossi: %d", total(p))
 	}
 	if _, spent := g.spent[at]; spent {
-		t.Fatal("un nœud a été épuisé sans rien donner")
+		t.Fatal("un sac plein ne doit pas épuiser le nœud")
+	}
+	// Un autre métier n'est pas concerné; et le niveau suivant agrandit le sac.
+	p.skills = map[resource.Category]int{resource.Herb: resource.XPToNext(1)}
+	p.gatherUntil = 0
+	forceRoll(g, 2, true)
+	g.gather(p.id)
+	if total(p) != resource.Capacity(1)+1 {
+		t.Fatalf("sac %d après la montée de niveau, attendu %d", total(p), resource.Capacity(1)+1)
 	}
 }
 
@@ -145,10 +193,35 @@ func TestResourcesSaveLoad(t *testing.T) {
 	}
 }
 
+func TestSkillsSaveLoad(t *testing.T) {
+	in := map[resource.Category]int{resource.Wood: 120, resource.Fish: 5}
+	out := loadSkills(saveSkills(in))
+	if out[resource.Wood] != 120 || out[resource.Fish] != 5 || len(out) != 2 {
+		t.Fatalf("relu %v", out)
+	}
+	if saveSkills(nil) != nil || len(loadSkills(map[string]int{"inconnu": 9})) != 0 {
+		t.Fatal("entrées vides ou inconnues mal traitées")
+	}
+}
+
+func TestJobInfosReportBagAndChance(t *testing.T) {
+	g := New(world.NewVersion(1, world.GenV3))
+	p, _ := joinRec(g, "a")
+	p.resources = map[resource.Kind]int{"oak": 2, "pine": 1}
+	jobs := jobInfos(p)
+	if len(jobs) != int(resource.NumCategories) {
+		t.Fatalf("%d métiers", len(jobs))
+	}
+	if jobs[resource.Wood].Used != 3 || jobs[resource.Wood].Cap != resource.Capacity(1) || jobs[resource.Wood].Chance != resource.Chance(1) {
+		t.Errorf("bûcheron %+v", jobs[resource.Wood])
+	}
+}
+
 func TestFishingSpotInRiver(t *testing.T) {
 	g, at := nodeGame(t, world.FishNode)
 	p, _ := joinRec(g, "a")
 	place(g, p, at)
+	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if len(p.resources) != 1 {
 		t.Fatalf("rien pêché: %v", p.resources)
@@ -162,14 +235,10 @@ func TestFishingSpotInRiver(t *testing.T) {
 		t.Fatal("le banc n'est pas épuisé")
 	}
 	p.gatherUntil = 0
-	before := len(p.resources)
 	g.gather(p.id)
-	for _, n := range p.resources {
-		if n > 3 {
-			t.Fatal("un banc épuisé a encore donné")
-		}
+	if total(p) != 1 {
+		t.Fatal("un banc épuisé a encore donné")
 	}
-	_ = before
 }
 
 // Une rivière sans banc ne donne rien: on ne pêche pas à l'infini sur toutes les cases.
