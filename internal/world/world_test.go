@@ -6,14 +6,14 @@ func TestDeterministic(t *testing.T) {
 	a, b := newTestWorld(42), newTestWorld(42)
 	for _, cp := range []ChunkPos{{0, 0}, {-3, 5}, {100, -100}} {
 		if *a.Chunk(cp) != *b.Chunk(cp) {
-			t.Fatalf("chunk %v diffère entre deux mondes de même seed", cp)
+			t.Fatalf("chunk %v differs between two worlds with the same seed", cp)
 		}
 	}
 }
 
 func TestSeedsDiffer(t *testing.T) {
 	if *newTestWorld(1).Chunk(ChunkPos{0, 0}) == *newTestWorld(2).Chunk(ChunkPos{0, 0}) {
-		t.Fatal("deux seeds différentes donnent le même chunk")
+		t.Fatal("two different seeds give the same chunk")
 	}
 }
 
@@ -37,7 +37,7 @@ func TestAtMatchesTileAt(t *testing.T) {
 	w := newTestWorld(7)
 	for _, p := range []Pos{{0, 0}, {-5, 17}, {-40, -33}, {123, 456}} {
 		if w.At(p.X, p.Y) != w.TileAt(p.X, p.Y) {
-			t.Errorf("At/TileAt divergent en %v", p)
+			t.Errorf("At/TileAt diverge at %v", p)
 		}
 	}
 }
@@ -46,7 +46,7 @@ func TestSpawnWalkable(t *testing.T) {
 	w := newTestWorld(99)
 	p := w.FindSpawn()
 	if !w.At(p.X, p.Y).Walkable() {
-		t.Fatalf("spawn %v non praticable", p)
+		t.Fatalf("spawn %v not walkable", p)
 	}
 }
 
@@ -55,10 +55,10 @@ func TestGlyphsAreDistinctPrintableASCII(t *testing.T) {
 	for tile := DeepWater; tile < NumTiles; tile++ {
 		g := tile.Glyph()
 		if g < 33 || g > 126 || g == '?' {
-			t.Errorf("tuile %d: glyphe %q non ASCII imprimable (ou inconnu)", tile, g)
+			t.Errorf("tile %d: glyph %q is not printable ASCII (or is unknown)", tile, g)
 		}
 		if other, dup := seen[g]; dup {
-			t.Errorf("les tuiles %d et %d partagent le glyphe %q", other, tile, g)
+			t.Errorf("tiles %d and %d share glyph %q", other, tile, g)
 		}
 		seen[g] = tile
 	}

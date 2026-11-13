@@ -8,17 +8,17 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Caravanes : sur certaines routes entre deux lieux (voir world/caravan.go), un marchand ambulant fait l'aller-retour.
-// Il vend de l'équipement d'un rang de plus que les forges de la région, avec un assortiment qui change chaque jour de
-// jeu. On lui parle en marchant sur lui ; il s'arrête pendant la conversation.
+// Caravans: on some roads between two places (see world/caravan.go), a travelling merchant goes back and forth.
+// It sells gear one rank above the region's forges, with a selection that changes every game
+// day. You talk to it by walking onto it; it stops during the conversation.
 //
-// Sa position ne dépend que du tick, de sa graine et du temps qu'il a passé arrêté : rien à sauvegarder, et la même
-// caravane est au même endroit pour tous. Seules celles dont la route passe près d'un joueur sont suivies.
+// Its position depends only on the tick, its seed and the time it has spent stopped: nothing to save, and the same
+// caravan is in the same place for everyone. Only those whose road passes near a player are tracked.
 
 const (
-	caravanIDBase = 1 << 29 // identifiants réseau, au-delà de ceux des monstres et des gardes (guardIDBase)
-	caravanStep   = 10      // ticks par case (1 case par seconde)
-	caravanPause  = 300     // ticks (30 s) d'arrêt à chaque bout de la route
+	caravanIDBase = 1 << 29 // network IDs, above those of monsters and guards (guardIDBase)
+	caravanStep   = 10      // ticks per tile (1 tile per second)
+	caravanPause  = 300     // ticks (30 s) stopped at each end of the road
 	caravanReach  = garrisonActivation
 	maxPauses     = 512
 )
@@ -30,19 +30,19 @@ type caravan struct {
 	pos   world.Pos
 }
 
-// caravanState regroupe les caravanes suivies.
+// caravanState groups the tracked caravans.
 type caravanState struct {
 	next   int
-	active map[string]*caravan // par identifiant de route
+	active map[string]*caravan // by road identifier
 	at     map[world.Pos]*caravan
-	paused map[string]uint64 // route -> ticks passés à l'arrêt (conversation, case occupée)
+	paused map[string]uint64 // road -> ticks spent stopped (conversation, occupied tile)
 }
 
-// caravanPeriod est la durée d'un aller-retour complet sur une route de n cases.
+// caravanPeriod is the duration of a full round trip on a road of n tiles.
 func caravanPeriod(n int) uint64 { return uint64(2*(n-1)*caravanStep + 2*caravanPause) }
 
-// caravanIndex donne la case (indice dans le tracé de n cases) de la caravane à l'instant t de son cycle : aller,
-// pause, retour, pause.
+// caravanIndex gives the tile (index in the n-tile path) of the caravan at time t of its cycle: outbound,
+// pause, return, pause.
 func caravanIndex(n int, t uint64) int {
 	if n < 2 {
 		return 0
@@ -60,7 +60,7 @@ func caravanIndex(n int, t uint64) int {
 	return 0
 }
 
-// clock est l'heure du cycle de c : le tick, décalé par sa graine, moins le temps passé à l'arrêt.
+// clock is the cycle time of c: the tick, shifted by its seed, minus the time spent stopped.
 func (g *Game) caravanClock(c *caravan) uint64 {
 	now := g.tick + c.seed%caravanPeriod(len(c.route.Path))
 	if p := g.car.paused[c.route.ID]; p < now {
@@ -69,7 +69,7 @@ func (g *Game) caravanClock(c *caravan) uint64 {
 	return 0
 }
 
-// caravanAt renvoie la caravane qui occupe la case pos.
+// caravanAt returns the caravan occupying tile pos.
 func (g *Game) caravanAt(pos world.Pos) *caravan {
 	if g.car.at == nil {
 		return nil
@@ -77,7 +77,7 @@ func (g *Game) caravanAt(pos world.Pos) *caravan {
 	return g.car.at[pos]
 }
 
-// activateCaravans suit les caravanes dont la route passe à moins de caravanReach d'un joueur et oublie les autres.
+// activateCaravans tracks the caravans whose road passes within caravanReach of a player and forgets the others.
 func (g *Game) activateCaravans() {
 	seen := map[string]bool{}
 	for _, id := range g.sortedIDs() {
@@ -122,7 +122,7 @@ func (g *Game) indexCaravans() {
 	}
 }
 
-// caravanOf retrouve la caravane que le marchand npc représente, ou nil.
+// caravanOf finds the caravan that merchant npc represents, or nil.
 func (g *Game) caravanOf(npc world.NPC) *caravan {
 	for _, c := range g.car.active {
 		if c.route.A == npc.Region && npc.Index == world.CaravanIndexBase+c.route.Orient {
@@ -132,8 +132,8 @@ func (g *Game) caravanOf(npc world.NPC) *caravan {
 	return nil
 }
 
-// stepCaravans avance les caravanes d'une case à chaque caravanStep ticks. Une caravane arrête sa montre tant qu'un
-// joueur lui parle, ou que la case suivante est occupée.
+// stepCaravans advances caravans by one tile every caravanStep ticks. A caravan stops its clock while a
+// player is talking to it, or while the next tile is occupied.
 func (g *Game) stepCaravans() {
 	if len(g.car.active) == 0 {
 		return
@@ -155,7 +155,7 @@ func (g *Game) stepCaravans() {
 			continue
 		}
 		if g.blockedIn(0, want) {
-			g.car.paused[c.route.ID] += caravanStep // la route est barrée : on attend
+			g.car.paused[c.route.ID] += caravanStep // the road is blocked: wait
 			continue
 		}
 		c.pos, moved = want, true
@@ -174,12 +174,12 @@ func (g *Game) sortedCaravans() []*caravan {
 	return out
 }
 
-// bumpCaravan ouvre la boutique de la caravane.
+// bumpCaravan opens the caravan's shop.
 func (g *Game) bumpCaravan(p *player, c *caravan) {
 	g.startTalk(p, g.World.CaravanMerchant(c.route, c.pos))
 }
 
-// appendCaravans ajoute à la liste des monstres visibles de p les caravanes de sa vue (comme les gardes : on leur parle).
+// appendCaravans adds the caravans in p's view to p's list of visible monsters (like guards: you talk to them).
 func (g *Game) appendCaravans(ms []protocol.Monster, p *player) []protocol.Monster {
 	if p.zone != 0 {
 		return ms
@@ -192,9 +192,9 @@ func (g *Game) appendCaravans(ms []protocol.Monster, p *player) []protocol.Monst
 	return ms
 }
 
-// caravanWares est l'assortiment de la caravane : un rang de plus que les forges de sa région, renouvelé chaque jour
-// de jeu. Il vient du repli déterministe : jamais de modèle de langage ni d'écriture en base. La révision change avec
-// le jour, si bien qu'un achat ouvert la veille est refusé (« l'étalage a été renouvelé »).
+// caravanWares is the caravan's selection: one rank above the forges of its region, renewed every game
+// day. It comes from the deterministic fallback: never a language model nor a database write. The revision changes with
+// the day, so a purchase opened the day before is refused ("the stall has been renewed").
 func (g *Game) caravanWares(p *player, npc world.NPC) (gear.Wares, int) {
 	day := int(g.tick / (24 * protocol.TicksPerGameHour))
 	ctx := g.vendorContext(npc)

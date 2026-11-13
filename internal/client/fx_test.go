@@ -14,22 +14,22 @@ func TestShiftBlockKeepsDimensions(t *testing.T) {
 	for _, d := range [][2]int{{0, 0}, {1, 0}, {-1, 0}, {2, 1}, {-2, -1}, {0, 1}, {0, -1}} {
 		out := strings.Split(shiftBlock(block, d[0], d[1], 6, 3), "\n")
 		if len(out) != 3 {
-			t.Fatalf("%v: %d lignes", d, len(out))
+			t.Fatalf("%v: %d lines", d, len(out))
 		}
 		for _, l := range out {
 			if w := ansi.StringWidth(l); w != 6 {
-				t.Fatalf("%v: largeur %d: %q", d, w, l)
+				t.Fatalf("%v: width %d: %q", d, w, l)
 			}
 		}
 	}
 	if got := ansi.Strip(strings.Split(shiftBlock(block, 2, 0, 6, 3), "\n")[0]); got != "  abcd" {
-		t.Fatalf("décalage à droite: %q", got)
+		t.Fatalf("shift right: %q", got)
 	}
 	if got := ansi.Strip(strings.Split(shiftBlock(block, -2, 0, 6, 3), "\n")[0]); got != "cdef  " {
-		t.Fatalf("décalage à gauche: %q", got)
+		t.Fatalf("shift left: %q", got)
 	}
 	if got := ansi.Strip(strings.Split(shiftBlock(block, 0, 1, 6, 3), "\n")[1]); got != "abcdef" {
-		t.Fatalf("décalage vers le bas: %q", got)
+		t.Fatalf("shift down: %q", got)
 	}
 }
 
@@ -38,15 +38,15 @@ func TestShakeOffsetDecaysToZero(t *testing.T) {
 	for f := 0; f < fxCritFrames; f++ {
 		dx, _ := shakeOffset(f, fxCritFrames, 2)
 		if abs(dx) > prev || abs(dx) > 2 {
-			t.Fatalf("image %d: amplitude %d ne décroît pas (précédente %d)", f, abs(dx), prev)
+			t.Fatalf("frame %d: amplitude %d does not decay (previous %d)", f, abs(dx), prev)
 		}
 		prev = abs(dx)
 	}
 	if dx, dy := shakeOffset(fxCritFrames, fxCritFrames, 2); dx != 0 || dy != 0 {
-		t.Fatal("la secousse doit être finie")
+		t.Fatal("the shake must be finished")
 	}
 	if dx, _ := shakeOffset(0, fxFrames, 0); dx != 0 {
-		t.Fatal("amplitude nulle: pas de secousse")
+		t.Fatal("zero amplitude: no shake")
 	}
 }
 
@@ -58,24 +58,24 @@ func TestBeingHitShakesTheWholeScreenThenStops(t *testing.T) {
 	c := withStrikes(packCombat(false), protocol.Strike{Foe: 0, Dmg: 3, Hit: true})
 	cmd := m.startFx(c)
 	if cmd == nil || m.fx.allAmp == 0 || m.fx.foeAmp != 0 || !m.fx.flashHP {
-		t.Fatalf("coup reçu: cmd=%v fx=%+v", cmd != nil, m.fx)
+		t.Fatalf("hit received: cmd=%v fx=%+v", cmd != nil, m.fx)
 	}
 	gen := m.fx.gen
 	for i := 0; i < fxFrames; i++ {
 		if !m.fx.active() {
-			t.Fatalf("animation finie trop tôt (image %d)", i)
+			t.Fatalf("animation finished too early (frame %d)", i)
 		}
 		tm, next := m.updateShake(shakeTickMsg{gen})
 		m = tm.(Model)
 		if m.fx.active() != (next != nil) {
-			t.Fatalf("image %d: la commande suivante doit exister tant que l'animation dure", i)
+			t.Fatalf("frame %d: the next command must exist while the animation lasts", i)
 		}
 	}
 	if m.fx.active() {
-		t.Fatal("l'animation devait être finie")
+		t.Fatal("the animation should have finished")
 	}
 	if tm, next := m.updateShake(shakeTickMsg{gen}); next != nil || tm.(Model).fx.frame != m.fx.frame {
-		t.Fatal("un tick après la fin ne doit rien faire")
+		t.Fatal("a tick after the end must do nothing")
 	}
 }
 
@@ -85,11 +85,11 @@ func TestStaleTicksAreIgnoredAndCritsLastLonger(t *testing.T) {
 	old := m.fx.gen
 	m.startFx(withStrikes(packCombat(false), protocol.Strike{Foe: 0, Dmg: 9, Hit: true, Crit: true}))
 	if m.fx.frames != fxCritFrames || m.fx.allAmp != 2 {
-		t.Fatalf("un critique doit durer plus longtemps et secouer plus fort: %+v", m.fx)
+		t.Fatalf("a critical must last longer and shake harder: %+v", m.fx)
 	}
 	frame := m.fx.frame
 	if tm, next := m.updateShake(shakeTickMsg{old}); next != nil || tm.(Model).fx.frame != frame {
-		t.Fatal("un tick périmé doit être ignoré")
+		t.Fatal("a stale tick must be ignored")
 	}
 }
 
@@ -99,24 +99,24 @@ func TestDealingAHitShakesOnlyTheEnemyColumn(t *testing.T) {
 	m = tm.(Model)
 	m.startFx(withStrikes(packCombat(false), protocol.Strike{ByPlayer: true, Foe: 2, Dmg: 7, Hit: true}))
 	if m.fx.allAmp != 0 || m.fx.foeAmp == 0 || m.fx.flashHP {
-		t.Fatalf("coup donné: %+v", m.fx)
+		t.Fatalf("hit dealt: %+v", m.fx)
 	}
 	if m.foeHitText(2) != " -7" || m.foeHitText(0) != "" {
-		t.Fatalf("texte de dégâts: %q / %q", m.foeHitText(2), m.foeHitText(0))
+		t.Fatalf("damage text: %q / %q", m.foeHitText(2), m.foeHitText(0))
 	}
 	if !strings.Contains(plainView(m), "-7") {
-		t.Fatal("les dégâts doivent s'afficher à côté du monstre touché")
+		t.Fatal("damage must be displayed next to the monster hit")
 	}
 }
 
 func TestMissesAndNoFXDoNotAnimate(t *testing.T) {
 	m := playingModel(t, 110, 34)
 	if cmd := m.startFx(withStrikes(packCombat(false), protocol.Strike{Foe: 0, Hit: false})); cmd != nil || m.fx.active() {
-		t.Fatal("un coup raté n'anime rien")
+		t.Fatal("a missed hit animates nothing")
 	}
 	m.noFX = true
 	if cmd := m.startFx(withStrikes(packCombat(false), protocol.Strike{Foe: 0, Dmg: 3, Hit: true})); cmd != nil || m.fx.active() {
-		t.Fatal("effets coupés: aucune animation")
+		t.Fatal("effects off: no animation")
 	}
 }
 
@@ -130,11 +130,11 @@ func TestShakingViewStaysWithinTheScreen(t *testing.T) {
 			m.fx.frame = f
 			lines := strings.Split(plainView(m), "\n")
 			if len(lines) > sz[1] {
-				t.Fatalf("%v image %d: %d lignes > hauteur", sz, f, len(lines))
+				t.Fatalf("%v frame %d: %d lines > height", sz, f, len(lines))
 			}
 			for i, l := range lines {
 				if w := ansi.StringWidth(l); w > sz[0] {
-					t.Fatalf("%v image %d ligne %d: largeur %d > %d", sz, f, i, w, sz[0])
+					t.Fatalf("%v frame %d line %d: width %d > %d", sz, f, i, w, sz[0])
 				}
 			}
 		}

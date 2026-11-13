@@ -11,14 +11,14 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Géographie des chefs de village et des maires : ils connaissent les lieux des régions voisines.
-// Ce sont des faits établis par le serveur (nom, genre, direction, distance), pas des paroles de joueur.
+// Geography of village chiefs and mayors: they know the places in neighbouring regions.
+// These are facts established by the server (name, kind, direction, distance), not player speech.
 
 const (
-	landmarkRange  = 3 // en régions : portée de la géographie des chefs et maires (indépendante des rumeurs)
+	landmarkRange  = 3 // in regions: range of chiefs' and mayors' geography (independent of rumours)
 	maxLandmarks   = 10
-	distNear       = 300 // cases : en deçà, « tout près »
-	distWalk       = 700 // cases : en deçà, « à une bonne marche »
+	distNear       = 300 // tiles: below this, "very close"
+	distWalk       = 700 // tiles: below this, "a good walk"
 	maxGeoCacheLen = 512
 )
 
@@ -27,19 +27,19 @@ type geoKey struct {
 	lang i18n.Lang
 }
 
-// knowsNeighbours dit si ce type de PNJ connaît les lieux voisins.
+// knowsNeighbours says whether this NPC type knows the neighbouring places.
 func knowsNeighbours(k world.NPCKind) bool {
 	return k == world.NPCChief || k == world.NPCMayor || k == world.NPCGuard
 }
 
-// compass donne la clé de catalogue de la direction (le nord est vers les y décroissants, comme à l'écran).
+// compass gives the catalogue key of the direction (north is toward decreasing y, as on screen).
 func compass(dx, dy int) string {
-	angle := math.Atan2(float64(-dy), float64(dx)) // 0 = est, π/2 = nord
+	angle := math.Atan2(float64(-dy), float64(dx)) // 0 = east, π/2 = north
 	sector := int(math.Round(angle/(math.Pi/4))+8) % 8
 	return [8]string{"e", "ne", "n", "nw", "w", "sw", "s", "se"}[sector]
 }
 
-// distanceKey classe une distance en cases.
+// distanceKey classifies a distance in tiles.
 func distanceKey(d float64) string {
 	switch {
 	case d < distNear:
@@ -50,8 +50,8 @@ func distanceKey(d float64) string {
 	return "far"
 }
 
-// landmarksFor liste, du plus proche au plus lointain, les autres lieux à landmarkRange régions au plus du PNJ.
-// Le résultat est mémorisé par PNJ et par langue (le monde ne change pas).
+// landmarksFor lists, from nearest to farthest, the other places at most landmarkRange regions from the NPC.
+// The result is cached per NPC and per language (the world does not change).
 func (g *Game) landmarksFor(npc world.NPC, l i18n.Lang) []npcai.Landmark {
 	key := geoKey{npc.Key(), l}
 	if v, ok := g.geo[key]; ok {
@@ -108,8 +108,8 @@ func (g *Game) landmarksFor(npc world.NPC, l i18n.Lang) []npcai.Landmark {
 	return out
 }
 
-// neighboursGreeting est l'accueil d'un chef ou d'un maire quand le modèle de langage est indisponible :
-// ses trois plus proches voisins, tels que le serveur les connaît. "" s'il n'en connaît aucun.
+// neighboursGreeting is the greeting of a chief or mayor when the language model is unavailable:
+// its three nearest neighbours, as the server knows them. "" if it knows none.
 func (g *Game) neighboursGreeting(npc world.NPC, l i18n.Lang) string {
 	lms := g.landmarksFor(npc, l)
 	if len(lms) == 0 {
@@ -122,7 +122,7 @@ func (g *Game) neighboursGreeting(npc world.NPC, l i18n.Lang) string {
 	return i18n.T(l, "npc.neighbors.intro", strings.Join(parts, " ; "))
 }
 
-// landmarksIfKnown renvoie les lieux voisins pour un chef ou un maire, rien pour les autres PNJ.
+// landmarksIfKnown returns the neighbouring places for a chief or mayor, nothing for other NPCs.
 func (g *Game) landmarksIfKnown(npc world.NPC, l i18n.Lang) []npcai.Landmark {
 	if !knowsNeighbours(npc.Kind) {
 		return nil

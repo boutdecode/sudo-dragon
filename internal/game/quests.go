@@ -13,19 +13,19 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Quêtes. Le modèle de langage ne fait que PROPOSER (voir quest.Validate) ; tout ce qui
-// compte (acceptation, progression, remise, récompense, réputation) est décidé ici,
-// dans la goroutine de jeu, à partir de valeurs déjà bornées.
+// Quests. The language model only PROPOSES (see quest.Validate); everything that
+// matters (acceptance, progress, hand-in, reward, reputation) is decided here,
+// in the game goroutine, from values that are already bounded.
 
 const (
-	maxBookHistory  = 10 // quêtes rendues montrées dans le livre
-	maxKeptDone     = 40 // quêtes rendues gardées par joueur
+	maxBookHistory  = 10 // completed quests shown in the book
+	maxKeptDone     = 40 // completed quests kept per player
 	proposalMaxAge  = 20 * time.Minute
-	speciesXPBase   = 6 // une espèce est proposée si son XP ≤ speciesXPBase + speciesXPPerLvl × niveau
+	speciesXPBase   = 6 // a species is proposed if its XP <= speciesXPBase + speciesXPPerLvl × level
 	speciesXPPerLvl = 3
 )
 
-// now est l'horloge des quêtes (remplaçable en test).
+// now is the quests' clock (replaceable in tests).
 func (g *Game) now() time.Time {
 	if g.Clock != nil {
 		return g.Clock()
@@ -33,7 +33,7 @@ func (g *Game) now() time.Time {
 	return time.Now()
 }
 
-// ---------------------------------------------------------------- état du joueur
+// ---------------------------------------------------------------- player state
 
 func (p *player) openQuests() (n int) {
 	for _, q := range p.quests {
@@ -53,7 +53,7 @@ func (p *player) questByID(id int64) *quest.Quest {
 	return nil
 }
 
-// refreshQuestFlags recalcule ce qui évite de parcourir les quêtes à chaque pas.
+// refreshQuestFlags recomputes what avoids scanning the quests on every step.
 func (p *player) refreshQuestFlags() {
 	p.hasOpenReach = false
 	for _, q := range p.quests {
@@ -63,7 +63,7 @@ func (p *player) refreshQuestFlags() {
 	}
 }
 
-// loadQuests restaure les quêtes sauvegardées (valeurs relues de la base, donc revérifiées).
+// loadQuests restores the saved quests (values re-read from the database, hence re-checked).
 func (g *Game) loadQuests(p *player, saved *Saved) {
 	for rp, pts := range saved.Rep {
 		if pts != 0 {
@@ -87,7 +87,7 @@ func (g *Game) loadQuests(p *player, saved *Saved) {
 	p.refreshQuestFlags()
 }
 
-// expireQuests fait expirer les quêtes trop anciennes et élague l'historique.
+// expireQuests expires quests that are too old and prunes the history.
 func (g *Game) expireQuests(p *player) {
 	now, changed := g.now(), false
 	kept := p.quests[:0]
@@ -103,7 +103,7 @@ func (g *Game) expireQuests(p *player) {
 		}
 	}
 	p.quests = kept
-	for done > maxKeptDone { // supprime les plus anciennes rendues
+	for done > maxKeptDone { // removes the oldest completed ones
 		for i, q := range p.quests {
 			if q.State == quest.Done {
 				p.quests = slices.Delete(p.quests, i, i+1)
@@ -118,7 +118,7 @@ func (g *Game) expireQuests(p *player) {
 	}
 }
 
-// ---------------------------------------------------------------- envoi au client
+// ---------------------------------------------------------------- sending to the client
 
 func (g *Game) questInfo(l i18n.Lang, q quest.Quest) protocol.QuestInfo {
 	giver, place := "", g.placeName(l, q.Giver.Region)
@@ -134,7 +134,7 @@ func (g *Game) questInfo(l i18n.Lang, q quest.Quest) protocol.QuestInfo {
 	}
 }
 
-// goalText décrit l'objectif d'une quête dans la langue du joueur.
+// goalText describes a quest's goal in the player's language.
 func (g *Game) goalText(l i18n.Lang, q quest.Quest) string {
 	o := q.Objective
 	switch o.Kind {
@@ -154,7 +154,7 @@ func (g *Game) goalText(l i18n.Lang, q quest.Quest) string {
 	return ""
 }
 
-// sendQuests envoie le livre de quêtes complet.
+// sendQuests sends the complete quest book.
 func (g *Game) sendQuests(p *player) {
 	if p.sendQuestBook == nil {
 		return
@@ -189,7 +189,7 @@ func (g *Game) sendQuests(p *player) {
 			Place: g.placeName(p.lang, rp), Points: pts, Tier: tierLabel(p.lang, pts), Next: quest.NextTier(pts),
 		})
 	}
-	// De quoi griser le « ! » des donneurs qui ne peuvent rien confier (même règle que canOffer).
+	// Enough to grey out the "!" of givers that cannot hand out anything (same rule as canOffer).
 	qs.Full = p.openQuests() >= quest.MaxActive
 	now := g.now()
 	for _, q := range p.quests {
@@ -203,7 +203,7 @@ func (g *Game) sendQuests(p *player) {
 
 func tierLabel(l i18n.Lang, points int) string { return quest.TierLabel(l, points) }
 
-// questsChanged note un changement durable (sauvegarde) et met le livre à jour.
+// questsChanged records a durable change (save) and updates the book.
 func (g *Game) questsChanged(p *player) {
 	p.questsDirty = true
 	p.refreshQuestFlags()
@@ -212,8 +212,8 @@ func (g *Game) questsChanged(p *player) {
 
 // ---------------------------------------------------------------- progression
 
-// questKill compte une victoire sur un monstre. Seules comptent les victoires obtenues
-// après l'acceptation (une quête ne se crée qu'à l'acceptation). Renvoie des lignes de journal.
+// questKill counts a victory over a monster. Only victories obtained
+// after acceptance count (a quest is only created on acceptance). Returns journal lines.
 func (g *Game) questKill(p *player, sp species) []string {
 	var log []string
 	changed := false
@@ -223,7 +223,7 @@ func (g *Game) questKill(p *player, sp species) []string {
 			continue
 		}
 		o := q.Objective
-		if !(o.Kind == quest.Kill && o.Species == sp.Kind) && !(o.Kind == quest.Boss && sp.Boss && !sp.Dungeon) { // le boss d'un donjon n'est pas un seigneur de forteresse
+		if !(o.Kind == quest.Kill && o.Species == sp.Kind) && !(o.Kind == quest.Boss && sp.Boss && !sp.Dungeon) { // a dungeon's boss is not a fortress lord
 			continue
 		}
 		if q.Advance(1) {
@@ -237,7 +237,7 @@ func (g *Game) questKill(p *player, sp species) []string {
 	return log
 }
 
-// questMoved vérifie les objectifs « atteindre un lieu » après un déplacement.
+// questMoved checks the "reach a place" goals after a move.
 func (g *Game) questMoved(p *player) {
 	s := g.World.StructureAt(p.pos.X, p.pos.Y)
 	if s == nil {
@@ -267,9 +267,9 @@ func (g *Game) progressLine(p *player, q quest.Quest) string {
 	return i18n.T(p.lang, "quest.progress", q.Title, q.Progress, q.Need())
 }
 
-// ---------------------------------------------------------------- donneur et proposition
+// ---------------------------------------------------------------- giver and proposal
 
-// canOffer dit si ce PNJ peut confier une nouvelle quête à ce joueur maintenant.
+// canOffer says whether this NPC can hand a new quest to this player now.
 func (g *Game) canOffer(p *player, npc world.NPC) bool {
 	if !npc.GivesQuests || p.openQuests() >= quest.MaxActive {
 		return false
@@ -286,7 +286,7 @@ func (g *Game) canOffer(p *player, npc world.NPC) bool {
 	return true
 }
 
-// offerContext prépare ce que le modèle peut proposer, ou nil si ce PNJ n'a rien à confier.
+// offerContext prepares what the model may propose, or nil if this NPC has nothing to hand out.
 func (g *Game) offerContext(p *player, npc world.NPC) *npcai.OfferContext {
 	if !g.canOffer(p, npc) {
 		return nil
@@ -313,7 +313,7 @@ func (g *Game) offerContext(p *player, npc world.NPC) *npcai.OfferContext {
 			default:
 				name := lowerName(s.NameIn(p.lang))
 				if other, dup := c.Places[name]; dup && other != rp {
-					ambiguous[name] = true // deux lieux de même nom : aucun n'est proposé
+					ambiguous[name] = true // two places with the same name: none is proposed
 				}
 				c.Places[name] = rp
 			}
@@ -332,7 +332,7 @@ func (g *Game) offerContext(p *player, npc world.NPC) *npcai.OfferContext {
 	return o
 }
 
-// proposeQuest présente la quête proposée par le modèle, si elle est encore recevable.
+// proposeQuest presents the quest proposed by the model, if it is still acceptable.
 func (g *Game) proposeQuest(p *player, q *quest.Quest) {
 	t := p.talk
 	if t == nil || q == nil || t.proposal != nil || !g.canOffer(p, t.npc) {
@@ -363,7 +363,7 @@ func (g *Game) questAct(p *player, action, arg string) []string {
 		q.ID, q.Account, q.CreatedAt = p.nextQuestID, p.name, g.now()
 		p.nextQuestID++
 		p.quests = append(p.quests, q)
-		g.revealDungeonOf(p, q) // accepter un donjon en révèle l'entrée
+		g.revealDungeonOf(p, q) // accepting a dungeon reveals its entrance
 		g.questsChanged(p)
 		g.save(p)
 		return []string{i18n.T(p.lang, "quest.accepted", q.Title)}
@@ -380,7 +380,7 @@ func (g *Game) questAct(p *player, action, arg string) []string {
 	return nil
 }
 
-// turnIn rend une quête prête à son donneur : récompense, réputation, mémoire du lieu.
+// turnIn hands in a ready quest to its giver: reward, reputation, place memory.
 func (g *Game) turnIn(p *player, arg string) []string {
 	id, err := strconv.ParseInt(arg, 10, 64)
 	q := p.questByID(id)
@@ -406,12 +406,12 @@ func (g *Game) turnIn(p *player, arg string) []string {
 	}
 	log = append(log, repLog...)
 	g.questsChanged(p)
-	g.save(p) // la remise change l'or, l'XP, la réputation et la mémoire du lieu : écriture immédiate
+	g.save(p) // the hand-in changes gold, XP, reputation and place memory: immediate write
 	return log
 }
 
-// addRep modifie la réputation du joueur dans un lieu (bornée par quest.MinReputation) et
-// renvoie la ligne de journal si le palier change. Elle ne sauvegarde pas : à l'appelant.
+// addRep changes the player's reputation in a place (bounded by quest.MinReputation) and
+// returns the journal line if the tier changes. It does not save: that is up to the caller.
 func (g *Game) addRep(p *player, place world.RegionPos, delta int) []string {
 	before := p.rep[place]
 	after := max(quest.MinReputation, before+delta)
@@ -426,10 +426,10 @@ func (g *Game) addRep(p *player, place world.RegionPos, delta int) []string {
 	return []string{i18n.T(p.lang, "quest.rep_up", g.placeName(p.lang, place), tierLabel(p.lang, after))}
 }
 
-// abandonRepLoss est la réputation perdue en abandonnant une quête acceptée.
+// abandonRepLoss is the reputation lost by abandoning an accepted quest.
 const abandonRepLoss = 1
 
-// abandonQuest abandonne une quête en cours (depuis le livre de quêtes).
+// abandonQuest abandons an ongoing quest (from the quest book).
 func (g *Game) abandonQuest(p *player, id int64) {
 	q := p.questByID(id)
 	if q == nil || !q.Open() {
@@ -443,7 +443,7 @@ func (g *Game) abandonQuest(p *player, id int64) {
 	g.save(p)
 }
 
-// QuestAct applique une action du livre de quêtes (appelée depuis la session réseau).
+// QuestAct applies a quest book action (called from the network session).
 func (g *Game) QuestAct(id int, action string, questID int64) {
 	g.do(func() {
 		p, ok := g.players[id]
@@ -457,7 +457,7 @@ func (g *Game) QuestAct(id int, action string, questID int64) {
 	})
 }
 
-// RefreshQuests renvoie le livre (ex. à l'ouverture), après avoir fait expirer ce qui doit l'être.
+// RefreshQuests returns the book (e.g. on opening), after expiring what must expire.
 func (g *Game) RefreshQuests(id int) {
 	g.do(func() {
 		if p, ok := g.players[id]; ok {

@@ -18,7 +18,7 @@ func TestParseIntro(t *testing.T) {
 		t.Fatalf("%+v", out)
 	}
 	if out.Intro.Alias != "Brenna" || out.Intro.Role != "archère" || out.Intro.Goal != "venger son père" || out.Intro.Origin != "" {
-		t.Fatalf("présentation: %+v", *out.Intro)
+		t.Fatalf("introduction: %+v", *out.Intro)
 	}
 }
 
@@ -29,9 +29,9 @@ func TestParseIntroVariantsThatMeanNone(t *testing.T) {
 			t.Errorf("intro=%s: %+v", intro, out.Intro)
 		}
 	}
-	// intro absente
+	// missing intro
 	if out, ok := parseOutput(`{"reply":"ok"}`); !ok || out.Intro != nil {
-		t.Errorf("intro absente: %+v", out)
+		t.Errorf("missing intro: %+v", out)
 	}
 }
 
@@ -43,7 +43,7 @@ func TestParseToleratesWrongTypes(t *testing.T) {
 	if out.Memory != "42" || out.Intro.Alias != "7" || out.Intro.Role != "true" || out.Intro.Origin != "" || out.Intro.Goal != "" || out.Intro.Trait != "t" {
 		t.Fatalf("%+v / %+v", out, *out.Intro)
 	}
-	// reply numérique: converti en texte, pas d'erreur
+	// numeric reply: converted to text, no error
 	if out, ok := parseOutput(`{"reply": 12}`); !ok || out.Reply != "12" {
 		t.Fatalf("%+v", out)
 	}
@@ -51,11 +51,11 @@ func TestParseToleratesWrongTypes(t *testing.T) {
 
 func TestParseFencesAndSurroundingText(t *testing.T) {
 	for name, in := range map[string]string{
-		"clôture json": "```json\n{\"reply\": \"Salut\", \"intro\": null}\n```",
-		"clôture nue":  "```\n{\"reply\": \"Salut\"}\n```",
-		"texte avant":  "Voici ma réponse : {\"reply\": \"Salut\"}",
-		"texte après":  "{\"reply\": \"Salut\"} J'espère que cela vous convient.",
-		"espaces":      "\n\n  {\"reply\": \"Salut\"}  \n",
+		"json fence":  "```json\n{\"reply\": \"Salut\", \"intro\": null}\n```",
+		"bare fence":  "```\n{\"reply\": \"Salut\"}\n```",
+		"text before": "Voici ma réponse : {\"reply\": \"Salut\"}",
+		"text after":  "{\"reply\": \"Salut\"} J'espère que cela vous convient.",
+		"spaces":      "\n\n  {\"reply\": \"Salut\"}  \n",
 	} {
 		out, ok := parseOutput(in)
 		if !ok || !out.Structured || out.Reply != "Salut" {
@@ -74,7 +74,7 @@ func TestParseFirstObjectWinsAndBracesInStrings(t *testing.T) {
 func TestParseFallsBackToPlainText(t *testing.T) {
 	out, ok := parseOutput("Bonjour voyageur, que puis-je pour vous ?")
 	if !ok || out.Structured || out.Reply != "Bonjour voyageur, que puis-je pour vous ?" || out.Intro != nil || out.Memory != "" {
-		t.Fatalf("%+v ok=%v (texte brut: réplique sans mémoire)", out, ok)
+		t.Fatalf("%+v ok=%v (plain text: reply without memory)", out, ok)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestParseRejectsUnusableOutput(t *testing.T) {
 		`{"reply": "coupé`, `{"reply": "x", `, "{", "\x1b[31m\x1b[0m",
 	} {
 		if out, ok := parseOutput(in); ok {
-			t.Errorf("%q accepté: %+v", in, out)
+			t.Errorf("%q accepted: %+v", in, out)
 		}
 	}
 }
@@ -92,25 +92,25 @@ func TestParseRejectsUnusableOutput(t *testing.T) {
 func TestParseSanitizesTerminalDangers(t *testing.T) {
 	out, ok := parseOutput(`{"reply": "Salut\u001b[2J\u001b]0;PIRATÉ\u0007 ‮à l'envers​", "memory": "ok\u001b[31m"}`)
 	if !ok {
-		t.Fatal("rejeté")
+		t.Fatal("rejected")
 	}
 	if strings.ContainsAny(out.Reply, "\x1b\x07") || strings.ContainsRune(out.Reply, '‮') || strings.ContainsRune(out.Reply, '​') {
-		t.Fatalf("réplique non nettoyée: %q", out.Reply)
+		t.Fatalf("reply not cleaned: %q", out.Reply)
 	}
 	if out.Reply != "Salut à l'envers" {
-		t.Fatalf("réplique = %q", out.Reply)
+		t.Fatalf("reply = %q", out.Reply)
 	}
-	// Le texte brut aussi.
+	// The plain text too.
 	out, ok = parseOutput("Brut\x1b[2J et ‮dangereux")
 	if !ok || strings.ContainsAny(out.Reply, "\x1b") || strings.ContainsRune(out.Reply, '‮') {
-		t.Fatalf("texte brut non nettoyé: %q", out.Reply)
+		t.Fatalf("plain text not cleaned: %q", out.Reply)
 	}
 }
 
 func TestParseTruncatesLongReplies(t *testing.T) {
 	out, ok := parseOutput(`{"reply": "` + strings.Repeat("a", 5000) + `"}`)
 	if !ok || len([]rune(out.Reply)) != maxReplyRunes {
-		t.Fatalf("réplique de %d caractères, plafond %d", len([]rune(out.Reply)), maxReplyRunes)
+		t.Fatalf("reply of %d characters, cap %d", len([]rune(out.Reply)), maxReplyRunes)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestExtractJSON(t *testing.T) {
 		"```json\n{\"a\":1}\n```": `{"a":1}`,
 	} {
 		if got := extractJSON(in); got != want {
-			t.Errorf("extractJSON(%q) = %q, attendu %q", in, got, want)
+			t.Errorf("extractJSON(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

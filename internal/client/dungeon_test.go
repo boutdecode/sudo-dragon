@@ -23,7 +23,7 @@ func sendEvent(t *testing.T, m Model, typ string, payload any) Model {
 	return tm.(Model)
 }
 
-// intoDungeon fait entrer le modèle dans un donjon, posé sur son point d'arrivée.
+// intoDungeon moves the model into a dungeon, placed on its arrival point.
 func intoDungeon(t *testing.T) (Model, *world.DungeonMap) {
 	t.Helper()
 	d := &world.Dungeon{Seed: 987654321, Tier: 3}
@@ -37,16 +37,16 @@ func intoDungeon(t *testing.T) (Model, *world.DungeonMap) {
 func TestEnteringADungeonSwitchesTheMap(t *testing.T) {
 	m, dm := intoDungeon(t)
 	if !m.inDungeon() || m.dmap.Exit != dm.Exit {
-		t.Fatal("le plan du donjon n'a pas été reconstruit")
+		t.Fatal("dungeon layout was not rebuilt")
 	}
 	if got := lastSystemLines(m, 1); len(got) == 0 || !strings.Contains(got[0], "Crypte de Test") {
-		t.Errorf("annonce d'entrée: %v", got)
+		t.Errorf("entrance announcement: %v", got)
 	}
 	view := ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "Crypte de Test") || !strings.Contains(view, "@") {
-		t.Errorf("la vue ne montre ni le donjon ni le joueur:\n%s", view)
+		t.Errorf("view shows neither the dungeon nor the player:\n%s", view)
 	}
-	// Le plan est dans le brouillard: les coffres loin de l'arrivée ne se voient pas encore.
+	// The layout is in the fog: chests far from the arrival are not visible yet.
 	far := 0
 	for _, c := range dm.Chests {
 		if dist2(c, dm.Spawn) > dungeonSight*dungeonSight && m.terrain().At(c.X, c.Y) == world.Chest {
@@ -54,22 +54,22 @@ func TestEnteringADungeonSwitchesTheMap(t *testing.T) {
 		}
 	}
 	if far != 0 {
-		t.Errorf("%d coffres lointains déjà visibles", far)
+		t.Errorf("%d far chests already visible", far)
 	}
 }
 
 func TestDungeonSightRevealsAsYouWalk(t *testing.T) {
 	m, dm := intoDungeon(t)
 	if m.terrain().At(dm.Spawn.X+1, dm.Spawn.Y) != dm.TileAt(dm.Spawn.X+1, dm.Spawn.Y) {
-		t.Error("la case voisine devrait être visible")
+		t.Error("the neighboring tile should be visible")
 	}
 	boss := dm.Boss
 	if m.dseen[boss] {
-		t.Skip("le boss est dans le rayon de vue de l'arrivée")
+		t.Skip("the boss is within sight of the arrival")
 	}
 	m = sendEvent(t, m, protocol.TSnapshot, protocol.Snapshot{Tick: 10, Self: protocol.Entity{ID: 1, X: boss.X, Y: boss.Y}})
 	if !m.dseen[boss] || m.terrain().At(boss.X, boss.Y) != world.Floor {
-		t.Error("la salle du boss devrait être vue une fois sur place")
+		t.Error("the boss room should be seen once on site")
 	}
 }
 
@@ -78,14 +78,14 @@ func TestOpenedChestsAreShownEmpty(t *testing.T) {
 	c := dm.Chests[0]
 	m.dseen[c] = true
 	if m.terrain().At(c.X, c.Y) != world.Chest {
-		t.Fatal("le coffre devrait être visible")
+		t.Fatal("the chest should be visible")
 	}
 	m = sendEvent(t, m, protocol.TZone, protocol.Zone{Dungeon: "1,1", Name: "Crypte de Test", Seed: 987654321, Tier: 3, Opened: [][2]int{{c.X, c.Y}}})
 	if !m.inDungeon() || m.terrain().At(c.X, c.Y) != world.Floor {
-		t.Error("le coffre ouvert devrait apparaître vide")
+		t.Error("the opened chest should appear empty")
 	}
 	if m.hasSnap == false {
-		t.Error("un simple renvoi de zone ne doit pas faire attendre un nouvel instantané")
+		t.Error("a simple zone resend must not wait for a new snapshot")
 	}
 }
 
@@ -93,17 +93,17 @@ func TestLeavingTheDungeonRestoresTheWorld(t *testing.T) {
 	m, _ := intoDungeon(t)
 	m = sendEvent(t, m, protocol.TZone, protocol.Zone{})
 	if m.inDungeon() || m.dseen != nil {
-		t.Fatal("le donjon est resté")
+		t.Fatal("the dungeon is still there")
 	}
 	if m.hasSnap {
-		t.Error("on attend l'instantané de la carte principale")
+		t.Error("the main map's snapshot is awaited")
 	}
 	m = moveTo(t, m, 10, 10)
 	if m.terrain() != any(m.world) {
-		t.Error("le terrain devrait être le monde")
+		t.Error("the terrain should be the world")
 	}
 	if got := lastSystemLines(m, 1); len(got) == 0 || !strings.Contains(got[len(got)-1], "surface") {
-		t.Errorf("annonce de sortie: %v", got)
+		t.Errorf("exit announcement: %v", got)
 	}
 }
 
@@ -112,25 +112,25 @@ func TestMapKeyShowsTheDungeonPlan(t *testing.T) {
 	m, _ = m.openMap()
 	view := ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "Plan du donjon") || !strings.Contains(view, "palier 3") {
-		t.Errorf("plan absent:\n%s", view)
+		t.Errorf("layout missing:\n%s", view)
 	}
 	tm, _ := m.Update(tea.KeyPressMsg{Code: 'm', Text: "m"})
 	if tm.(Model).worldMap {
-		t.Error("m devrait refermer le plan")
+		t.Error("m should close the layout")
 	}
 }
 
 func TestGotoInsideADungeon(t *testing.T) {
 	m, dm := intoDungeon(t)
-	// L'escalier se trouve par son nom, pas les repères ni les lieux de la surface.
+	// The stairs are found by name, not the markers or the surface places.
 	tg, n := m.findTarget("escal")
 	if n != 1 || tg.Pos != dm.Exit {
-		t.Fatalf("cible %+v (%d), attendu l'escalier %v", tg, n, dm.Exit)
+		t.Fatalf("target %+v (%d), expected the stairs %v", tg, n, dm.Exit)
 	}
 	if _, n := m.findTarget("village"); n != 0 {
-		t.Error("un lieu de la surface ne doit pas se trouver sous terre")
+		t.Error("a surface place must not be found underground")
 	}
-	// Un chemin vers une case du plan existe, et ne passe pas par l'escalier.
+	// A path to a tile of the layout exists, and does not go through the stairs.
 	var goal world.Pos
 	for p := range dm.Reachable(dm.Spawn) {
 		if dist2(p, dm.Spawn) > dist2(goal, dm.Spawn) && dm.TileAt(p.X, p.Y) == world.Floor {
@@ -140,20 +140,20 @@ func TestGotoInsideADungeon(t *testing.T) {
 	m.hasSnap = true
 	free := m.freeFnTo(goal)
 	if free(dm.Exit) {
-		t.Error("l'escalier ne doit pas être traversé par /goto")
+		t.Error("the stairs must not be crossed by /goto")
 	}
 	path := m.findWalkPath(m.selfPos(), goal, free)
 	if path == nil {
-		t.Fatalf("aucun chemin de %v à %v", m.selfPos(), goal)
+		t.Fatalf("no path from %v to %v", m.selfPos(), goal)
 	}
 	for _, p := range path {
 		if dm.TileAt(p.X, p.Y) == world.Stairs {
-			t.Fatal("le chemin traverse l'escalier")
+			t.Fatal("the path crosses the stairs")
 		}
 	}
-	// Mais on peut le viser.
+	// But it can be targeted.
 	if !m.freeFnTo(dm.Exit)(dm.Exit) {
-		t.Error("l'escalier doit rester une destination possible")
+		t.Error("the stairs must remain a possible destination")
 	}
 }
 
@@ -165,15 +165,15 @@ func TestGotoNeverCrossesADungeonEntrance(t *testing.T) {
 		break
 	}
 	if d == nil {
-		t.Skip("pas de donjon")
+		t.Skip("no dungeon")
 	}
 	m := playingModel(t, 140, 36)
 	free := m.freeFnTo(world.Pos{})
 	if free(d.Entrance) {
-		t.Error("l'entrée d'un donjon ne doit pas être traversée")
+		t.Error("a dungeon entrance must not be crossed")
 	}
 	if !m.freeFnTo(d.Entrance)(d.Entrance) {
-		t.Error("mais elle reste une destination")
+		t.Error("but it remains a destination")
 	}
 }
 
@@ -187,7 +187,7 @@ func TestMonstersBehindRockStayHidden(t *testing.T) {
 		}
 	}
 	if far == (world.Pos{}) {
-		t.Skip("tous les monstres sont près de l'arrivée")
+		t.Skip("all monsters are near the arrival")
 	}
 	near := world.Pos{X: dm.Spawn.X + 1, Y: dm.Spawn.Y}
 	m = sendEvent(t, m, protocol.TSnapshot, protocol.Snapshot{
@@ -197,11 +197,11 @@ func TestMonstersBehindRockStayHidden(t *testing.T) {
 		Others:   []protocol.Entity{{ID: 2, Name: "eve", X: far.X, Y: far.Y}},
 	})
 	if len(m.snap.Monsters) != 1 || m.snap.Monsters[0].ID != 8 || len(m.snap.Others) != 0 {
-		t.Errorf("monstres %v, joueurs %v: seul le proche devrait rester", m.snap.Monsters, m.snap.Others)
+		t.Errorf("monsters %v, players %v: only the near one should remain", m.snap.Monsters, m.snap.Others)
 	}
 }
 
-// discovered donne un modèle sur la carte principale qui connaît l'entrée d'un donjon du monde.
+// discovered gives a model on the main map that knows a world dungeon's entrance.
 func discovered(t *testing.T) (Model, protocol.DungeonInfo) {
 	t.Helper()
 	w := world.New(1)
@@ -211,7 +211,7 @@ func discovered(t *testing.T) (Model, protocol.DungeonInfo) {
 		break
 	}
 	if d == nil {
-		t.Fatal("aucun donjon près de l'origine")
+		t.Fatal("no dungeon near the origin")
 	}
 	info := protocol.DungeonInfo{ID: d.ID, Name: d.Name, X: d.Entrance.X, Y: d.Entrance.Y, Tier: d.Tier}
 	m := playingModel(t, 140, 40)
@@ -223,25 +223,25 @@ func discovered(t *testing.T) (Model, protocol.DungeonInfo) {
 func TestDiscoveringAnEntranceIsAnnouncedAndDrawn(t *testing.T) {
 	m, info := discovered(t)
 	if got := strings.Join(lastSystemLines(m, 5), "\n"); !strings.Contains(got, info.Name) {
-		t.Errorf("annonce absente: %v", got)
+		t.Errorf("announcement missing: %v", got)
 	}
 	if m.terrain().At(info.X, info.Y) != world.Entrance {
-		t.Fatal("l'entrée découverte devrait être dessinée")
+		t.Fatal("the discovered entrance should be drawn")
 	}
 	if view := ansi.Strip(m.View().Content); !strings.Contains(view, ">") {
-		t.Error("le glyphe de l'entrée est absent de la vue")
+		t.Error("the entrance glyph is missing from the view")
 	}
-	// Une liste renvoyée sans nouveauté ne rejoue pas l'annonce.
+	// A list sent again with nothing new does not replay the announcement.
 	before := len(m.chat)
 	m = sendEvent(t, m, protocol.TDungeons, protocol.Dungeons{List: []protocol.DungeonInfo{info}})
 	if len(m.chat) != before {
-		t.Error("annonce rejouée")
+		t.Error("announcement replayed")
 	}
-	// Une entrée non découverte reste une case ordinaire.
+	// An undiscovered entrance remains an ordinary tile.
 	w := world.New(1)
 	for _, d := range w.DungeonsNear(0, 0, 3) {
 		if d.ID != info.ID && m.terrain().At(d.Entrance.X, d.Entrance.Y) == world.Entrance {
-			t.Fatalf("%s n'est pas découvert mais s'affiche", d.ID)
+			t.Fatalf("%s is not discovered but is displayed", d.ID)
 		}
 	}
 }
@@ -250,11 +250,11 @@ func TestDiscoveredDungeonShowsOnTheWorldMapAndLegend(t *testing.T) {
 	m, info := discovered(t)
 	m, _ = m.openMap()
 	if lm := m.landmarks(); len(lm) == 0 || lm[0].name != info.Name || lm[0].glyph != ">" {
-		t.Fatalf("repères: %+v", lm)
+		t.Fatalf("landmarks: %+v", lm)
 	}
 	view := ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "Donjon") || !strings.Contains(view, info.Name) {
-		t.Errorf("légende ou liste sans le donjon:\n%s", view)
+		t.Errorf("legend or list without the dungeon:\n%s", view)
 	}
 }
 
@@ -267,12 +267,12 @@ func TestGotoADiscoveredDungeonStopsInFrontOfIt(t *testing.T) {
 	}
 	stop := m.walkableNear(tg.Pos, 8)
 	if stop == tg.Pos || chebyshev(stop, tg.Pos) != 1 {
-		t.Errorf("arrêt en %v: devrait être à côté de l'entrée %v, pas dessus", stop, tg.Pos)
+		t.Errorf("stop at %v: should be next to the entrance %v, not on it", stop, tg.Pos)
 	}
-	// Un donjon inconnu ne se trouve pas par son nom.
+	// An unknown dungeon is not found by name.
 	m.dungeons = nil
 	if _, n := m.findTarget(prefix); n != 0 {
-		t.Error("un donjon non découvert ne doit pas être ciblable")
+		t.Error("an undiscovered dungeon must not be targetable")
 	}
 }
 
@@ -287,21 +287,21 @@ func TestAskForWorkHasItsOwnKey(t *testing.T) {
 		keys := m.npcKeys()
 		work := strings.ToLower(m.t("npc.key.work"))
 		if keys[work] != protocol.NPCAskWork {
-			t.Errorf("%s: la touche %q ne demande pas de travail", lang, work)
+			t.Errorf("%s: key %q does not request work", lang, work)
 		}
 		if m.npcKeyLabel(protocol.NPCAskWork) != m.t("npc.key.work") {
-			t.Errorf("%s: étiquette de l'offre incohérente", lang)
+			t.Errorf("%s: inconsistent offer label", lang)
 		}
-		// Aucune autre action ne partage cette touche.
+		// No other action shares this key.
 		seen := map[string]string{}
 		for k, a := range keys {
 			if prev, dup := seen[k]; dup {
-				t.Errorf("%s: touche %q pour %s et %s", lang, k, prev, a)
+				t.Errorf("%s: key %q for %s and %s", lang, k, prev, a)
 			}
 			seen[k] = a
 		}
 		if len(keys) != 7 {
-			t.Errorf("%s: %d touches, attendu 7 (une par action sans argument)", lang, len(keys))
+			t.Errorf("%s: %d keys, expected 7 (one per action without argument)", lang, len(keys))
 		}
 	}
 }
@@ -310,17 +310,17 @@ func TestEnteringACleanedDungeonTellsWhenItComesBack(t *testing.T) {
 	m := playingModel(t, 140, 40)
 	m = sendEvent(t, m, protocol.TZone, protocol.Zone{Dungeon: "1,1", Name: "Crypte de Test", Seed: 5, Tier: 1, ResetIn: 17})
 	if got := strings.Join(lastSystemLines(m, 3), "\n"); !strings.Contains(got, "17 h de jeu") {
-		t.Errorf("délai absent des annonces: %q", got)
+		t.Errorf("delay missing from announcements: %q", got)
 	}
-	// Un donjon intact n'en dit rien, et un renvoi de zone (coffre ouvert) ne répète pas l'annonce.
+	// An intact dungeon says nothing about it, and a zone resend (chest opened) does not repeat the announcement.
 	fresh := playingModel(t, 140, 40)
 	fresh = sendEvent(t, fresh, protocol.TZone, protocol.Zone{Dungeon: "1,1", Name: "Crypte de Test", Seed: 5, Tier: 1})
 	if got := strings.Join(lastSystemLines(fresh, 3), "\n"); strings.Contains(got, "h de jeu") {
-		t.Errorf("annonce de délai dans un donjon intact: %q", got)
+		t.Errorf("delay announcement in an intact dungeon: %q", got)
 	}
 	n := len(m.chat)
 	m = sendEvent(t, m, protocol.TZone, protocol.Zone{Dungeon: "1,1", Name: "Crypte de Test", Seed: 5, Tier: 1, ResetIn: 16, Opened: [][2]int{{1, 1}}})
 	if len(m.chat) != n {
-		t.Error("l'annonce est rejouée à chaque renvoi de la zone")
+		t.Error("the announcement is replayed on every zone resend")
 	}
 }

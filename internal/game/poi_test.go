@@ -10,7 +10,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// poisOf renvoie les points d'intérêt de type kind autour de l'origine, du plus proche au plus lointain.
+// poisOf returns the points of interest of type kind around the origin, from nearest to farthest.
 func poisOf(g *Game, kind world.POIKind) []*world.POI {
 	var out []*world.POI
 	for _, p := range g.World.POIsWithin(0, 0, 8*world.RegionSize) {
@@ -25,15 +25,15 @@ func firstPOI(t *testing.T, g *Game, kind world.POIKind) *world.POI {
 	t.Helper()
 	list := poisOf(g, kind)
 	if len(list) == 0 {
-		t.Fatalf("aucun point de type %d près de l'origine", kind)
+		t.Fatalf("no point of type %d near the origin", kind)
 	}
 	return list[0]
 }
 
-// stepOn fait marcher p sur la case du point, par l'ouest.
+// stepOn walks p onto the point's tile, from the west.
 func walkOnto(g *Game, p *player, poi *world.POI) {
 	g.setPos(p, g.freeNear(world.Pos{X: poi.Pos.X - 1, Y: poi.Pos.Y}))
-	// freeNear peut avoir choisi une autre case voisine : on se remet à l'ouest si possible.
+	// freeNear may have chosen another neighbouring tile: we go back to the west if possible.
 	g.setPos(p, world.Pos{X: poi.Pos.X - 1, Y: poi.Pos.Y})
 	p.cooldown = 0
 	g.move(p.id, 1, 0)
@@ -45,6 +45,7 @@ func notices(p *player) string { return strings.Join(p.gearNotices, " | ") }
 func TestCampfireHealsAndSetsRespawn(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	fire := firstPOI(t, g, world.POICampfire)
 	p.hp = 1
 	var saved Saved
@@ -52,89 +53,91 @@ func TestCampfireHealsAndSetsRespawn(t *testing.T) {
 
 	walkOnto(g, p, fire)
 	if p.pos != fire.Pos {
-		t.Fatalf("pas sur le feu: %v, attendu %v", p.pos, fire.Pos)
+		t.Fatalf("not on the fire: %v, expected %v", p.pos, fire.Pos)
 	}
 	if p.respawn == nil || *p.respawn != fire.Pos {
-		t.Fatalf("point de réapparition %v, attendu %v", p.respawn, fire.Pos)
+		t.Fatalf("respawn point %v, expected %v", p.respawn, fire.Pos)
 	}
 	if p.hp <= 1 {
-		t.Fatal("le feu n'a pas soigné")
+		t.Fatal("the fire did not heal")
 	}
 	if saved.Respawn == nil || *saved.Respawn != fire.Pos {
-		t.Fatalf("point de réapparition non sauvegardé: %v", saved.Respawn)
+		t.Fatalf("respawn point not saved: %v", saved.Respawn)
 	}
 	if spot, camp := g.respawnSpot(p); !camp || g.blocked(spot) {
-		t.Fatalf("réapparition %v (feu: %v)", spot, camp)
+		t.Fatalf("respawn %v (fire: %v)", spot, camp)
 	}
 
-	// Le repos est limité : un second passage immédiat ne soigne pas de nouveau.
+	// Rest is limited: an immediate second pass does not heal again.
 	hp := p.hp
 	p.hp = 1
 	walkOnto(g, p, fire)
 	if p.hp != 1 {
-		t.Fatalf("le feu a soigné deux fois de suite (%d -> %d)", hp, p.hp)
+		t.Fatalf("the fire healed twice in a row (%d -> %d)", hp, p.hp)
 	}
 }
 
 func TestNoCampfireMeansWorldSpawn(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	if _, camp := g.respawnSpot(p); camp {
-		t.Fatal("réapparition au feu sans feu allumé")
+		t.Fatal("respawn at a fire with no fire lit")
 	}
 }
 
 func TestShrineBuffsAndCooldown(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	sh := firstPOI(t, g, world.POIShrine)
 	kind := shrineBuff(g.World.ClimateAt(sh.Pos.X, sh.Pos.Y))
 
 	base := p.fighter()
 	walkOnto(g, p, sh)
 	if !p.hasBuff(kind) {
-		t.Fatalf("pas de bonus %d après le sanctuaire (%s)", kind, notices(p))
+		t.Fatalf("no buff %d after the shrine (%s)", kind, notices(p))
 	}
 	buffed := p.fighter()
 	switch kind {
 	case buffDef:
 		if buffed.Def != base.Def+shrineDefBonus {
-			t.Errorf("DEF %d, attendu %d", buffed.Def, base.Def+shrineDefBonus)
+			t.Errorf("DEF %d, expected %d", buffed.Def, base.Def+shrineDefBonus)
 		}
 	case buffHit:
 		if buffed.Hit != base.Hit+shrineHitBonus {
-			t.Errorf("toucher %d, attendu %d", buffed.Hit, base.Hit+shrineHitBonus)
+			t.Errorf("to-hit %d, expected %d", buffed.Hit, base.Hit+shrineHitBonus)
 		}
 	case buffXP:
 		if got := p.xpWithBuff(10); got != 15 {
-			t.Errorf("XP 10 -> %d, attendu 15", got)
+			t.Errorf("XP 10 -> %d, expected 15", got)
 		}
 	}
 
-	// Revenir tout de suite ne prolonge rien.
+	// Coming back right away extends nothing.
 	until := p.buffs[0].until
 	walkOnto(g, p, sh)
 	if len(p.buffs) != 1 || p.buffs[0].until != until {
-		t.Fatalf("bonus prolongé ou dupliqué: %v", p.buffs)
+		t.Fatalf("buff extended or duplicated: %v", p.buffs)
 	}
 	if !strings.Contains(notices(p), "sommeille") {
-		t.Errorf("pas d'avis de sommeil: %s", notices(p))
+		t.Errorf("no sleep notice: %s", notices(p))
 	}
 
 	g.tick += shrineDuration
 	p.expireBuffs(g.tick)
 	if len(p.buffs) != 0 || p.fighter().Def != base.Def {
-		t.Fatalf("bonus non expiré: %v", p.buffs)
+		t.Fatalf("buff not expired: %v", p.buffs)
 	}
-	// Le cooldown du sanctuaire est plus long que le bonus.
+	// The shrine's cooldown is longer than the buff.
 	walkOnto(g, p, sh)
 	if p.hasBuff(kind) {
-		t.Fatal("sanctuaire réutilisé avant la fin de son cooldown")
+		t.Fatal("shrine reused before the end of its cooldown")
 	}
 	g.tick += shrineCooldown
 	walkOnto(g, p, sh)
 	if !p.hasBuff(kind) {
-		t.Fatal("sanctuaire inutilisable après son cooldown")
+		t.Fatal("shrine unusable after its cooldown")
 	}
 }
 
@@ -142,6 +145,7 @@ func TestLairGuardsChest(t *testing.T) {
 	g := newGame()
 	g.Dungeons = true
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	lair := firstPOI(t, g, world.POILair)
 	g.setPos(p, g.freeNear(world.Pos{X: lair.Pos.X, Y: lair.Pos.Y + 6}))
 
@@ -151,22 +155,22 @@ func TestLairGuardsChest(t *testing.T) {
 		if id, ok := g.slotMonster[lairKey(lair, i)]; ok {
 			alive++
 			if g.monsters[id].leash != lairLeash {
-				t.Errorf("gardien %d sans laisse", i)
+				t.Errorf("guardian %d without leash", i)
 			}
 		}
 	}
 	if alive != len(lair.Slots) {
-		t.Fatalf("%d gardiens sur %d", alive, len(lair.Slots))
+		t.Fatalf("%d guardians out of %d", alive, len(lair.Slots))
 	}
 
-	// Les gardiens vivants verrouillent le coffre.
+	// Living guardians lock the chest.
 	gold := p.stats.Gold
 	g.openLairChest(p, lair)
 	if p.stats.Gold != gold || !strings.Contains(notices(p), "gardiens") {
-		t.Fatalf("coffre ouvert malgré les gardiens (or %d -> %d, %s)", gold, p.stats.Gold, notices(p))
+		t.Fatalf("chest opened despite the guardians (or %d -> %d, %s)", gold, p.stats.Gold, notices(p))
 	}
 
-	// Gardiens vaincus : le coffre s'ouvre une fois, puis se vide jusqu'à la repousse.
+	// Guardians defeated: the chest opens once, then stays empty until it regrows.
 	for i := range lair.Slots {
 		key := lairKey(lair, i)
 		g.removeMonster(g.monsters[g.slotMonster[key]])
@@ -174,19 +178,19 @@ func TestLairGuardsChest(t *testing.T) {
 	}
 	g.openLairChest(p, lair)
 	if p.stats.Gold <= gold {
-		t.Fatal("le coffre n'a rien donné")
+		t.Fatal("the chest gave nothing")
 	}
 	gold = p.stats.Gold
 	g.openLairChest(p, lair)
 	if p.stats.Gold != gold {
-		t.Fatal("le coffre s'est rouvert aussitôt")
+		t.Fatal("the chest reopened right away")
 	}
 
-	// Après le délai, les gardiens et le coffre reviennent.
+	// After the delay, the guardians and the chest come back.
 	g.tick += lairRespawn
 	g.activateLairs()
 	if len(g.slotMonster) == 0 {
-		t.Fatal("les gardiens ne reviennent pas")
+		t.Fatal("the guardians do not come back")
 	}
 	for i := range lair.Slots {
 		key := lairKey(lair, i)
@@ -196,52 +200,53 @@ func TestLairGuardsChest(t *testing.T) {
 	}
 	g.openLairChest(p, lair)
 	if p.stats.Gold <= gold {
-		t.Fatal("le coffre ne s'est pas rempli de nouveau")
+		t.Fatal("the chest did not refill")
 	}
 }
 
 func TestStonesTravel(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	stones := poisOf(g, world.POIStone)
 	if len(stones) < 2 {
-		t.Fatalf("%d pierres près de l'origine, il en faut deux", len(stones))
+		t.Fatalf("%d stones near the origin, two are needed", len(stones))
 	}
 	a, b := stones[0], stones[1]
 
 	if out := g.menhir(p.id, ""); !strings.Contains(out, "pierre dressée") {
-		t.Fatalf("hors d'une pierre: %q", out)
+		t.Fatalf("off a stone: %q", out)
 	}
 	walkOnto(g, p, a)
 	if !p.stones[a.Region] {
-		t.Fatalf("pierre non activée (%s)", notices(p))
+		t.Fatalf("stone not activated (%s)", notices(p))
 	}
 	if out := g.menhir(p.id, ""); !strings.Contains(out, "Aucune autre") {
-		t.Fatalf("une seule pierre: %q", out)
+		t.Fatalf("only one stone: %q", out)
 	}
 	walkOnto(g, p, b)
 	walkOnto(g, p, a)
 	if p.pos != a.Pos {
-		t.Fatalf("pas sur la pierre: %v", p.pos)
+		t.Fatalf("not on the stone: %v", p.pos)
 	}
 	cost := stoneCost(a.Region, b.Region)
 	if out := g.menhir(p.id, ""); !strings.Contains(out, b.NameIn(p.lang)) {
-		t.Fatalf("liste sans la pierre cible: %q", out)
+		t.Fatalf("list without the target stone: %q", out)
 	}
 
 	p.stats.SpendGold(p.stats.Gold)
 	if out := g.menhir(p.id, "1"); !strings.Contains(out, "or pour ce voyage") || p.pos != a.Pos {
-		t.Fatalf("voyage sans or: %q (pos %v)", out, p.pos)
+		t.Fatalf("trip without gold: %q (pos %v)", out, p.pos)
 	}
 	p.stats.AddGold(cost + 5)
 	if out := g.menhir(p.id, "1"); p.pos == a.Pos || !strings.Contains(out, b.NameIn(p.lang)) {
-		t.Fatalf("pas de voyage: %q (pos %v)", out, p.pos)
+		t.Fatalf("no trip: %q (pos %v)", out, p.pos)
 	}
 	if p.stats.Gold != 5 {
-		t.Fatalf("or %d, attendu 5 (coût %d)", p.stats.Gold, cost)
+		t.Fatalf("gold %d, expected 5 (cost %d)", p.stats.Gold, cost)
 	}
 	if max(abs(p.pos.X-b.Pos.X), abs(p.pos.Y-b.Pos.Y)) > 2 {
-		t.Fatalf("arrivée trop loin de la pierre cible: %v / %v", p.pos, b.Pos)
+		t.Fatalf("arrival too far from the target stone: %v / %v", p.pos, b.Pos)
 	}
 }
 
@@ -252,7 +257,7 @@ func TestSavedStonesAndRespawnRoundTrip(t *testing.T) {
 	sv := Saved{Respawn: &fire.Pos, Stones: []world.RegionPos{stone.Region}, HP: 5, Pos: g.World.FindSpawn()}
 	p := g.joinWith("b", func(protocol.Snapshot) {}, &sv)
 	if p.respawn == nil || *p.respawn != fire.Pos || !p.stones[stone.Region] {
-		t.Fatalf("état non restauré: %v %v", p.respawn, p.stones)
+		t.Fatalf("state not restored: %v %v", p.respawn, p.stones)
 	}
 }
 
@@ -260,32 +265,34 @@ func TestBlessingsReachTheSheetAndExpire(t *testing.T) {
 	g := newGame()
 	var bags []protocol.Bag
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	p.sendBagMsg = func(b protocol.Bag) { bags = append(bags, b) }
 	sh := firstPOI(t, g, world.POIShrine)
 	walkOnto(g, p, sh)
 	if len(bags) == 0 || len(bags[len(bags)-1].Blessings) != 1 {
-		t.Fatalf("pas de bénédiction dans le sac envoyé: %+v", bags)
+		t.Fatalf("no blessing in the bag sent: %+v", bags)
 	}
 	bl := bags[len(bags)-1].Blessings[0]
 	if bl.Bonus <= 0 || bl.Secs <= 0 || bl.Secs > shrineDuration/10 {
-		t.Fatalf("bénédiction incohérente: %+v", bl)
+		t.Fatalf("inconsistent blessing: %+v", bl)
 	}
 
-	// À l'échéance, le serveur renvoie un sac sans bénédiction.
+	// At expiry, the server sends back a bag without the blessing.
 	n := len(bags)
 	g.tick = p.buffs[0].until - 1
 	g.step()
 	if len(bags) <= n || len(bags[len(bags)-1].Blessings) != 0 {
-		t.Fatalf("sac non renvoyé à l'expiration: %d -> %d, %+v", n, len(bags), bags[len(bags)-1].Blessings)
+		t.Fatalf("bag not resent at expiry: %d -> %d, %+v", n, len(bags), bags[len(bags)-1].Blessings)
 	}
 }
 
 func TestSpringHealsWithCooldownAndOasisBoost(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	springs := poisOf(g, world.POISpring)
 	if len(springs) == 0 {
-		t.Fatal("aucune source près de l'origine")
+		t.Fatal("no spring near the origin")
 	}
 	var plain, oasis *world.POI
 	for _, sp := range springs {
@@ -298,42 +305,42 @@ func TestSpringHealsWithCooldownAndOasisBoost(t *testing.T) {
 		}
 	}
 	if plain == nil {
-		t.Fatal("aucune source hors climat aride")
+		t.Fatal("no spring outside an arid climate")
 	}
 	p.stats.MaxHP, p.stats.MaxMana = 100, 10
 
-	// Plein de vie : rien n'est bu, le délai ne court pas.
+	// Full of health: nothing is drunk, the delay does not run.
 	p.hp, p.mana = 100, 10
 	walkOnto(g, p, plain)
 	if _, wait := g.cooling(p, plain.Key(), 1); wait {
-		t.Fatal("le délai court alors qu'il n'y avait rien à soigner")
+		t.Fatal("the delay runs although there was nothing to heal")
 	}
 	delete(p.poiCooling, plain.Key())
 
 	p.hp, p.mana = 10, 0
 	walkOnto(g, p, plain)
 	if p.hp != 40 || p.mana != 5 {
-		t.Fatalf("source: PV %d (attendu 40), PM %d (attendu 5)", p.hp, p.mana)
+		t.Fatalf("source: HP %d (expected 40), MP %d (expected 5)", p.hp, p.mana)
 	}
 	p.hp = 10
 	walkOnto(g, p, plain)
 	if p.hp != 10 {
-		t.Fatalf("la source a soigné deux fois de suite (PV %d)", p.hp)
+		t.Fatalf("the spring healed twice in a row (HP %d)", p.hp)
 	}
 	g.tick += springCooldown
 	walkOnto(g, p, plain)
 	if p.hp != 40 {
-		t.Fatalf("la source ne soigne pas après son délai (PV %d)", p.hp)
+		t.Fatalf("the spring does not heal after its delay (HP %d)", p.hp)
 	}
 
 	if oasis == nil {
-		t.Log("pas d'oasis près de l'origine pour cette graine : bonus aride non vérifié")
+		t.Log("no oasis near the origin for this seed: arid bonus not verified")
 		return
 	}
 	p.hp, p.mana = 10, 0
 	walkOnto(g, p, oasis)
 	if p.hp != 70 || p.mana != 10 {
-		t.Fatalf("oasis: PV %d (attendu 70), PM %d (attendu 10)", p.hp, p.mana)
+		t.Fatalf("oasis: HP %d (expected 70), MP %d (expected 10)", p.hp, p.mana)
 	}
 }
 
@@ -341,11 +348,12 @@ func TestRuinGuardianChestLoreAndHint(t *testing.T) {
 	g := newGame()
 	g.Dungeons = true
 	p, _ := joinRec(g, "a")
+	p.lang = i18n.FR // assertions below are on French catalogue text
 	ruins := poisOf(g, world.POIRuin)
 	if len(ruins) == 0 {
-		t.Fatal("aucune ruine près de l'origine")
+		t.Fatal("no ruin near the origin")
 	}
-	// Une ruine qui a un donjon à moins de 3 régions : l'indice doit le révéler.
+	// A ruin with a dungeon within 3 regions: the hint must reveal it.
 	var ruin *world.POI
 	var dungeon *world.Dungeon
 	for _, r := range ruins {
@@ -355,7 +363,7 @@ func TestRuinGuardianChestLoreAndHint(t *testing.T) {
 		}
 	}
 	if ruin == nil {
-		t.Fatal("aucune ruine à moins de 3 régions d'un donjon")
+		t.Fatal("no ruin within 3 regions of a dungeon")
 	}
 	g.setPos(p, g.freeNear(world.Pos{X: ruin.Pos.X, Y: ruin.Pos.Y + 7}))
 
@@ -363,16 +371,16 @@ func TestRuinGuardianChestLoreAndHint(t *testing.T) {
 	key := lairKey(ruin, 0)
 	id, ok := g.slotMonster[key]
 	if !ok || len(ruin.Slots) != 1 {
-		t.Fatalf("gardien de la ruine absent (%d emplacement(s))", len(ruin.Slots))
+		t.Fatalf("ruin guardian missing (%d slot(s))", len(ruin.Slots))
 	}
 	if g.monsters[id].sp.Level < world.LevelAt(ruin.Pos.X, ruin.Pos.Y)+1 {
-		t.Errorf("gardien de niveau %d : pas plus fort que la région", g.monsters[id].sp.Level)
+		t.Errorf("guardian of level %d: not stronger than the region", g.monsters[id].sp.Level)
 	}
 
 	gold := p.stats.Gold
 	g.openLairChest(p, ruin)
 	if p.stats.Gold != gold || !strings.Contains(notices(p), "gardien") {
-		t.Fatalf("coffre ouvert malgré le gardien (%s)", notices(p))
+		t.Fatalf("chest opened despite the guardian (%s)", notices(p))
 	}
 
 	g.removeMonster(g.monsters[id])
@@ -380,23 +388,23 @@ func TestRuinGuardianChestLoreAndHint(t *testing.T) {
 	p.gearNotices = nil
 	g.openLairChest(p, ruin)
 	if p.stats.Gold <= gold {
-		t.Fatal("la ruine n'a rien donné")
+		t.Fatal("the ruin gave nothing")
 	}
 	if !p.discovered[dungeon.Region] && len(g.World.DungeonsNear(ruin.Pos.X, ruin.Pos.Y, 3)) > 0 {
-		// Le donjon révélé est le plus proche, pas forcément le premier de la liste.
+		// The revealed dungeon is the nearest, not necessarily the first in the list.
 		found := false
 		for _, d := range g.World.DungeonsNear(ruin.Pos.X, ruin.Pos.Y, 3) {
 			found = found || p.discovered[d.Region]
 		}
 		if !found {
-			t.Fatal("l'indice n'a révélé aucun donjon")
+			t.Fatal("the hint revealed no dungeon")
 		}
 	}
 	if !strings.Contains(notices(p), "plan gravé") {
-		t.Errorf("pas d'indice dans le journal: %s", notices(p))
+		t.Errorf("no hint in the journal: %s", notices(p))
 	}
 	lore := i18n.Pick(p.lang, "poi.lore", int(uint64(ruin.Seed)>>8))
 	if !strings.Contains(notices(p), lore) {
-		t.Errorf("fragment de lore %q absent du journal: %s", lore, notices(p))
+		t.Errorf("lore fragment %q missing from the journal: %s", lore, notices(p))
 	}
 }

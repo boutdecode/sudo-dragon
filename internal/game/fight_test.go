@@ -10,11 +10,12 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/gear"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// rig prépare un joueur et un monstre voisin, avec capture des messages de combat.
+// rig prepares a player and a neighbouring monster, capturing the combat messages.
 type rig struct {
 	g      *Game
 	p      *player
@@ -30,6 +31,7 @@ func newRig(t *testing.T, sp species) *rig {
 	t.Helper()
 	g := newGame()
 	p, rec := joinRec(g, "hero")
+	p.lang = i18n.FR // the log assertions below are on French catalogue text
 	r := &rig{g: g, p: p, snaps: rec}
 	p.sendCombat = func(c protocol.Combat) { r.msgs = append(r.msgs, c) }
 	r.dx, r.dy = freeDir(t, g, p)
@@ -37,7 +39,7 @@ func newRig(t *testing.T, sp species) *rig {
 	return r
 }
 
-// engage fait marcher le joueur sur le monstre.
+// engage makes the player walk onto the monster.
 func (r *rig) engage() {
 	r.g.move(r.p.id, r.dx, r.dy)
 	r.g.step()
@@ -55,20 +57,20 @@ func TestWalkingIntoMonsterStartsFight(t *testing.T) {
 	r.engage()
 
 	if r.p.fight == nil || r.m.fight != r.p.fight {
-		t.Fatal("le combat n'a pas démarré")
+		t.Fatal("the fight did not start")
 	}
 	if r.p.pos != start {
-		t.Fatalf("le joueur a bougé: %v", r.p.pos)
+		t.Fatalf("the player moved: %v", r.p.pos)
 	}
 	if len(r.msgs) != 1 {
-		t.Fatalf("%d messages de combat, attendu 1", len(r.msgs))
+		t.Fatalf("%d combat messages, expected 1", len(r.msgs))
 	}
 	c := r.last()
 	if c.Over || len(c.Enemies) != 1 || c.Enemies[0].Kind != "rat" || c.Enemies[0].HP != testRat.HP || c.PlayerHP != r.p.stats.MaxHP || c.Round != 0 {
-		t.Fatalf("état initial: %+v", c)
+		t.Fatalf("initial state: %+v", c)
 	}
 	if len(c.Log) < 2 || !strings.Contains(c.Log[0], "Vous attaquez le Rat") || !strings.Contains(c.Log[1], "Initiative") {
-		t.Fatalf("journal d'ouverture: %v", c.Log)
+		t.Fatalf("opening log: %v", c.Log)
 	}
 }
 
@@ -76,10 +78,10 @@ func TestMonsterContactStartsFight(t *testing.T) {
 	r := newRig(t, testRat)
 	r.g.stepMonsters(r.g.sortedMonsterIDs())
 	if r.p.fight == nil {
-		t.Fatal("un monstre au contact devrait attaquer")
+		t.Fatal("a monster in contact should attack")
 	}
 	if c := r.last(); len(c.Log) < 2 || !strings.Contains(c.Log[0], "Un Rat vous attaque") || !strings.Contains(c.Log[1], "Initiative") {
-		t.Fatalf("journal d'ouverture: %v", c.Log)
+		t.Fatalf("opening log: %v", c.Log)
 	}
 }
 
@@ -88,16 +90,16 @@ func TestEveryoneIsFrozenDuringFight(t *testing.T) {
 	r.engage()
 	pPos, mPos := r.p.pos, r.m.pos
 
-	// Le joueur essaie de s'éloigner; le monstre ne bouge pas non plus.
+	// The player tries to move away; the monster does not move either.
 	for i := 0; i < 30; i++ {
 		r.g.move(r.p.id, -r.dx, -r.dy)
 		r.g.step()
 	}
 	if r.p.pos != pPos || r.m.pos != mPos {
-		t.Fatalf("déplacement pendant un combat: joueur %v->%v, monstre %v->%v", pPos, r.p.pos, mPos, r.m.pos)
+		t.Fatalf("movement during a fight: player %v->%v, monster %v->%v", pPos, r.p.pos, mPos, r.m.pos)
 	}
 	if r.p.hasPending {
-		t.Fatal("une intention de déplacement est restée en attente")
+		t.Fatal("a movement intent stayed pending")
 	}
 }
 
@@ -109,10 +111,10 @@ func TestOtherMonstersLeaveFightingPlayerAlone(t *testing.T) {
 		r.g.stepMonsters(r.g.sortedMonsterIDs())
 	}
 	if other.fight != nil {
-		t.Fatal("un second monstre s'est joint au combat")
+		t.Fatal("a second monster joined the fight")
 	}
 	if cheb(other.pos, r.p.pos) < 2 {
-		t.Fatalf("le second monstre s'est collé au joueur en combat: %v", other.pos)
+		t.Fatalf("the second monster stuck to the fighting player: %v", other.pos)
 	}
 }
 
@@ -136,10 +138,10 @@ func TestFightingFlagVisibleToOthers(t *testing.T) {
 		}
 	}
 	if !foundPlayer || !foundMonster {
-		t.Fatalf("combattants non signalés à l'observateur (joueur=%v, monstre=%v): %+v", foundPlayer, foundMonster, snap)
+		t.Fatalf("fighters not flagged to the observer (player=%v, monster=%v): %+v", foundPlayer, foundMonster, snap)
 	}
 	if !r.snaps.last().Self.Fighting {
-		t.Fatal("le joueur ne se voit pas en combat")
+		t.Fatal("the player does not see themselves in combat")
 	}
 }
 
@@ -150,37 +152,37 @@ func TestWinGivesXPRemovesMonsterAndFreesPlayer(t *testing.T) {
 
 	c := r.last()
 	if !c.Over || c.Result != protocol.ResultWon {
-		t.Fatalf("victoire attendue: %+v", c)
+		t.Fatalf("victory expected: %+v", c)
 	}
 	if r.p.fight != nil {
-		t.Fatal("joueur toujours en combat")
+		t.Fatal("player still in combat")
 	}
 	if _, ok := r.g.monsters[r.m.id]; ok || len(r.g.monsterAt) != 0 {
-		t.Fatal("monstre vaincu encore dans le monde")
+		t.Fatal("defeated monster still in the world")
 	}
 	if r.p.stats.Level != 1 || r.p.stats.XP != testRat.XP {
-		t.Fatalf("niveau %d, XP %d, attendu niveau 1 et %d XP", r.p.stats.Level, r.p.stats.XP, testRat.XP)
+		t.Fatalf("level %d, XP %d, expected level 1 and %d XP", r.p.stats.Level, r.p.stats.XP, testRat.XP)
 	}
 	if !strings.Contains(strings.Join(c.Log, "|"), "XP") {
-		t.Fatalf("journal sans récompense: %v", c.Log)
+		t.Fatalf("log without reward: %v", c.Log)
 	}
 }
 
 func TestLevelUpRestoresHP(t *testing.T) {
 	r := newRig(t, weak(testRat))
-	r.p.stats.XP = r.p.stats.XPToNext() - 1 // +4 XP franchit le palier
+	r.p.stats.XP = r.p.stats.XPToNext() - 1 // +4 XP crosses the threshold
 	r.p.hp = 3
 	r.engage()
 	r.g.act(r.p, combat.Attack, 0)
 
 	if r.p.stats.Level != 2 {
-		t.Fatalf("niveau %d, attendu 2", r.p.stats.Level)
+		t.Fatalf("level %d, expected 2", r.p.stats.Level)
 	}
 	if r.p.hp != r.p.stats.MaxHP {
-		t.Fatalf("PV %d/%d après montée de niveau", r.p.hp, r.p.stats.MaxHP)
+		t.Fatalf("HP %d/%d after level up", r.p.hp, r.p.stats.MaxHP)
 	}
 	if !strings.Contains(strings.Join(r.last().Log, "|"), "Niveau 2") {
-		t.Fatalf("journal sans montée de niveau: %v", r.last().Log)
+		t.Fatalf("log without level up: %v", r.last().Log)
 	}
 }
 
@@ -194,61 +196,61 @@ func TestLossRespawnsWithoutXPLoss(t *testing.T) {
 
 	c := r.last()
 	if !c.Over || c.Result != protocol.ResultLost {
-		t.Fatalf("défaite attendue: %+v", c)
+		t.Fatalf("defeat expected: %+v", c)
 	}
 	if r.p.fight != nil || r.m.fight != nil {
-		t.Fatal("combattants non libérés")
+		t.Fatal("fighters not freed")
 	}
 	if r.p.hp != r.p.stats.MaxHP || r.p.stats.XP != 8 || r.p.stats.Level != 1 {
-		t.Fatalf("après défaite: PV %d/%d, XP %d, niveau %d", r.p.hp, r.p.stats.MaxHP, r.p.stats.XP, r.p.stats.Level)
+		t.Fatalf("after defeat: HP %d/%d, XP %d, level %d", r.p.hp, r.p.stats.MaxHP, r.p.stats.XP, r.p.stats.Level)
 	}
 	if r.p.pos == old {
-		t.Fatal("le joueur n'a pas été replacé au point de départ")
+		t.Fatal("the player was not moved back to the starting point")
 	}
 	if _, stale := r.g.byPos[old]; stale {
-		t.Fatal("ancienne case jamais libérée")
+		t.Fatal("old tile never freed")
 	}
 	if r.g.byPos[r.p.pos] != r.p.id {
-		t.Fatal("nouvelle case non indexée")
+		t.Fatal("new tile not indexed")
 	}
 	if _, alive := r.g.monsters[r.m.id]; !alive || r.m.calm != disengageCooldown {
-		t.Fatal("le monstre vainqueur doit rester, avec un délai avant de ré-engager")
+		t.Fatal("the winning monster must stay, with a delay before re-engaging")
 	}
 }
 
 func TestFleeFreesBothAndMonsterWaits(t *testing.T) {
 	r := newRig(t, testRat)
-	r.p.stats.MaxHP, r.p.hp = 1000, 1000 // survit aux fuites ratées
+	r.p.stats.MaxHP, r.p.hp = 1000, 1000 // survives failed flights
 	r.engage()
 	for i := 0; i < 200 && r.p.fight != nil; i++ {
 		r.g.act(r.p, combat.Flee, 0)
 	}
 	if r.p.fight != nil {
-		t.Fatal("la fuite n'a jamais réussi en 200 essais")
+		t.Fatal("the flight never succeeded in 200 attempts")
 	}
 	if c := r.last(); !c.Over || c.Result != protocol.ResultFled {
-		t.Fatalf("issue de fuite attendue: %+v", c)
+		t.Fatalf("flight outcome expected: %+v", c)
 	}
 	if r.m.fight != nil || r.m.calm != fleeGrace {
-		t.Fatalf("monstre: fight=%v cooldown=%d", r.m.fight, r.m.calm)
+		t.Fatalf("monster: fight=%v cooldown=%d", r.m.fight, r.m.calm)
 	}
 
-	// Le joueur reste collé au monstre, qui ne ré-engage qu'après le répit.
+	// The player stays stuck to the monster, which only re-engages after the respite.
 	for i := 0; i < fleeGrace-1; i++ {
 		r.g.tick++
 		r.g.stepMonsters(r.g.sortedMonsterIDs())
 		if r.p.fight != nil {
-			t.Fatalf("ré-engagé trop tôt (itération %d)", i)
+			t.Fatalf("re-engaged too early (iteration %d)", i)
 		}
 	}
 	r.g.tick++
 	r.g.stepMonsters(r.g.sortedMonsterIDs())
 	if r.p.fight == nil {
-		t.Fatal("le monstre aurait dû ré-engager après le répit")
+		t.Fatal("the monster should have re-engaged after the respite")
 	}
 }
 
-// Après une fuite, un autre monstre à portée n'engage pas non plus le joueur, jusqu'à la fin du répit.
+// After a flight, another monster within range does not engage the player either, until the respite ends.
 func TestFleeGraceProtectsFromOtherMonsters(t *testing.T) {
 	r := newRig(t, testRat)
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
@@ -257,9 +259,9 @@ func TestFleeGraceProtectsFromOtherMonsters(t *testing.T) {
 		r.g.act(r.p, combat.Flee, 0)
 	}
 	if r.p.fight != nil {
-		t.Fatal("la fuite n'a jamais réussi en 200 essais")
+		t.Fatal("the flight never succeeded in 200 attempts")
 	}
-	// Un second monstre, libre, au contact du joueur.
+	// A second monster, free, in contact with the player.
 	var other *monster
 	for _, d := range dirs8 {
 		pos := world.Pos{X: r.p.pos.X + d[0], Y: r.p.pos.Y + d[1]}
@@ -271,23 +273,23 @@ func TestFleeGraceProtectsFromOtherMonsters(t *testing.T) {
 		}
 	}
 	if other == nil {
-		t.Skip("terrain peu praticable autour du joueur")
+		t.Skip("terrain hardly walkable around the player")
 	}
 	for i := 0; i < fleeGrace-1; i++ {
 		r.g.tick++
 		r.g.stepMonsters(r.g.sortedMonsterIDs())
 		if r.p.fight != nil {
-			t.Fatalf("engagé pendant le répit (itération %d)", i)
+			t.Fatalf("engaged during the respite (iteration %d)", i)
 		}
 	}
 	r.g.tick++
 	r.g.stepMonsters(r.g.sortedMonsterIDs())
 	if r.p.fight == nil {
-		t.Fatal("un monstre aurait dû engager après le répit")
+		t.Fatal("a monster should have engaged after the respite")
 	}
 }
 
-// Attaquer un monstre pendant le répit met fin au répit.
+// Attacking a monster during the respite ends the respite.
 func TestAttackEndsFleeGrace(t *testing.T) {
 	r := newRig(t, testRat)
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
@@ -296,16 +298,16 @@ func TestAttackEndsFleeGrace(t *testing.T) {
 		r.g.act(r.p, combat.Flee, 0)
 	}
 	if r.p.fight != nil || r.p.calmUntil <= r.g.tick {
-		t.Fatalf("répit attendu après la fuite (calmUntil=%d, tick=%d)", r.p.calmUntil, r.g.tick)
+		t.Fatalf("respite expected after the flight (calmUntil=%d, tick=%d)", r.p.calmUntil, r.g.tick)
 	}
 	r.m.calm = 0
 	r.g.move(r.p.id, r.dx, r.dy)
 	r.g.step()
 	if r.p.fight == nil {
-		t.Fatal("marcher sur le monstre aurait dû ouvrir un combat")
+		t.Fatal("walking onto the monster should have opened a fight")
 	}
 	if r.p.calmUntil != 0 {
-		t.Fatalf("le répit aurait dû prendre fin: calmUntil=%d", r.p.calmUntil)
+		t.Fatalf("the respite should have ended: calmUntil=%d", r.p.calmUntil)
 	}
 }
 
@@ -314,10 +316,10 @@ func TestLeaveDuringFightFreesMonster(t *testing.T) {
 	r.engage()
 	r.g.leave(r.p.id)
 	if r.m.fight != nil {
-		t.Fatal("monstre resté prisonnier d'un combat fantôme")
+		t.Fatal("monster left trapped in a phantom fight")
 	}
 	if _, ok := r.g.monsters[r.m.id]; !ok {
-		t.Fatal("le monstre aurait dû rester dans le monde")
+		t.Fatal("the monster should have stayed in the world")
 	}
 	if r.m.calm != disengageCooldown {
 		t.Fatalf("cooldown=%d", r.m.calm)
@@ -327,18 +329,18 @@ func TestLeaveDuringFightFreesMonster(t *testing.T) {
 func TestIdleFightExpires(t *testing.T) {
 	r := newRig(t, testRat)
 	r.engage()
-	r.g.tick += fightIdleTicks // pile à la limite: pas encore expiré
+	r.g.tick += fightIdleTicks // right at the limit: not yet expired
 	r.g.expireIdleFights(r.g.sortedIDs())
 	if r.p.fight == nil {
-		t.Fatal("expiré trop tôt")
+		t.Fatal("expired too early")
 	}
 	r.g.tick++
 	r.g.expireIdleFights(r.g.sortedIDs())
 	if r.p.fight != nil || r.m.fight != nil {
-		t.Fatal("le combat inactif aurait dû expirer")
+		t.Fatal("the idle fight should have expired")
 	}
 	if c := r.last(); !c.Over || c.Result != protocol.ResultFled || !strings.Contains(strings.Join(c.Log, "|"), "inactivité") {
-		t.Fatalf("message d'expiration: %+v", c)
+		t.Fatalf("expiry message: %+v", c)
 	}
 }
 
@@ -347,11 +349,11 @@ func TestActionResetsIdleTimer(t *testing.T) {
 	r.p.stats.MaxHP, r.p.hp = 1000, 1000
 	r.engage()
 	r.g.tick += fightIdleTicks
-	r.g.act(r.p, combat.Attack, 0) // le joueur agit: le chronomètre repart
+	r.g.act(r.p, combat.Attack, 0) // the player acts: the timer restarts
 	r.g.tick += fightIdleTicks
 	r.g.expireIdleFights(r.g.sortedIDs())
 	if r.p.fight == nil {
-		t.Fatal("un joueur actif ne doit pas expirer")
+		t.Fatal("an active player must not expire")
 	}
 }
 
@@ -363,7 +365,7 @@ func TestActWithoutFightIsIgnored(t *testing.T) {
 	hp := p.hp
 	g.act(p, combat.Attack, 0)
 	if called || p.hp != hp {
-		t.Fatal("une action hors combat a eu un effet")
+		t.Fatal("an action outside combat had an effect")
 	}
 }
 
@@ -372,20 +374,20 @@ func TestRegenerationOutsideFightOnly(t *testing.T) {
 	r.p.hp = r.p.stats.MaxHP - 3
 	r.g.regenerate(r.g.sortedIDs())
 	if r.p.hp != r.p.stats.MaxHP-2 {
-		t.Fatalf("PV=%d, attendu %d", r.p.hp, r.p.stats.MaxHP-2)
+		t.Fatalf("HP=%d, expected %d", r.p.hp, r.p.stats.MaxHP-2)
 	}
-	for i := 0; i < 10; i++ { // ne dépasse jamais le maximum
+	for i := 0; i < 10; i++ { // never exceeds the maximum
 		r.g.regenerate(r.g.sortedIDs())
 	}
 	if r.p.hp != r.p.stats.MaxHP {
-		t.Fatalf("PV=%d, plafond %d", r.p.hp, r.p.stats.MaxHP)
+		t.Fatalf("HP=%d, cap %d", r.p.hp, r.p.stats.MaxHP)
 	}
 
 	r.p.hp = 1
 	r.engage()
 	r.g.regenerate(r.g.sortedIDs())
 	if r.p.hp != 1 {
-		t.Fatal("régénération pendant un combat")
+		t.Fatal("regeneration during a fight")
 	}
 }
 
@@ -397,7 +399,7 @@ func TestSnapshotCarriesStats(t *testing.T) {
 	s := r.last().Stats
 	if s.Level != 1 || s.HP != want.MaxHP || s.MaxHP != want.MaxHP || s.Def != want.Defense() || s.Dmg != "1d4" ||
 		s.Potions != want.Potions || s.XPNext != want.XPToNext() {
-		t.Fatalf("fiche inattendue: %+v", s)
+		t.Fatalf("unexpected sheet: %+v", s)
 	}
 }
 
@@ -407,10 +409,10 @@ func TestStatsChangeTriggersSnapshot(t *testing.T) {
 	g.step()
 	n := len(r.snaps)
 	p.hp -= 5
-	g.regenerate(g.sortedIDs()) // +1 PV
+	g.regenerate(g.sortedIDs()) // +1 HP
 	g.step()
 	if len(r.snaps) != n+1 {
-		t.Fatal("un changement de PV doit produire un instantané")
+		t.Fatal("an HP change must produce a snapshot")
 	}
 }
 
@@ -424,18 +426,18 @@ func TestPotionLootIsCappedAndHappens(t *testing.T) {
 		before := r.p.stats.Potions
 		r.g.act(r.p, combat.Attack, 0)
 		if r.p.stats.Potions > combat.MaxPotions {
-			t.Fatalf("plus de %d potions: %d", combat.MaxPotions, r.p.stats.Potions)
+			t.Fatalf("more than %d potions: %d", combat.MaxPotions, r.p.stats.Potions)
 		}
 		if r.p.stats.Potions > before {
 			withLoot++
 		}
 	}
-	if withLoot < 50 || withLoot > 140 { // 30 % de 300 ≈ 90
-		t.Fatalf("%d butins sur %d victoires, attendu environ 30 %%", withLoot, n)
+	if withLoot < 50 || withLoot > 140 { // 30% of 300 ≈ 90
+		t.Fatalf("%d loots out of %d victories, expected about 30 %%", withLoot, n)
 	}
 }
 
-// Un joueur au maximum de potions ne gagne rien, sans message trompeur.
+// A player at max potions gains nothing, without a misleading message.
 func TestNoLootMessageAtPotionCap(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		r := newRig(t, weak(testRat))
@@ -444,12 +446,12 @@ func TestNoLootMessageAtPotionCap(t *testing.T) {
 		r.engage()
 		r.g.act(r.p, combat.Attack, 0)
 		if strings.Contains(strings.Join(r.last().Log, "|"), "potion") {
-			t.Fatalf("message de butin alors que l'inventaire est plein: %v", r.last().Log)
+			t.Fatalf("loot message while the inventory is full: %v", r.last().Log)
 		}
 	}
 }
 
-// Parcours complet à travers la vraie boucle (goroutine, file de commandes, callbacks).
+// Full run through the real loop (goroutine, command queue, callbacks).
 func TestFightThroughRunningGame(t *testing.T) {
 	g := newGame()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -465,7 +467,7 @@ func TestFightThroughRunningGame(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Injecte un monstre faible au contact, depuis la goroutine de jeu.
+	// Inject a weak monster in contact, from the game goroutine.
 	ready := make(chan struct{})
 	g.do(func() {
 		p := g.players[id]
@@ -486,28 +488,28 @@ func TestFightThroughRunningGame(t *testing.T) {
 		case c := <-msgs:
 			return c
 		case <-time.After(3 * time.Second):
-			t.Fatal("aucun message de combat reçu")
+			t.Fatal("no combat message received")
 			return protocol.Combat{}
 		}
 	}
 
-	// Le monstre au contact engage à son prochain tick.
+	// The monster in contact engages on its next tick.
 	if c := recv(); c.Over || len(c.Enemies) != 1 || c.Enemies[0].Kind != "rat" {
-		t.Fatalf("ouverture: %+v", c)
+		t.Fatalf("opening: %+v", c)
 	}
 	g.Act(id, "attack", 0)
 	if c := recv(); !c.Over || c.Result != protocol.ResultWon {
-		t.Fatalf("victoire attendue: %+v", c)
+		t.Fatalf("victory expected: %+v", c)
 	}
-	g.Act(id, "attack", 0) // hors combat: ignoré
+	g.Act(id, "attack", 0) // outside combat: ignored
 	select {
 	case c := <-msgs:
-		t.Fatalf("message inattendu hors combat: %+v", c)
+		t.Fatalf("unexpected message outside combat: %+v", c)
 	case <-time.After(300 * time.Millisecond):
 	}
 }
 
-// sumXPForLevel renvoie l'XP totale pour atteindre exactement le niveau donné.
+// sumXPForLevel returns the total XP needed to reach exactly the given level.
 func sumXPForLevel(level int) int {
 	total := 0
 	for l := 1; l < level; l++ {
@@ -526,7 +528,7 @@ func TestCanGroupIsSymmetricAndLogical(t *testing.T) {
 		{"rat", "crab", false}, {"crab", "yeti", false}, {"rat", "knight", false}, {"goblin", "rat", false},
 	} {
 		if got := canGroup(c.a, c.b); got != c.want {
-			t.Errorf("canGroup(%s,%s)=%v, attendu %v", c.a, c.b, got, c.want)
+			t.Errorf("canGroup(%s,%s)=%v, expected %v", c.a, c.b, got, c.want)
 		}
 	}
 }
@@ -535,7 +537,7 @@ func TestFightGathersCompatibleNeighbours(t *testing.T) {
 	r := newRig(t, testRat)
 	at := func(dx, dy int) world.Pos { return world.Pos{X: r.m.pos.X + dx, Y: r.m.pos.Y + dy} }
 	var near []*monster
-	for _, d := range [][2]int{{1, 0}, {0, 1}, {1, 1}, {2, 0}} { // 3 voisins de plus que maxGroup n'en admet
+	for _, d := range [][2]int{{1, 0}, {0, 1}, {1, 1}, {2, 0}} { // 3 more neighbours than maxGroup admits
 		pos := at(d[0], d[1])
 		if r.g.blocked(pos) || r.g.World.Safe(pos.X, pos.Y) {
 			continue
@@ -543,7 +545,7 @@ func TestFightGathersCompatibleNeighbours(t *testing.T) {
 		near = append(near, r.g.addMonster(testRat, pos))
 	}
 	if len(near) < 3 {
-		t.Skip("terrain peu praticable autour de la case de test")
+		t.Skip("terrain hardly walkable around the test tile")
 	}
 	far := r.g.addMonster(testRat, at(groupRadius+2, 0))
 	crab := r.g.addMonster(species{Kind: "crab", HP: 5, Dmg: dice.D(1, 4, 0), MoveEvery: 5}, at(0, -1))
@@ -551,13 +553,13 @@ func TestFightGathersCompatibleNeighbours(t *testing.T) {
 	r.engage()
 	f := r.p.fight
 	if f == nil || len(f.ms) != maxGroup {
-		t.Fatalf("groupe de %d, attendu %d", len(f.ms), maxGroup)
+		t.Fatalf("group of %d, expected %d", len(f.ms), maxGroup)
 	}
 	if far.fight != nil || crab.fight != nil {
-		t.Fatal("un monstre éloigné ou incompatible a été engagé")
+		t.Fatal("a distant or incompatible monster was engaged")
 	}
 	if got := r.last(); len(got.Enemies) != maxGroup || got.Enemies[0].Name != "Rat 1" {
-		t.Fatalf("ennemis envoyés: %+v", got.Enemies)
+		t.Fatalf("enemies sent: %+v", got.Enemies)
 	}
 }
 
@@ -565,32 +567,32 @@ func TestKillsAreRewardedPerMonsterAndFleeReleasesTheRest(t *testing.T) {
 	r := newRig(t, weak(testRat))
 	extra := r.g.addMonster(testRat, world.Pos{X: r.m.pos.X, Y: r.m.pos.Y + 1})
 	if r.g.blocked(extra.pos) {
-		t.Skip("case voisine bloquée")
+		t.Skip("neighbouring tile blocked")
 	}
 	r.engage()
 	if r.p.fight == nil || len(r.p.fight.ms) < 2 {
-		t.Fatal("le groupe devait compter 2 monstres")
+		t.Fatal("the group should have 2 monsters")
 	}
 	xp := r.p.stats.XP
-	for i := 0; i < 200 && r.m.fight != nil; i++ { // frappe le monstre faible (cible 0) jusqu'à sa mort
+	for i := 0; i < 200 && r.m.fight != nil; i++ { // hit the weak monster (target 0) until it dies
 		r.g.act(r.p, combat.Attack, 0)
 		if r.p.fight == nil {
-			t.Skip("le joueur est mort avant d'abattre le premier monstre")
+			t.Skip("the player died before slaying the first monster")
 		}
 	}
 	if _, alive := r.g.monsters[r.m.id]; alive {
-		t.Fatal("le monstre abattu doit quitter le monde")
+		t.Fatal("the slain monster must leave the world")
 	}
 	if r.p.stats.Kills != 1 || (r.p.stats.XP == xp && r.p.stats.Level == 1) {
-		t.Fatalf("la mort du premier monstre devait être récompensée tout de suite: kills=%d", r.p.stats.Kills)
+		t.Fatalf("the first monster's death should be rewarded right away: kills=%d", r.p.stats.Kills)
 	}
 	if r.p.fight == nil || extra.fight == nil {
-		t.Fatal("le combat doit continuer contre le survivant")
+		t.Fatal("the fight must continue against the survivor")
 	}
 	r.p.fight.b.Abandon()
 	r.g.endFight(r.p.fight)
 	if extra.fight != nil || extra.calm != disengageCooldown {
-		t.Fatalf("le survivant doit être libéré: fight=%v cooldown=%d", extra.fight, extra.calm)
+		t.Fatalf("the survivor must be freed: fight=%v cooldown=%d", extra.fight, extra.calm)
 	}
 }
 
@@ -601,19 +603,19 @@ func TestBeginnersMeetNoPacks(t *testing.T) {
 		r.g.spawnPack(r.m, r.p.pos, 1)
 	}
 	if len(r.g.monsters) != before {
-		t.Fatalf("%d monstres de plus pour un joueur de niveau 1", len(r.g.monsters)-before)
+		t.Fatalf("%d more monsters for a level 1 player", len(r.g.monsters)-before)
 	}
 }
 
-// Les compagnons en train de marcher (cooldown de pas en cours) rejoignent le combat; ceux qui viennent de fuir
-// ou de perdre (calm) restent à l'écart.
+// Companions that are walking (step cooldown running) join the fight; those that have just fled
+// or lost (calm) stay aside.
 func TestPackJoinsEvenWhileWalking(t *testing.T) {
 	r := newRig(t, testRat)
 	var mates []*monster
 	for _, d := range [][2]int{{1, 0}, {0, 1}} {
 		pos := world.Pos{X: r.m.pos.X + d[0], Y: r.m.pos.Y + d[1]}
 		if r.g.blocked(pos) || r.g.World.Safe(pos.X, pos.Y) {
-			t.Skip("terrain peu praticable autour de la case de test")
+			t.Skip("terrain hardly walkable around the test tile")
 		}
 		m := r.g.addMonster(testRat, pos)
 		m.cooldown = testRat.MoveEvery
@@ -622,11 +624,11 @@ func TestPackJoinsEvenWhileWalking(t *testing.T) {
 	mates[1].calm = disengageCooldown
 	r.engage()
 	if r.p.fight == nil || len(r.p.fight.ms) != 2 || mates[0].fight == nil || mates[1].fight != nil {
-		t.Fatalf("groupe attendu: le compagnon en marche oui, le calmé non (fight=%v)", r.p.fight)
+		t.Fatalf("group expected: the walking companion yes, the calmed one no (fight=%v)", r.p.fight)
 	}
 }
 
-// Le seigneur d'une forteresse laisse toujours un objet, d'un rang au-dessus de celui de sa région.
+// A fortress lord always leaves an item, one rank above that of its region.
 func TestBossDropsGearOfItsRegionLevel(t *testing.T) {
 	boss := scaledForLevel(speciesNamed(t, "warlord"), 12)
 	boss.HP = 1
@@ -637,14 +639,14 @@ func TestBossDropsGearOfItsRegionLevel(t *testing.T) {
 		r.g.act(r.p, combat.Attack, 0)
 	}
 	if len(r.p.inv.Items) != 1 {
-		t.Fatalf("%d objets lâchés, attendu 1", len(r.p.inv.Items))
+		t.Fatalf("%d items dropped, expected 1", len(r.p.inv.Items))
 	}
 	if got, want := r.p.inv.Items[0].Tier, gear.TierForLevel(12)+1; got != want {
-		t.Errorf("rang %d, attendu %d", got, want)
+		t.Errorf("rank %d, expected %d", got, want)
 	}
 }
 
-// Un monstre de niveau 1 et un sac plein ne laissent rien; un monstre ordinaire n'en laisse que rarement.
+// A level 1 monster and a full bag leave nothing; an ordinary monster only rarely leaves one.
 func TestMonsterGearIsRareAndNeedsBagRoom(t *testing.T) {
 	r := newRig(t, scaledForLevel(testRat, 1))
 	drops := 0
@@ -655,12 +657,12 @@ func TestMonsterGearIsRareAndNeedsBagRoom(t *testing.T) {
 		}
 	}
 	if drops < 40 || drops > 200 { // lootGearChance = 5 %
-		t.Errorf("%d objets sur 2000 monstres", drops)
+		t.Errorf("%d items out of 2000 monsters", drops)
 	}
 	r.p.inv.Items = make([]gear.Item, gear.BagCapacity)
 	for range 200 {
 		if r.g.monsterGear(r.p, r.m) != "" {
-			t.Fatal("un sac plein ne peut rien recevoir")
+			t.Fatal("a full bag cannot receive anything")
 		}
 	}
 }

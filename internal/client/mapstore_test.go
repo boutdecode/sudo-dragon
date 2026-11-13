@@ -14,7 +14,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Par défaut, les tests n'écrivent jamais dans le dossier de configuration réel.
+// By default, tests never write to the real configuration directory.
 func init() { mapStorePath = func() string { return "" } }
 
 func tempStore(t *testing.T) string {
@@ -31,41 +31,41 @@ func TestMarkerNamingFlow(t *testing.T) {
 	m := mapModel(i18n.FR, 120, 40)
 	m, _ = m.openMap()
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'w', Text: "w"})
-	// Pendant la saisie, w et + sont du texte.
+	// During input, w and + are text.
 	m = typeText(m, "Mon w+camp")
 	if !m.wmap.naming || m.wmap.z() != 8 {
-		t.Fatalf("la saisie doit absorber les touches: %+v", m.wmap)
+		t.Fatalf("input must absorb the keys: %+v", m.wmap)
 	}
 	if !strings.Contains(ansi.Strip(m.helpLine()), "Mon w+camp") {
-		t.Error("la barre du bas devrait montrer le texte saisi")
+		t.Error("the bottom bar should show the entered text")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.wmap.naming || m.wmap.markers[0].Name != "Mon w+camp" {
-		t.Fatalf("nom = %+v", m.wmap.markers)
+		t.Fatalf("name = %+v", m.wmap.markers)
 	}
 	if _, err := os.Stat(path); err != nil {
-		// La sauvegarde est une commande asynchrone ; on la force ici.
+		// Saving is an asynchronous command; we force it here.
 		m.saveMapNow()
 	}
 
-	// Renommer : w sur le repère préremplit le nom ; un doublon (casse) reçoit un suffixe.
+	// Rename: w on the marker prefills the name; a duplicate (case) gets a suffix.
 	m.wmap.markers = append(m.wmap.markers, marker{world.Pos{X: 500, Y: 500}, "Puits"})
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'w', Text: "w"})
 	if m.markName.Value() != "Mon w+camp" {
-		t.Fatalf("renommage non prérempli: %q", m.markName.Value())
+		t.Fatalf("rename not prefilled: %q", m.markName.Value())
 	}
 	m.markName.SetValue("puits")
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.wmap.markers[0].Name != "puits 2" {
-		t.Errorf("doublon: %q", m.wmap.markers[0].Name)
+		t.Errorf("duplicate: %q", m.wmap.markers[0].Name)
 	}
 
-	// Entrée avec un nom vide garde le nom actuel.
+	// Enter with an empty name keeps the current name.
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'w', Text: "w"})
 	m.markName.SetValue("  ")
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.wmap.markers[0].Name != "puits 2" {
-		t.Errorf("nom vide: %q", m.wmap.markers[0].Name)
+		t.Errorf("empty name: %q", m.wmap.markers[0].Name)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestParseGotoName(t *testing.T) {
 
 func TestGotoMarker(t *testing.T) {
 	m := mapModel(i18n.FR, 120, 40)
-	// Une ligne de cinq cases praticables : le joueur au début, le repère à la fin.
+	// A line of five walkable tiles: the player at the start, the marker at the end.
 	var start world.Pos
 search:
 	for y := 0; y < 200; y++ {
@@ -140,16 +140,16 @@ search:
 	m.wmap.markers = []marker{{target, "Puits"}, {world.Pos{X: 300, Y: 300}, "Pic"}}
 	m2, _ := m.gotoName("pui")
 	if !m2.walking || m2.walkTarget != target {
-		t.Errorf("marche non lancée: %v %v", m2.walking, m2.walkTarget)
+		t.Errorf("walk not started: %v %v", m2.walking, m2.walkTarget)
 	}
 	m3, _ := m.gotoName("nope")
 	if m3.walking || len(m3.chat) == 0 || !strings.Contains(m3.chat[len(m3.chat)-1].Text, "nope") {
-		t.Error("repère inconnu : message attendu")
+		t.Error("unknown marker: message expected")
 	}
 	m.wmap.markers[1].Name = "Puits 2"
 	m4, _ := m.gotoName("pui")
 	if m4.walking || len(m4.chat) == 0 {
-		t.Error("préfixe ambigu : pas de marche")
+		t.Error("ambiguous prefix: no walk")
 	}
 }
 
@@ -166,33 +166,33 @@ func TestMapStoreRoundTripKeepsOtherSeeds(t *testing.T) {
 
 	got := loadMapState(1, 1)
 	if len(got.markers) != 1 || got.markers[0].Name != "Camp" || got.markers[0].Pos != (world.Pos{X: 5, Y: -6}) {
-		t.Errorf("repères: %+v", got.markers)
+		t.Errorf("markers: %+v", got.markers)
 	}
 	if len(got.explored) != len(m.wmap.explored) || len(got.explored) == 0 {
 		t.Errorf("exploration: %d/%d", len(got.explored), len(m.wmap.explored))
 	}
 	if g2 := loadMapState(2, 1); len(g2.explored) != 1 {
-		t.Errorf("la graine 2 a été écrasée: %+v", g2.explored)
+		t.Errorf("seed 2 was overwritten: %+v", g2.explored)
 	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-		t.Errorf("fichier: %v %v", info, err)
+		t.Errorf("file: %v %v", info, err)
 	}
 }
 
 func TestMapStoreMissingOrCorrupt(t *testing.T) {
 	path := tempStore(t)
 	if st := loadMapState(1, 1); len(st.markers) != 0 || st.explored == nil {
-		t.Error("fichier absent : état vide non nil attendu")
+		t.Error("missing file: non-nil empty state expected")
 	}
 	os.MkdirAll(filepath.Dir(path), 0o700)
 	os.WriteFile(path, []byte("{pas du json"), 0o600)
 	if st := loadMapState(1, 1); len(st.markers) != 0 {
-		t.Error("fichier corrompu : état vide attendu")
+		t.Error("corrupt file: empty state expected")
 	}
 	m := mapModel(i18n.FR, 120, 40)
-	m.saveMapNow() // doit réécrire un fichier valide par-dessus
+	m.saveMapNow() // must rewrite a valid file over it
 	if st := loadMapState(1, 1); len(st.explored) == 0 {
-		t.Error("la sauvegarde devrait remplacer le fichier corrompu")
+		t.Error("saving should replace the corrupt file")
 	}
 }
 
@@ -200,19 +200,19 @@ func TestExploreSaveIsThrottled(t *testing.T) {
 	tempStore(t)
 	m := mapModel(i18n.FR, 120, 40)
 	if !m.wmap.dirty {
-		t.Fatal("l'exploration devrait être marquée modifiée")
+		t.Fatal("exploration should be marked modified")
 	}
 	if cmd := m.maybeSaveExplored(); cmd == nil {
-		t.Fatal("première sauvegarde attendue")
+		t.Fatal("first save expected")
 	}
 	m.snap.Self.X += 200
 	m.markExplored()
 	if cmd := m.maybeSaveExplored(); cmd != nil {
-		t.Error("pas de nouvelle écriture avant exploreSaveEvery")
+		t.Error("no new write before exploreSaveEvery")
 	}
 	m.wmap.lastSave = m.wmap.lastSave.Add(-2 * exploreSaveEvery)
 	if cmd := m.maybeSaveExplored(); cmd == nil {
-		t.Error("l'écriture devrait reprendre après le délai")
+		t.Error("writing should resume after the delay")
 	}
 }
 
@@ -225,20 +225,20 @@ func TestNamingBarFitsEverySize(t *testing.T) {
 			m = typeText(m, "un nom de repère assez long pour dépasser")
 			for _, l := range strings.Split(m.View().Content, "\n") {
 				if ansi.StringWidth(l) > sz[0] {
-					t.Fatalf("%s %v: ligne trop large (%d)", lang, sz, ansi.StringWidth(l))
+					t.Fatalf("%s %v: line too wide (%d)", lang, sz, ansi.StringWidth(l))
 				}
 			}
 		}
 	}
 }
 
-// placeModel place le joueur près d'un lieu de la graine 1 ; explored dit si le lieu est découvert.
+// placeModel puts the player near a place of seed 1; explored says whether the place is discovered.
 func placeModel(t *testing.T, explored bool) (Model, *world.Structure) {
 	t.Helper()
 	m := mapModel(i18n.FR, 120, 40)
 	ss := m.world.StructuresNear(world.Pos{}, 800)
 	if len(ss) == 0 {
-		t.Skip("aucun lieu proche")
+		t.Skip("no nearby place")
 	}
 	s := ss[0]
 	c := s.Center()
@@ -267,28 +267,28 @@ func TestGotoDiscoveredPlace(t *testing.T) {
 		t.Fatalf("findTarget(%q) = %+v %d", name, got, n)
 	}
 	if _, n := m.findTarget(m.placeLabel(s)); n != 1 {
-		t.Errorf("le libellé complet « %s » devrait être reconnu", m.placeLabel(s))
+		t.Errorf("the full label %q should be recognized", m.placeLabel(s))
 	}
 	if _, n := m.findTarget(name[:3]); n < 1 {
-		t.Errorf("préfixe %q non reconnu", name[:3])
+		t.Errorf("prefix %q not recognized", name[:3])
 	}
 	m2, _ := m.gotoName(name)
 	if !m2.walking {
-		t.Fatalf("marche non lancée: %v", m2.chat)
+		t.Fatalf("walk not started: %v", m2.chat)
 	}
 	if near := m.walkableNear(s.Center(), 8); dist2(near, s.Center()) > 8*8*2 || m2.walkTarget != near {
-		t.Errorf("cible %v, attendu une case libre proche du centre %v", m2.walkTarget, near)
+		t.Errorf("target %v, expected a free tile near the center %v", m2.walkTarget, near)
 	}
 }
 
 func TestGotoUndiscoveredPlaceIsUnknown(t *testing.T) {
 	m, s := placeModel(t, false)
 	if _, n := m.findTarget(s.NameIn(m.lang)); n != 0 {
-		t.Fatalf("un lieu non découvert ne doit pas être trouvé (n=%d)", n)
+		t.Fatalf("an undiscovered place must not be found (n=%d)", n)
 	}
 	m2, _ := m.gotoName(s.NameIn(m.lang))
 	if m2.walking || len(m2.chat) == 0 {
-		t.Error("message « inconnu » attendu")
+		t.Error("\"unknown\" message expected")
 	}
 }
 
@@ -297,7 +297,7 @@ func TestMarkerBeatsPlaceWithSameName(t *testing.T) {
 	m.wmap.markers = []marker{{world.Pos{X: 1, Y: 1}, s.NameIn(m.lang)}}
 	got, n := m.findTarget(s.NameIn(m.lang))
 	if n != 1 || got.place || got.Pos != (world.Pos{X: 1, Y: 1}) {
-		t.Errorf("le repère devrait l'emporter: %+v", got)
+		t.Errorf("the marker should win: %+v", got)
 	}
 }
 
@@ -305,6 +305,6 @@ func TestWalkableNearPrefersRoadAndSkipsWalls(t *testing.T) {
 	m, s := placeModel(t, true)
 	p := m.walkableNear(s.Center(), 8)
 	if !m.freeFn()(p) {
-		t.Errorf("%v devrait être une case libre", p)
+		t.Errorf("%v should be a free tile", p)
 	}
 }

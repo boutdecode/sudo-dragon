@@ -9,15 +9,15 @@ import (
 	"sync"
 )
 
-// Les illustrations des monstres sont embarquées dans le binaire et dessinées
-// en demi-blocs (▀): chaque cellule du terminal porte deux pixels, celui du
-// haut en couleur d'avant-plan, celui du bas en couleur de fond (24 bits).
+// Monster illustrations are embedded in the binary and drawn
+// in half blocks (▀): each terminal cell carries two pixels, the upper
+// one in foreground colour, the lower one in background colour (24 bits).
 //
 //go:embed assets/monsters/*.png
 var monsterImages embed.FS
 
-// frameMargin est la part de chaque côté rognée avant la réduction. Elle est
-// nulle: le cadre décoratif des illustrations est conservé.
+// frameMargin is the share of each side cropped before downscaling. It is
+// zero: the decorative frame of the illustrations is kept.
 var frameMargin = map[string]float64{
 	"rat":  0,
 	"wolf": 0,
@@ -35,16 +35,16 @@ var (
 	imgCache  = map[imageKey][]string{}
 )
 
-// HasMonsterImage dit si une espèce a une illustration.
+// HasMonsterImage reports whether a species has an illustration.
 func HasMonsterImage(kind string) bool {
 	_, ok := frameMargin[kind]
 	return ok
 }
 
-// MonsterImage dessine l'illustration d'une espèce dans au plus maxCols
-// colonnes et maxRows lignes de cellules (proportions conservées). Toutes les
-// lignes ont la même largeur. Renvoie nil si l'espèce n'a pas d'illustration
-// ou si la place est trop petite pour qu'elle reste lisible.
+// MonsterImage draws the illustration of a species in at most maxCols
+// columns and maxRows rows of cells (proportions kept). All the
+// lines have the same width. It returns nil if the species has no illustration
+// or if the room is too small for it to remain legible.
 func MonsterImage(kind string, maxCols, maxRows int) []string {
 	if !HasMonsterImage(kind) || maxCols < 8 || maxRows < 4 {
 		return nil
@@ -71,9 +71,9 @@ func MonsterImage(kind string, maxCols, maxRows int) []string {
 		b.Min.X+int(float64(b.Dx())*m), b.Min.Y+int(float64(b.Dy())*m),
 		b.Max.X-int(float64(b.Dx())*m), b.Max.Y-int(float64(b.Dy())*m))
 
-	// Une cellule = 1 pixel de large, 2 de haut: on ajuste en pixels.
+	// One cell = 1 pixel wide, 2 tall: we adjust in pixels.
 	pw, ph := maxCols, maxRows*2
-	if crop.Dx()*ph > crop.Dy()*pw { // limité par la largeur
+	if crop.Dx()*ph > crop.Dy()*pw { // limited by width
 		ph = max(2, crop.Dy()*pw/crop.Dx())
 	} else {
 		pw = max(1, crop.Dx()*ph/crop.Dy())
@@ -99,8 +99,8 @@ func MonsterImage(kind string, maxCols, maxRows int) []string {
 	return lines
 }
 
-// boxAverage moyenne les pixels de la source qui tombent dans le pixel (px, py)
-// d'une grille pw x ph couvrant la zone crop.
+// boxAverage averages the source pixels that fall within pixel (px, py)
+// of a pw x ph grid covering the crop area.
 func boxAverage(src image.Image, crop image.Rectangle, px, py, pw, ph int) (r, g, b uint8) {
 	x0 := crop.Min.X + px*crop.Dx()/pw
 	x1 := max(x0+1, crop.Min.X+(px+1)*crop.Dx()/pw)

@@ -7,42 +7,42 @@ import (
 	"github.com/kevin/ascii-adventure/internal/hero"
 )
 
-// Stats est la progression d'un personnage.
+// Stats is the progression of a character.
 type Stats struct {
 	Level, XP int
-	MaxHP     int // somme des dés de vie lancés (voir hero), stockée: elle ne se recalcule pas
+	MaxHP     int // sum of the hit dice rolled (see hero), stored: it is not recomputed
 	MaxMana   int
 	Potions   int
 	Gold      int
 
-	// Base et caractéristiques tirées à la création. FOR, AGI et INT donnent le bonus de toucher et de
-	// dégâts (selon le style de l'arme), AGI la DEF ; CON et SAG ont déjà servi à fixer MaxHP et MaxMana.
+	// Class and abilities rolled at creation. STR, AGI and INT give the hit and damage
+	// bonus (depending on the weapon style), AGI the DEF; CON and WIS have already been used to set MaxHP and MaxMana.
 	Class  hero.Class
 	Scores hero.Scores
 
-	// Faits établis par le serveur sur l'histoire du personnage. Ils ne servent
-	// pas au combat : les PNJ peuvent les citer comme certains, contrairement à
-	// ce que le joueur dit de lui-même.
-	Kills     int // monstres vaincus
-	BossKills int // seigneurs de guerre vaincus
-	Deaths    int // défaites
+	// Facts established by the server about the character's history. They are not used
+	// in combat: NPCs may cite them as certain, unlike
+	// what the player says about himself.
+	Kills     int // monsters defeated
+	BossKills int // warlords defeated
+	Deaths    int // defeats
 }
 
-// MaxGold plafonne l'or d'un personnage (évite tout débordement d'entier).
+// MaxGold caps a character's gold (prevents any integer overflow).
 const MaxGold = 999_999
 
-// Valeurs de départ et gains par niveau.
+// Starting values and per-level gains.
 const (
 	startPotions = 2
 )
 
-// BareHands sont les dégâts à mains nues (avant le modificateur de FOR).
+// BareHands is the damage when bare-handed (before the STR modifier).
 var BareHands = dice.D(1, 4, 0)
 
-// NewStats renvoie un personnage de niveau 1: guerrier aux caractéristiques neutres (10).
+// NewStats returns a level 1 character: a warrior with neutral abilities (10).
 func NewStats() Stats { return NewStatsFor(hero.Warrior, hero.Default()) }
 
-// NewStatsFor renvoie un personnage de niveau 1 de la classe et des caractéristiques données.
+// NewStatsFor returns a level 1 character of the given class and abilities.
 func NewStatsFor(class hero.Class, scores hero.Scores) Stats {
 	class = class.OrDefault()
 	if !scores.Set() {
@@ -55,27 +55,27 @@ func NewStatsFor(class hero.Class, scores hero.Scores) Stats {
 	}
 }
 
-// Mod renvoie le modificateur d'attaque du style k (FOR, AGI ou INT).
+// Mod returns the attack modifier of style k (STR, AGI or INT).
 func (s Stats) Mod(k hero.Kind) int { return s.Scores.Mod(k.OrMelee().Stat()) }
 
-// Defense est la DEF d'un personnage sans équipement: 10 (taille moyenne) plus le modificateur d'AGI.
+// Defense is the DEF of a character without equipment: 10 (medium size) plus the AGI modifier.
 func (s Stats) Defense() int { return hero.DefBase(hero.Medium) + s.Scores.DefenseBonus() }
 
-// averageHP est le gain de PV « moyen » d'un niveau (la moitié du dé, plus un, plus le mod de CON).
+// averageHP is the "average" HP gain of a level (half the die, plus one, plus the CON mod).
 func (s Stats) averageHP() int {
 	return max(1, s.Class.OrDefault().HitDie()/2+1+s.Scores.Mod(hero.CON))
 }
 
-// xpCurve règle la courbe d'expérience: XPToNext vaut xpCurve × niveau². Le niveau 20 demande ~300 000 XP, soit
-// ~60 h de jeu actif (30 jours à ~2 h par jour); changer ce coefficient suffit pour ralentir ou accélérer.
+// xpCurve sets the experience curve: XPToNext is xpCurve × level². Level 20 requires ~300,000 XP, i.e.
+// ~60 h of active play (30 days at ~2 h a day); changing this coefficient is enough to slow down or speed up.
 const xpCurve = 120
 
-// XPToNext est l'expérience à accumuler (dans le niveau courant) pour passer au suivant.
+// XPToNext is the experience to accumulate (within the current level) to reach the next one.
 func (s Stats) XPToNext() int { return xpCurve * s.Level * s.Level }
 
-// AddXP ajoute de l'expérience et applique les montées de niveau: chaque niveau lance le dé
-// de vie de la classe (plus le mod de CON). Avec rng nil, le gain est la valeur moyenne du dé
-// (déterministe, pour les tests). Renvoie le nombre de niveaux gagnés.
+// AddXP adds experience and applies level-ups: each level rolls the hit die
+// of the class (plus the CON mod). With a nil rng, the gain is the average value of the die
+// (deterministic, for tests). It returns the number of levels gained.
 func (s *Stats) AddXP(n int, rng *rand.Rand) (levels int) {
 	s.XP += max(0, n)
 	for s.XP >= s.XPToNext() {
@@ -92,15 +92,15 @@ func (s *Stats) AddXP(n int, rng *rand.Rand) (levels int) {
 	return levels
 }
 
-// AddGold ajoute de l'or jusqu'au plafond et renvoie le montant réellement ajouté.
+// AddGold adds gold up to the cap and returns the amount actually added.
 func (s *Stats) AddGold(n int) int {
 	added := max(0, min(n, MaxGold-s.Gold))
 	s.Gold += added
 	return added
 }
 
-// SpendGold retire n pièces d'or. Renvoie false, sans rien retirer, si l'or manque
-// ou si n est négatif.
+// SpendGold removes n gold pieces. It returns false, removing nothing, if gold is short
+// or if n is negative.
 func (s *Stats) SpendGold(n int) bool {
 	if n < 0 || n > s.Gold {
 		return false
@@ -109,40 +109,40 @@ func (s *Stats) SpendGold(n int) bool {
 	return true
 }
 
-// WithGold renvoie la fiche avec l'or donné, ramené dans [0, MaxGold]. Sert à
-// restaurer une sauvegarde sans faire confiance à la valeur lue.
+// WithGold returns the sheet with the given gold, clamped into [0, MaxGold]. Used to
+// restore a save without trusting the value read.
 func (s Stats) WithGold(gold int) Stats {
 	s.Gold = max(0, min(gold, MaxGold))
 	return s
 }
 
-// WithRecord renvoie la fiche avec l'historique donné, chaque compteur ramené à 0 ou plus.
+// WithRecord returns the sheet with the given history, each counter clamped to 0 or more.
 func (s Stats) WithRecord(kills, bossKills, deaths int) Stats {
 	s.Kills, s.BossKills, s.Deaths = max(0, kills), max(0, bossKills), max(0, deaths)
 	return s
 }
 
-// AddPotions ajoute des potions jusqu'au plafond et renvoie le nombre réellement ajouté.
+// AddPotions adds potions up to the cap and returns the number actually added.
 func (s *Stats) AddPotions(n int) int {
 	added := max(0, min(n, MaxPotions-s.Potions))
 	s.Potions += added
 	return added
 }
 
-// Fighter convertit la fiche en combattant avec hp points de vie actuels.
+// Fighter converts the sheet into a combatant with hp current hit points.
 func (s Stats) Fighter(hp int) Fighter {
 	m := s.Mod(hero.Melee)
 	return Fighter{HP: hp, MaxHP: s.MaxHP, Def: s.Defense(), Hit: m, Dmg: BareHands, DmgMod: m, Kind: hero.Melee}
 }
 
-// StatsAt reconstruit la fiche d'un guerrier aux caractéristiques neutres à partir de son
-// niveau, de son expérience dans ce niveau et de ses potions, avec des PV « moyens ».
+// StatsAt rebuilds the sheet of a warrior with neutral abilities from his
+// level, his experience within that level and his potions, with "average" HP.
 func StatsAt(level, xp, potions int) Stats {
 	return StatsFor(level, xp, potions, hero.Warrior, hero.Default(), 0)
 }
 
-// StatsFor reconstruit la fiche d'un personnage sauvegardé. Les valeurs hors bornes sont
-// ramenées dans les bornes valides (sauvegarde corrompue); maxHP <= 0 donne des PV moyens.
+// StatsFor rebuilds the sheet of a saved character. Out-of-range values are
+// clamped into the valid bounds (corrupted save); maxHP <= 0 gives average HP.
 func StatsFor(level, xp, potions int, class hero.Class, scores hero.Scores, maxHP int) Stats {
 	level = max(1, level)
 	s := NewStatsFor(class, scores)

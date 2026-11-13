@@ -10,21 +10,21 @@ import (
 	"github.com/kevin/ascii-adventure/internal/store/storetest"
 )
 
-// inEnglish passe un modèle de test (français par défaut) en anglais.
+// inEnglish switches a test model (French by default) to English.
 func inEnglish(m Model) Model {
 	m.lang = i18n.EN
 	return m
 }
 
-// frenchWords sont des mots de l'interface qui ne doivent jamais apparaître dans la
-// version anglaise.
+// frenchWords are interface words that must never appear in the
+// English version.
 var frenchWords = []string{"Connexion", "Pseudo", "Mot de passe", "Joueurs", "Discussion", "Attaquer", "Fuir", "Jour ", "en ligne", "Sac à dos", "quitter", "marcher", "historique"}
 
 func assertNoFrench(t *testing.T, name, view string) {
 	t.Helper()
 	for _, w := range frenchWords {
 		if strings.Contains(view, w) {
-			t.Errorf("%s: %q dans l'interface anglaise:\n%s", name, w, view)
+			t.Errorf("%s: %q in the English interface:\n%s", name, w, view)
 		}
 	}
 }
@@ -34,7 +34,7 @@ func TestEnglishLoginScreen(t *testing.T) {
 	view := plainView(m)
 	for _, want := range []string{"Log in", "Sign up", "Server", "Username", "Password", "quit"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("écran de connexion sans %q:\n%s", want, view)
+			t.Errorf("login screen without %q:\n%s", want, view)
 		}
 	}
 	assertNoFrench(t, "login", view)
@@ -48,14 +48,14 @@ func TestEnglishPlayingScreen(t *testing.T) {
 	view := plainView(m)
 	for _, want := range []string{"Players", "NEARBY PLAYERS", "Chat", "walk", "history", "Day "} {
 		if !strings.Contains(view, want) {
-			t.Errorf("écran de jeu sans %q:\n%s", want, view)
+			t.Errorf("game screen without %q:\n%s", want, view)
 		}
 	}
 	assertNoFrench(t, "jeu", view)
 
 	small := inEnglish(playingModel(t, 40, 10))
 	if !strings.Contains(small.View().Content, "too small") {
-		t.Error("message anglais de terminal trop petit attendu")
+		t.Error("English terminal-too-small message expected")
 	}
 }
 
@@ -64,7 +64,7 @@ func TestEnglishCombatScreen(t *testing.T) {
 	view := plainView(m)
 	for _, want := range []string{"FIGHT · Wolf", "[A] Strike", "[I] Potion (2)", "[F] Flee", "Actions", "Log"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("combat sans %q:\n%s", want, view)
+			t.Errorf("combat without %q:\n%s", want, view)
 		}
 	}
 	assertNoFrench(t, "combat", view)
@@ -75,19 +75,19 @@ func TestEnglishNPCKeysFollowTheEnglishLabels(t *testing.T) {
 	m = openNPC(t, m, merchantDialog())
 	view := plainView(m)
 	if !strings.Contains(view, "[B]") || !strings.Contains(view, "[S]") || !strings.Contains(view, "b s h t") {
-		t.Fatalf("lettres anglaises attendues (B = buy, S = sell):\n%s", view)
+		t.Fatalf("English letters expected (B = buy, S = sell):\n%s", view)
 	}
 	for key, want := range map[string]string{"b": protocol.NPCBuy, "s": protocol.NPCSell} {
 		m = press(m, key)
 		if got := sentNPCActions(out); len(got) != 1 || got[0] != want {
-			t.Errorf("touche %q: actions %v, attendu [%s]", key, got, want)
+			t.Errorf("key %q: actions %v, expected [%s]", key, got, want)
 		}
 	}
-	// Les lettres françaises ne font plus rien, et le marchand ne soigne pas (H).
+	// The French letters do nothing any more, and the merchant does not heal (H).
 	for _, k := range []string{"a", "v", "h"} {
 		m = press(m, k)
 		if got := sentNPCActions(out); len(got) != 0 {
-			t.Errorf("touche %q: action inattendue %v", k, got)
+			t.Errorf("key %q: unexpected action %v", k, got)
 		}
 	}
 }
@@ -95,13 +95,13 @@ func TestEnglishNPCKeysFollowTheEnglishLabels(t *testing.T) {
 func TestEnglishConsentKeys(t *testing.T) {
 	m, out := withConn(inEnglish(playingModel(t, 110, 34)))
 	m = openNPC(t, m, noticeDialog())
-	m = press(m, "o") // « oui » en français: sans effet en anglais
+	m = press(m, "o") // "oui" in French: no effect in English
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("o ne doit pas accepter en anglais: %v", got)
+		t.Fatalf("o must not accept in English: %v", got)
 	}
 	press(m, "y")
 	if got := sentNPCActions(out); len(got) != 1 || got[0] != protocol.NPCConsent {
-		t.Fatalf("y doit accepter en anglais: %v", got)
+		t.Fatalf("y must accept in English: %v", got)
 	}
 }
 
@@ -109,15 +109,15 @@ func TestDialSendsTheLanguageAndTranslatesErrors(t *testing.T) {
 	url := startServer(t)
 	_, _, err := DialLang(context.Background(), url, "x", storetest.Password, true, i18n.EN)
 	if err == nil || !strings.Contains(err.Error(), "invalid username") {
-		t.Fatalf("erreur anglaise attendue: %v", err)
+		t.Fatalf("English error expected: %v", err)
 	}
 	_, _, err = DialLang(context.Background(), "ws://127.0.0.1:1/ws", "alice", storetest.Password, true, i18n.EN)
 	if err == nil || !strings.Contains(err.Error(), "cannot connect") {
-		t.Fatalf("erreur de connexion anglaise attendue: %v", err)
+		t.Fatalf("English connection error expected: %v", err)
 	}
 	_, _, err = DialLang(context.Background(), "ws://127.0.0.1:1/ws", "alice", storetest.Password, true, i18n.FR)
 	if err == nil || !strings.Contains(err.Error(), "connexion impossible") {
-		t.Fatalf("erreur de connexion française attendue: %v", err)
+		t.Fatalf("French connection error expected: %v", err)
 	}
 }
 

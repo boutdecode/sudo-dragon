@@ -21,7 +21,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// talkEnv est un serveur complet (jeu, base, service de conversation) avec un faux modèle.
+// talkEnv is a full server (game, database, conversation service) with a fake model.
 type talkEnv struct {
 	url  string
 	be   store.Backend
@@ -69,7 +69,7 @@ func startTalkServer(t *testing.T) *talkEnv {
 	return &talkEnv{url: "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws", be: be, fake: fake, svc: svc}
 }
 
-// spot est une case libre à côté du soigneur du village de départ.
+// spot is a free tile next to the healer of the starting village.
 type spot struct {
 	stand  world.Pos
 	dx, dy int
@@ -95,11 +95,11 @@ func healerSpots(t *testing.T) (world.NPC, []spot) {
 			}
 		}
 	}
-	t.Skip("pas de soigneur avec deux accès libres près du départ")
+	t.Skip("no healer with two free access tiles near the start")
 	return world.NPC{}, nil
 }
 
-// player est un client connecté, posté à côté du soigneur.
+// player is a connected client, positioned next to the healer.
 type player struct {
 	t    *testing.T
 	name string
@@ -107,16 +107,16 @@ type player struct {
 	sp   spot
 }
 
-// join crée le compte (s'il n'existe pas), pose son personnage à côté du soigneur et connecte le client.
+// join creates the account (if it does not exist), puts its character next to the healer and connects the client.
 func (e *talkEnv) join(t *testing.T, name string, sp spot, consent bool) *player {
 	t.Helper()
 	if _, err := e.be.Store.CreateAccount(name, storetest.Password); err != nil {
-		// compte déjà créé : on se reconnecte
+		// account already created: reconnect
 		_ = err
 	}
 	e.be.SaveCharacter(name, sheet(store.Character{Level: 5, HP: 30, X: sp.stand.X, Y: sp.stand.Y, LLMConsent: consent}))
 	var c *websocket.Conn
-	waitUntil(t, "connexion de "+name, func() bool {
+	waitUntil(t, "connection of "+name, func() bool {
 		c = dial(t, e.url)
 		send(t, c, protocol.TLogin, signIn(name, storetest.Password))
 		return recv(t, c).T == protocol.TWelcome
@@ -129,7 +129,7 @@ func (p *player) act(action, text string) {
 	send(p.t, p.c, protocol.TNPCAction, protocol.NPCAction{Action: action, Text: text})
 }
 
-// until lit les dialogues jusqu'à en trouver un qui satisfait pred.
+// until reads dialogues until one satisfies pred.
 func (p *player) until(what string, pred func(protocol.NPCDialog) bool) protocol.NPCDialog {
 	p.t.Helper()
 	for range 60 {
@@ -145,7 +145,7 @@ func (p *player) until(what string, pred func(protocol.NPCDialog) bool) protocol
 			return d
 		}
 	}
-	p.t.Fatalf("%s: dialogue attendu non reçu", p.name+" "+what)
+	p.t.Fatalf("%s: expected dialogue not received", p.name+" "+what)
 	return protocol.NPCDialog{}
 }
 
@@ -166,14 +166,14 @@ func hasOffer(d protocol.NPCDialog, action string) bool {
 
 func lastLine(d protocol.NPCDialog) protocol.NPCLine { return d.Lines[len(d.Lines)-1] }
 
-// startChat mène un joueur du menu jusqu'à la réplique d'ouverture du PNJ.
+// startChat takes a player from the menu to the NPC's opening line.
 func (p *player) startChat(needConsent bool) protocol.NPCDialog {
 	p.t.Helper()
 	p.act(protocol.NPCTalk, "")
 	if needConsent {
 		n := p.until("avis", func(d protocol.NPCDialog) bool { return d.Mode == protocol.NPCModeNotice })
 		if n.Notice == "" || !hasOffer(n, protocol.NPCConsent) {
-			p.t.Fatalf("avis incomplet: %+v", n)
+			p.t.Fatalf("incomplete notice: %+v", n)
 		}
 		p.act(protocol.NPCConsent, "")
 	}
@@ -186,7 +186,7 @@ func TestNPCConversationEndToEndWithRumorsAndPrivacy(t *testing.T) {
 	e := startTalkServer(t)
 	npc, spots := healerSpots(t)
 
-	// --- Aldric : avis, accord, ouverture, présentation ---
+	// --- Aldric: notice, consent, opening, introduction ---
 	aldric := e.join(t, "aldric", spots[0], false)
 	menu := aldric.approach()
 	if menu.Name != npc.Name || !hasOffer(menu, protocol.NPCTalk) || !hasOffer(menu, protocol.NPCHeal) {
@@ -194,60 +194,60 @@ func TestNPCConversationEndToEndWithRumorsAndPrivacy(t *testing.T) {
 	}
 	opening := aldric.startChat(true)
 	if l := lastLine(opening); l.Who != "npc" || l.Text != "Bienvenue, voyageur. Qui êtes-vous ?" {
-		t.Fatalf("le PNJ doit ouvrir la discussion en demandant qui est le voyageur: %+v", opening.Lines)
+		t.Fatalf("the NPC must open the discussion by asking who the traveler is: %+v", opening.Lines)
 	}
 
 	aldric.act(protocol.NPCSay, "Je suis Aldric le Rouge, forgeron, je cherche mon frère.")
-	reply := aldric.until("réponse", func(d protocol.NPCDialog) bool {
+	reply := aldric.until("reply", func(d protocol.NPCDialog) bool {
 		return d.Mode == protocol.NPCModeChat && !d.Thinking && len(d.Lines) >= 4
 	})
 	if l := reply.Lines[len(reply.Lines)-2]; l.Who != "npc" || l.Text != "Enchanté, forgeron." {
-		t.Fatalf("réponse: %+v", reply.Lines)
+		t.Fatalf("reply: %+v", reply.Lines)
 	}
 	if l := lastLine(reply); l.Who != "sys" || !strings.Contains(l.Text, "retient") {
-		t.Fatalf("le joueur doit être prévenu que sa présentation est retenue: %+v", reply.Lines)
+		t.Fatalf("the player must be told that their introduction is retained: %+v", reply.Lines)
 	}
 	card, ok, _ := e.be.Store.GetCard(context.Background(), "aldric", npc.Region)
 	if !ok || card.Alias != "Aldric le Rouge" || card.Role != "forgeron" || card.Goal != "retrouver son frère" || card.Level != 5 {
-		t.Fatalf("fiche enregistrée: %+v (trouvée=%v)", card, ok)
+		t.Fatalf("saved card: %+v (found=%v)", card, ok)
 	}
 	aldric.c.Close(websocket.StatusNormalClosure, "")
-	waitUntil(t, "accord enregistré", func() bool {
+	waitUntil(t, "consent saved", func() bool {
 		ch, _ := e.be.LoadCharacter("aldric")
 		return ch != nil && ch.LLMConsent
 	})
 
-	// --- Brenna, autre joueur, même PNJ : elle apprend la rumeur, mais pas le souvenir privé ---
+	// --- Brenna, another player, same NPC: she learns the rumor, but not the private memory ---
 	brenna := e.join(t, "brenna", spots[1], true)
 	brenna.approach()
-	brenna.startChat(false) // a déjà accepté: pas d'avis
+	brenna.startChat(false) // already accepted: no notice
 	calls := e.fake.ChatCalls()
 	opening2 := calls[len(calls)-1]
 	sys := opening2.Messages[0].Content
 	if !strings.Contains(sys, "Aldric le Rouge") || !strings.Contains(sys, "forgeron") || !strings.Contains(sys, "vu ici") {
-		t.Fatalf("Brenna aurait dû entendre parler d'Aldric (rumeur « vu ici »):\n%s", sys)
+		t.Fatalf("Brenna should have heard about Aldric (\"seen here\" rumor):\n%s", sys)
 	}
 	if strings.Contains(sys, "SECRET-D-ALDRIC") {
-		t.Fatal("le souvenir privé d'Aldric a fuité vers Brenna")
+		t.Fatal("Aldric's private memory leaked to Brenna")
 	}
 	if !strings.Contains(sys, "ne s'est pas encore présenté") {
-		t.Error("Brenna n'a pas encore parlé: le PNJ doit lui demander de se présenter")
+		t.Error("Brenna has not spoken yet: the NPC must ask her to introduce herself")
 	}
 
-	// --- Aldric revient : accord retenu, son souvenir privé est retrouvé ---
+	// --- Aldric comes back: consent kept, his private memory is found again ---
 	again := e.join(t, "aldric", spots[0], true)
 	again.approach()
 	again.startChat(false)
 	calls = e.fake.ChatCalls()
 	last := calls[len(calls)-1].Messages[0].Content
 	if !strings.Contains(last, "SECRET-D-ALDRIC") {
-		t.Fatal("Aldric ne retrouve pas son propre souvenir")
+		t.Fatal("Aldric does not find his own memory again")
 	}
 	if !strings.Contains(last, `"sa_presentation":{"nom_ou_surnom":"Aldric le Rouge"`) {
-		t.Fatal("le PNJ ne reconnaît pas la présentation déjà faite")
+		t.Fatal("the NPC does not recognize the introduction already made")
 	}
 	if strings.Contains(last, "ne s'est pas encore présenté") {
-		t.Error("un voyageur déjà présenté ne doit plus être invité à se présenter")
+		t.Error("a traveler who has already introduced themselves must no longer be invited to do so")
 	}
 }
 
@@ -259,7 +259,7 @@ func TestSayTextIsSanitizedBeforeReachingTheModel(t *testing.T) {
 	p.startChat(false)
 
 	p.act(protocol.NPCSay, "\x1b[2J\x1b]0;PIRATÉ\x07Bonjour‮ "+strings.Repeat("x", 500))
-	p.until("réponse", func(d protocol.NPCDialog) bool {
+	p.until("reply", func(d protocol.NPCDialog) bool {
 		return d.Mode == protocol.NPCModeChat && !d.Thinking && len(d.Lines) >= 3
 	})
 
@@ -267,10 +267,10 @@ func TestSayTextIsSanitizedBeforeReachingTheModel(t *testing.T) {
 	msg := calls[len(calls)-1].Messages
 	got := msg[len(msg)-1].Content
 	if strings.ContainsAny(got, "\x1b\x07") || strings.ContainsRune(got, '‮') {
-		t.Fatalf("caractères dangereux transmis au modèle: %q", got)
+		t.Fatalf("dangerous characters passed to the model: %q", got)
 	}
 	if n := len([]rune(got)); n > protocol.MaxSayLen {
-		t.Fatalf("%d caractères transmis, plafond %d", n, protocol.MaxSayLen)
+		t.Fatalf("%d characters passed, cap %d", n, protocol.MaxSayLen)
 	}
 }
 
@@ -286,13 +286,13 @@ func TestSayFloodIsRateLimited(t *testing.T) {
 	}
 	var e2 protocol.Error
 	if err := recvType(t, p.c, protocol.TError).Payload(&e2); err != nil {
-		t.Fatalf("aucune limitation: %v", err)
+		t.Fatalf("no limit: %v", err)
 	}
 	if !strings.Contains(e2.Msg, "doucement") {
 		t.Fatalf("message: %q", e2.Msg)
 	}
 	if n := len(e.fake.ChatCalls()); n > 6 {
-		t.Fatalf("%d appels au modèle pour 12 messages envoyés d'un coup", n)
+		t.Fatalf("%d model calls for 12 messages sent at once", n)
 	}
 }
 
@@ -308,22 +308,22 @@ func TestConversationFailsGracefullyWhenTheModelIsDown(t *testing.T) {
 	})
 	l := lastLine(d)
 	if l.Who != "npc" || !strings.Contains(l.Text, "perd le fil") {
-		t.Fatalf("repli en personnage attendu: %+v", l)
+		t.Fatalf("in-character fallback expected: %+v", l)
 	}
 	if strings.Contains(strings.ToLower(l.Text), "erreur") || strings.Contains(l.Text, "llm") {
-		t.Fatalf("message technique montré au joueur: %q", l.Text)
+		t.Fatalf("technical message shown to the player: %q", l.Text)
 	}
 }
 
 func TestNoTalkOptionWithoutAService(t *testing.T) {
-	url, be, _ := startServer(t, 10*time.Millisecond) // aucun Talker branché
+	url, be, _ := startServer(t, 10*time.Millisecond) // no Talker plugged in
 	_, spots := healerSpots(t)
 	if _, err := be.Store.CreateAccount("aldric", storetest.Password); err != nil {
 		t.Fatal(err)
 	}
 	be.SaveCharacter("aldric", sheet(store.Character{Level: 5, HP: 30, X: spots[0].stand.X, Y: spots[0].stand.Y}))
 	var c *websocket.Conn
-	waitUntil(t, "connexion", func() bool {
+	waitUntil(t, "connection", func() bool {
 		c = dial(t, url)
 		send(t, c, protocol.TLogin, signIn("aldric", storetest.Password))
 		return recv(t, c).T == protocol.TWelcome
@@ -331,13 +331,13 @@ func TestNoTalkOptionWithoutAService(t *testing.T) {
 	p := &player{t: t, name: "aldric", c: c, sp: spots[0]}
 	menu := p.approach()
 	if hasOffer(menu, protocol.NPCTalk) {
-		t.Fatal("« Discuter » proposé alors qu'aucun service de langage n'est branché")
+		t.Fatal("\"Talk\" offered although no language service is plugged in")
 	}
-	// Et une demande forgée est ignorée proprement.
+	// And a forged request is ignored cleanly.
 	p.act(protocol.NPCTalk, "")
 	p.act(protocol.NPCSay, "bonjour")
 	p.act(protocol.NPCLeave, "")
 	if d := p.until("fermeture", func(d protocol.NPCDialog) bool { return d.Over }); !d.Over {
-		t.Fatal("le dialogue ne se ferme pas")
+		t.Fatal("the dialogue does not close")
 	}
 }

@@ -29,7 +29,7 @@ func TestDistanceIsChebyshev(t *testing.T) {
 		{rp(0, 0), rp(3, -2), 3}, {rp(-2, -2), rp(2, 1), 4},
 	} {
 		if got := Distance(c.a, c.b); got != c.want || Distance(c.b, c.a) != c.want {
-			t.Errorf("Distance(%v,%v) = %d, attendu %d", c.a, c.b, got, c.want)
+			t.Errorf("Distance(%v,%v) = %d, want %d", c.a, c.b, got, c.want)
 		}
 	}
 }
@@ -40,15 +40,15 @@ func TestRumorTravelsAtHopDelayPerRegion(t *testing.T) {
 		at := rp(d, 0)
 		delay := time.Duration(d) * HopDelay
 		if d > 0 && Reaches(c, at, t0.Add(delay-time.Second)) {
-			t.Errorf("distance %d: la rumeur arrive une seconde trop tôt", d)
+			t.Errorf("distance %d: the rumor arrives a second too early", d)
 		}
 		if !Reaches(c, at, t0.Add(delay)) {
-			t.Errorf("distance %d: la rumeur devrait être arrivée après %v", d, delay)
+			t.Errorf("distance %d: the rumor should have arrived after %v", d, delay)
 		}
 	}
-	// Le lieu d'origine la connaît immédiatement.
+	// The place of origin knows it immediately.
 	if !Reaches(c, rp(0, 0), t0) {
-		t.Error("le lieu d'origine doit connaître la fiche tout de suite")
+		t.Error("the place of origin must know the card right away")
 	}
 }
 
@@ -56,24 +56,24 @@ func TestRumorStopsAtRadius(t *testing.T) {
 	c := card("aldric", rp(0, 0), t0)
 	late := t0.Add(HopDelay + time.Hour)
 	if !Reaches(c, rp(RumorRadius, RumorRadius), late) {
-		t.Error("distance maximale: la rumeur devrait arriver")
+		t.Error("maximum distance: the rumor should arrive")
 	}
 	if Reaches(c, rp(RumorRadius+1, 0), late) || Reaches(c, rp(0, -RumorRadius-1), late) {
-		t.Error("la rumeur ne doit pas dépasser son rayon, même longtemps après")
+		t.Error("the rumor must not exceed its radius, even long afterwards")
 	}
 }
 
 func TestRumorIsForgotten(t *testing.T) {
 	c := card("aldric", rp(0, 0), t0)
 	if !Reaches(c, rp(0, 0), t0.Add(Forgetting)) {
-		t.Error("pile à la limite: encore connue")
+		t.Error("right at the limit: still known")
 	}
 	if Reaches(c, rp(0, 0), t0.Add(Forgetting+time.Second)) {
-		t.Error("après l'oubli: ne doit plus être connue")
+		t.Error("after forgetting: must no longer be known")
 	}
-	// Une fiche « du futur » (horloge qui recule) n'est pas connue.
+	// A card "from the future" (clock going backwards) is not known.
 	if Reaches(c, rp(0, 0), t0.Add(-time.Hour)) {
-		t.Error("fiche postérieure à l'instant courant")
+		t.Error("card later than the current instant")
 	}
 }
 
@@ -93,7 +93,7 @@ func TestFidelityDecreasesWithDistance(t *testing.T) {
 	}
 	for d, w := range want {
 		if got := read(d); got != w {
-			t.Errorf("distance %d: %+v, attendu %+v", d, got, w)
+			t.Errorf("distance %d: %+v, want %+v", d, got, w)
 		}
 	}
 }
@@ -102,13 +102,13 @@ func TestHearFiltersSortsAndLimits(t *testing.T) {
 	now := t0.Add(HopDelay + 2*time.Hour)
 	here := rp(0, 0)
 	cards := []Card{
-		card("voisin", rp(1, 0), t0),                        // d=1, arrivée
-		card("deux", rp(2, 0), t0),                          // hors rayon
-		card("ici-vieux", rp(0, 0), t0),                     // d=0, plus ancien
-		card("ici-recent", rp(0, 0), now.Add(-time.Minute)), // d=0, plus récent
-		card("trop-loin", rp(4, 0), t0),                     // hors rayon
+		card("voisin", rp(1, 0), t0),                        // d=1, arrived
+		card("deux", rp(2, 0), t0),                          // outside radius
+		card("ici-vieux", rp(0, 0), t0),                     // d=0, older
+		card("ici-recent", rp(0, 0), now.Add(-time.Minute)), // d=0, more recent
+		card("trop-loin", rp(4, 0), t0),                     // outside radius
 		card("oublie", rp(0, 0), now.Add(-Forgetting-time.Hour)),
-		card("pas-encore", rp(1, 0), now.Add(-HopDelay/2)), // d=1 mais trop récent pour être arrivé
+		card("pas-encore", rp(1, 0), now.Add(-HopDelay/2)), // d=1 but too recent to have arrived
 	}
 	got := Hear(cards, here, "moi", now)
 	var names []string
@@ -117,13 +117,13 @@ func TestHearFiltersSortsAndLimits(t *testing.T) {
 	}
 	want := []string{"ici-recent", "ici-vieux", "voisin"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
-		t.Fatalf("rumeurs %v, attendu %v (proximité puis récence; hors rayon, oubliées et pas encore arrivées exclues)", names, want)
+		t.Fatalf("rumors %v, want %v (proximity then recency; outside radius, forgotten and not yet arrived excluded)", names, want)
 	}
 	if got[0].Distance != 0 || !got[0].Local() || got[2].Distance != 1 || got[2].Local() {
 		t.Fatalf("distances: %+v", got)
 	}
 	if got[2].Facts.Deaths != 0 {
-		t.Fatalf("les morts ne se racontent pas hors du lieu: %+v", got[2].Facts)
+		t.Fatalf("deaths are not told outside the place: %+v", got[2].Facts)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestHearCapsRumorsButAlwaysKeepsTheSpeaker(t *testing.T) {
 	for i := 0; i < MaxHeard+5; i++ {
 		cards = append(cards, card("autre"+string(rune('a'+i)), rp(0, 0), t0.Add(time.Duration(i)*time.Second)))
 	}
-	cards = append(cards, card("Moi", rp(1, 1), t0)) // la fiche de l'interlocuteur
+	cards = append(cards, card("Moi", rp(1, 1), t0)) // the interlocutor's card
 	got := Hear(cards, rp(0, 0), "moi", now)
 
 	rumors, selves := 0, 0
@@ -148,10 +148,10 @@ func TestHearCapsRumorsButAlwaysKeepsTheSpeaker(t *testing.T) {
 		}
 	}
 	if rumors != MaxHeard {
-		t.Errorf("%d rumeurs, plafond %d", rumors, MaxHeard)
+		t.Errorf("%d rumors, cap %d", rumors, MaxHeard)
 	}
 	if selves != 1 {
-		t.Errorf("la fiche de l'interlocuteur doit toujours être transmise (%d)", selves)
+		t.Errorf("the interlocutor's card must always be passed on (%d)", selves)
 	}
 }
 
@@ -163,7 +163,7 @@ func TestHearKeepsOneCardPerAccountTheClosest(t *testing.T) {
 	near.Alias = "Version proche"
 	got := Hear([]Card{far, near}, rp(0, 0), "x", now)
 	if len(got) != 1 || got[0].Intro.Alias != "Version proche" {
-		t.Fatalf("doublons de compte: %+v", got)
+		t.Fatalf("account duplicates: %+v", got)
 	}
 }
 
@@ -192,13 +192,13 @@ func TestIntroCleanBoundsAndSanitizes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.ContainsAny(in.Alias, "\x1b\n") || strings.Contains(in.Role, "\u202e") {
-		t.Fatalf("caractères dangereux conservés: %+v", in)
+		t.Fatalf("dangerous characters kept: %+v", in)
 	}
 	if n := len([]rune(in.Alias)); n > MaxAlias {
-		t.Fatalf("alias de %d caractères, plafond %d", n, MaxAlias)
+		t.Fatalf("alias of %d characters, cap %d", n, MaxAlias)
 	}
 	if n := len([]rune(in.Origin)); n > MaxField {
-		t.Fatalf("origine de %d caractères, plafond %d", n, MaxField)
+		t.Fatalf("origin of %d characters, cap %d", n, MaxField)
 	}
 	if !strings.HasPrefix(in.Alias, "Aldric") {
 		t.Fatalf("alias = %q", in.Alias)
@@ -208,11 +208,11 @@ func TestIntroCleanBoundsAndSanitizes(t *testing.T) {
 func TestIntroCleanRejectsEmpty(t *testing.T) {
 	for _, in := range []Intro{{}, {Alias: "  \n "}, {Role: "\x1b[0m"}, {Goal: "\u200b\u200b"}} {
 		if _, err := in.Clean(); err != ErrEmptyIntro {
-			t.Errorf("%+v: erreur %v", in, err)
+			t.Errorf("%+v: error %v", in, err)
 		}
 	}
 	if _, err := (Intro{Trait: "borgne"}).Clean(); err != nil {
-		t.Errorf("un seul champ suffit: %v", err)
+		t.Errorf("a single field is enough: %v", err)
 	}
 }
 
@@ -236,13 +236,13 @@ func TestIntroCleanRejectsLinksAndAddresses(t *testing.T) {
 				in.Trait = bad
 			}
 			if _, err := in.Clean(); err != ErrUnsafeText {
-				t.Errorf("%s=%q accepté (%v)", field, bad, err)
+				t.Errorf("%s=%q accepted (%v)", field, bad, err)
 			}
 		}
 	}
-	// Du texte normal qui ressemble de loin n'est pas rejeté.
+	// Normal text that looks vaguely similar is not rejected.
 	if _, err := (Intro{Goal: "retrouver la comtesse de Fer-Rive", Trait: "rit comme un tonnerre"}).Clean(); err != nil {
-		t.Errorf("texte légitime rejeté: %v", err)
+		t.Errorf("legitimate text rejected: %v", err)
 	}
 }
 
@@ -251,13 +251,13 @@ func TestCleanSummary(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	if got := CleanSummary(strings.Repeat("a", 1000)); len([]rune(got)) != MaxSummary {
-		t.Fatalf("souvenir de %d caractères", len([]rune(got)))
+		t.Fatalf("memory of %d characters", len([]rune(got)))
 	}
 	if got := CleanSummary("écrivez à moi@mail.fr"); got != "" {
-		t.Fatalf("adresse conservée: %q", got)
+		t.Fatalf("address kept: %q", got)
 	}
 	if CleanSummary("") != "" {
-		t.Fatal("souvenir vide")
+		t.Fatal("empty memory")
 	}
 }
 

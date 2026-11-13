@@ -8,6 +8,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/combat"
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -24,7 +25,7 @@ func TestLevelUpRollsHitDieAndRestoresHitPointsAndMana(t *testing.T) {
 	seen := map[int]bool{}
 	for seed := range uint64(40) {
 		sp := weak(testRat)
-		sp.XP = 10 // un niveau exactement
+		sp.XP = 10 // exactly one level
 		r := newRig(t, sp)
 		r.g.rng = rand.New(rand.NewPCG(seed, 5))
 		r.p.stats = sheetOf(hero.Rogue, nil)
@@ -35,19 +36,19 @@ func TestLevelUpRollsHitDieAndRestoresHitPointsAndMana(t *testing.T) {
 			r.g.act(r.p, combat.Attack, 0)
 		}
 		if r.p.stats.Level != 2 {
-			t.Skipf("niveau %d (le joueur a pu perdre)", r.p.stats.Level)
+			t.Skipf("level %d (the player may have lost)", r.p.stats.Level)
 		}
 		gain := r.p.stats.MaxHP - before
 		if gain < 1 || gain > 8 {
-			t.Fatalf("gain de PV %d hors d8", gain)
+			t.Fatalf("HP gain %d outside d8", gain)
 		}
 		seen[gain] = true
 		if r.p.hp != r.p.stats.MaxHP || r.p.mana != r.p.stats.MaxMana {
-			t.Fatalf("PV %d/%d, mana %d/%d après la montée de niveau", r.p.hp, r.p.stats.MaxHP, r.p.mana, r.p.stats.MaxMana)
+			t.Fatalf("HP %d/%d, mana %d/%d after leveling up", r.p.hp, r.p.stats.MaxHP, r.p.mana, r.p.stats.MaxMana)
 		}
 	}
 	if len(seen) < 3 {
-		t.Fatalf("le dé de vie ne varie pas: %v", seen)
+		t.Fatalf("hit die does not vary: %v", seen)
 	}
 }
 
@@ -56,7 +57,7 @@ func TestWeaponKindDrivesTheAttackStyleAndModifier(t *testing.T) {
 	p, _ := joinRec(g, "hero")
 	p.stats = sheetOf(hero.Warrior, map[hero.Ability]int{hero.STR: 14, hero.AGI: 18, hero.INT: 6})
 	if f := p.fighter(); f.Kind != hero.Melee || f.Hit != 2 || f.DmgMod != 2 || f.Dmg != combat.BareHands {
-		t.Fatalf("mains nues: %+v", f)
+		t.Fatalf("bare hands: %+v", f)
 	}
 	for kind, c := range map[hero.Kind]struct {
 		family string
@@ -66,7 +67,7 @@ func TestWeaponKindDrivesTheAttackStyleAndModifier(t *testing.T) {
 		p.inv = gear.Inventory{Items: []gear.Item{bow}, Worn: map[gear.Slot]int64{gear.Weapon: 1}}
 		f, mod := p.fighter(), c.mod
 		if f.Kind != kind || f.Hit != mod || f.DmgMod != mod || f.Dmg != bow.Damage() {
-			t.Fatalf("%s: %+v (mod attendu %d)", kind, f, mod)
+			t.Fatalf("%s: %+v (expected mod %d)", kind, f, mod)
 		}
 	}
 }
@@ -83,7 +84,7 @@ func TestManaRegeneratesOutsideFightsOnly(t *testing.T) {
 	p.mana = p.stats.MaxMana
 	g.regenerate([]int{p.id})
 	if p.mana != p.stats.MaxMana {
-		t.Fatalf("mana au-delà du maximum: %d", p.mana)
+		t.Fatalf("mana above the maximum: %d", p.mana)
 	}
 }
 
@@ -98,10 +99,10 @@ func TestSpellsSpendManaInFightAndItSticks(t *testing.T) {
 	r.engage()
 	r.g.act(r.p, combat.Attack, 0)
 	if r.p.mana != 5-hero.SpellCost {
-		t.Fatalf("mana après un sort: %d", r.p.mana)
+		t.Fatalf("mana after a spell: %d", r.p.mana)
 	}
 	if c := r.last(); c.PlayerMana != r.p.mana || c.PlayerMaxMP != r.p.stats.MaxMana || c.Style != "magic" {
-		t.Fatalf("état de combat envoyé: %+v", c)
+		t.Fatalf("combat state sent: %+v", c)
 	}
 }
 
@@ -114,7 +115,7 @@ func TestCharismaMovesPricesBothWays(t *testing.T) {
 	r.p.stats = sheetOf(hero.Warrior, map[hero.Ability]int{hero.CHA: 4}) // −3
 	rude := r.g.buyPrice(r.p, r.npc)
 	if !(charming < plain && plain < rude) || plain != potionBuyPrice {
-		t.Fatalf("prix: charmant %d, banal %d, rebutant %d", charming, plain, rude)
+		t.Fatalf("price: charming %d, plain %d, rude %d", charming, plain, rude)
 	}
 }
 
@@ -123,11 +124,11 @@ func TestSavedManaAndHitPointsAreClamped(t *testing.T) {
 	st := combat.StatsFor(3, 0, 1, hero.Mage, hero.Default(), 9999)
 	p := g.joinWith("a", func(protocol.Snapshot) {}, &Saved{Stats: st, HP: 9999, Mana: 9999, Pos: g.World.FindSpawn()})
 	if p.stats.MaxHP != 6+2*6 || p.hp != p.stats.MaxHP || p.mana != p.stats.MaxMana {
-		t.Fatalf("PV %d/%d mana %d/%d", p.hp, p.stats.MaxHP, p.mana, p.stats.MaxMana)
+		t.Fatalf("HP %d/%d mana %d/%d", p.hp, p.stats.MaxHP, p.mana, p.stats.MaxMana)
 	}
 	q := g.joinWith("b", func(protocol.Snapshot) {}, &Saved{Stats: st, HP: 5, Mana: -4, Pos: g.World.FindSpawn()})
 	if q.mana != 0 || q.hp != 5 {
-		t.Fatalf("mana %d PV %d", q.mana, q.hp)
+		t.Fatalf("mana %d HP %d", q.mana, q.hp)
 	}
 }
 
@@ -136,7 +137,7 @@ func TestFighterDefenseIsTenPlusAgilityPlusGear(t *testing.T) {
 	p, _ := joinRec(g, "hero")
 	p.stats = sheetOf(hero.Rogue, map[hero.Ability]int{hero.AGI: 16}) // +3
 	if f := p.fighter(); f.Def != 13 || !f.Reduction.IsZero() {
-		t.Fatalf("sans équipement: %+v", f)
+		t.Fatalf("no gear: %+v", f)
 	}
 	p.inv = gear.Inventory{
 		Items: []gear.Item{
@@ -148,23 +149,23 @@ func TestFighterDefenseIsTenPlusAgilityPlusGear(t *testing.T) {
 	}
 	f := p.fighter()
 	if f.Def != 16 || f.Reduction.String() != "2d8" {
-		t.Fatalf("DEF %d, réduction %s", f.Def, f.Reduction)
+		t.Fatalf("DEF %d, reduction %s", f.Def, f.Reduction)
 	}
 	if st := statsOf(p); st.Def != 16 {
-		t.Fatalf("DEF envoyée %d", st.Def)
+		t.Fatalf("DEF sent %d", st.Def)
 	}
 	var bag protocol.Bag
 	p.sendBagMsg = func(b protocol.Bag) { bag = b }
 	g.sendBag(p)
 	if bag.DefBonus != 3 || bag.Reduction != "2d8" || bag.Items[0].Reduction != "2d8" || bag.Items[0].Family != "heavy" {
-		t.Fatalf("sac: %+v", bag)
+		t.Fatalf("bag: %+v", bag)
 	}
 }
 
 func TestSmallMediumAndLargeMonstersHaveTheirDefense(t *testing.T) {
 	for kind, def := range map[string]int{"rat": 8, "crab": 8, "wolf": 11, "goblin": 10, "yeti": 12, "skeleton": 10, "knight": 12, "warlord": 13} {
 		if got := speciesNamed(t, kind).fighter().Def; got != def {
-			t.Errorf("%s: DEF %d, attendu %d", kind, got, def)
+			t.Errorf("%s: DEF %d, expected %d", kind, got, def)
 		}
 	}
 }
@@ -172,6 +173,7 @@ func TestSmallMediumAndLargeMonstersHaveTheirDefense(t *testing.T) {
 func TestTwoHandedWeaponAndShieldAreRefusedTogether(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "hero")
+	p.lang = i18n.FR // the assertion below is on French catalogue text
 	p.stats.Level = 5
 	var notices []string
 	p.sendBagMsg = func(b protocol.Bag) { notices = append(notices, b.Notice...) }
@@ -180,6 +182,6 @@ func TestTwoHandedWeaponAndShieldAreRefusedTogether(t *testing.T) {
 	g.GearActNow(p, protocol.GearEquip, 2, "")
 	g.GearActNow(p, protocol.GearEquip, 1, "")
 	if p.inv.IsWorn(1) || !p.inv.IsWorn(2) || len(notices) == 0 || !strings.Contains(notices[len(notices)-1], "deux mains") {
-		t.Fatalf("espadon avec bouclier: %v", notices)
+		t.Fatalf("greatsword with shield: %v", notices)
 	}
 }

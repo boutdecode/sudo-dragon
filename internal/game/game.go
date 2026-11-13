@@ -1,9 +1,9 @@
-// Package game contient la boucle de jeu autoritative.
+// Package game contains the authoritative game loop.
 //
-// Tout l'état (joueurs, positions) appartient à une unique goroutine, celle de
-// Run. Le reste du programme lui envoie des commandes via Join, Leave et Move
-// et reçoit des instantanés par les callbacks fournis à Join. Aucun verrou
-// n'est donc nécessaire sur l'état du jeu.
+// All state (players, positions) belongs to a single goroutine, that of
+// Run. The rest of the program sends it commands via Join, Leave and Move
+// and receives snapshots through the callbacks given to Join. No lock
+// is therefore needed on the game state.
 package game
 
 import (
@@ -26,41 +26,41 @@ import (
 )
 
 const (
-	// TickInterval est la durée d'un tick (10 Hz).
+	// TickInterval is the duration of a tick (10 Hz).
 	TickInterval = 100 * time.Millisecond
-	// MoveCooldown est le nombre de ticks entre deux pas (5 tuiles/s).
+	// MoveCooldown is the number of ticks between two steps (5 tiles/s).
 	MoveCooldown = 2
 
 	inboxSize      = 1024
-	autosaveEvery  = 300 // ticks entre deux sauvegardes périodiques (30 s)
-	unloadEvery    = 300 // ticks entre deux déchargements de chunks
-	spawnSearchMax = 25  // rayon de recherche d'une case libre au spawn
+	autosaveEvery  = 300 // ticks between two periodic saves (30 s)
+	unloadEvery    = 300 // ticks between two chunk unloads
+	spawnSearchMax = 25  // search radius for a free tile at spawn
 )
 
-// ErrStopped est renvoyée quand la boucle de jeu est arrêtée.
-var ErrStopped = errors.New("la boucle de jeu est arrêtée")
+// ErrStopped is returned when the game loop is stopped.
+var ErrStopped = errors.New("game loop stopped")
 
 type player struct {
 	id   int
 	name string
-	lang i18n.Lang // langue du joueur: celle des messages que le jeu lui adresse
+	lang i18n.Lang // player's language: that of the messages the game addresses to them
 	pos  world.Pos
 	send func(protocol.Snapshot)
 
-	// Zone du joueur : 0 pour la carte principale, sinon l'instance d'un donjon (voir dungeon.go).
-	// Dans un donjon, pos est local à la carte du donjon et ret est la case de la carte principale
-	// où l'on revient en sortant, en mourant ou en se déconnectant.
+	// Player's zone: 0 for the main map, otherwise a dungeon instance (see dungeon.go).
+	// In a dungeon, pos is local to the dungeon map and ret is the main map tile
+	// where they return on leaving, dying or disconnecting.
 	zone ZoneID
 	ret  world.Pos
 
-	calmUntil  uint64                   // tick jusqu'auquel aucun monstre n'engage ce joueur (répit après une fuite)
-	safe       bool                     // en zone sûre; recalculé à chaque changement de case (voir setPos)
-	sendCombat func(protocol.Combat)    // peut être nil
-	sendNPC    func(protocol.NPCDialog) // peut être nil
-	talk       *talk                    // conversation en cours avec un PNJ
-	consent    bool                     // a accepté l'envoi de ses messages à un service de langage
+	calmUntil  uint64                   // tick until which no monster engages this player (respite after fleeing)
+	safe       bool                     // in a safe zone; recomputed on every tile change (see setPos)
+	sendCombat func(protocol.Combat)    // may be nil
+	sendNPC    func(protocol.NPCDialog) // may be nil
+	talk       *talk                    // conversation in progress with an NPC
+	consent    bool                     // has agreed to send their messages to a language service
 	stats      combat.Stats
-	mana       int // réserve actuelle (le maximum est dans stats)
+	mana       int // current reserve (the maximum is in stats)
 	hp         int
 	fight      *fight
 
@@ -69,146 +69,146 @@ type player struct {
 	pendingDY  int
 	cooldown   int
 
-	lastSent *protocol.Snapshot // dernier instantané envoyé (sans tick)
+	lastSent *protocol.Snapshot // last snapshot sent (without tick)
 
-	// Quêtes (voir quests.go).
+	// Quests (see quests.go).
 	quests        []quest.Quest
-	rep           map[world.RegionPos]int // réputation par lieu
+	rep           map[world.RegionPos]int // reputation per place
 	nextQuestID   int64
-	questsDirty   bool // à réécrire à la prochaine sauvegarde
-	hasOpenReach  bool // une quête « atteindre un lieu » est active
+	questsDirty   bool // to be rewritten at the next save
+	hasOpenReach  bool // a "reach a place" quest is active
 	questNotices  []string
 	sendQuestBook func(protocol.Quests)
 
-	// Équipement (voir shop.go).
+	// Equipment (see shop.go).
 	inv         gear.Inventory
 	gearDirty   bool
 	gearNotices []string
 	sendBagMsg  func(protocol.Bag)
 
-	sendZoneMsg func(protocol.Zone) // peut être nil
+	sendZoneMsg func(protocol.Zone) // may be nil
 
-	// Donjons dont le joueur a découvert l'entrée, par région (voir dungeon.go).
+	// Dungeons whose entrance the player has discovered, by region (see dungeon.go).
 	discovered      map[world.RegionPos]bool
-	discoveredDirty bool // à réécrire à la prochaine sauvegarde
+	discoveredDirty bool // to be rewritten at the next save
 	sendDungeonsMsg func(protocol.Dungeons)
 
-	// Matières premières (voir gather.go).
-	resources    map[resource.Kind]int     // sac de matières : quantité par ressource
-	skills       map[resource.Category]int // expérience cumulée de chaque métier de récolte
-	gatherUntil  uint64                    // tick avant lequel on ne peut pas récolter de nouveau
+	// Raw materials (see gather.go).
+	resources    map[resource.Kind]int     // materials bag: quantity per resource
+	skills       map[resource.Category]int // accumulated experience of each gathering job
+	gatherUntil  uint64                    // tick before which one cannot gather again
 	sendNodesMsg func(protocol.Nodes)
-	nodesVer     uint64    // version de g.spent à l'envoi du dernier message Nodes
-	nodesAt      world.Pos // où le joueur se trouvait à ce moment
+	nodesVer     uint64    // version of g.spent when the last Nodes message was sent
+	nodesAt      world.Pos // where the player was at that moment
 
-	// Points d'intérêt (voir poi.go).
-	respawn    *world.Pos               // dernier feu de camp : on y réapparaît après une défaite
-	stones     map[world.RegionPos]bool // pierres dressées activées, par région
-	maps       []world.Pos              // cartes au trésor : cases à creuser (voir treasure.go)
-	buffs      []buff                   // bonus de sanctuaire en cours (pas persistés)
-	poiCooling map[world.POIKey]uint64  // tick avant lequel le point est sans effet pour ce joueur
+	// Points of interest (see poi.go).
+	respawn    *world.Pos               // last campfire: respawn there after a defeat
+	stones     map[world.RegionPos]bool // activated standing stones, per region
+	maps       []world.Pos              // treasure maps: tiles to dig (see treasure.go)
+	buffs      []buff                   // shrine bonuses in progress (not persisted)
+	poiCooling map[world.POIKey]uint64  // tick before which the point has no effect for this player
 }
 
-// Saved est l'état persistant d'un joueur: ce qu'il faut pour le retrouver
-// à sa reconnexion.
+// Saved is a player's persistent state: what is needed to find them again
+// on reconnection.
 type Saved struct {
-	Stats combat.Stats // classe, caractéristiques et PV maximaux compris (à zéro: guerrier neutre)
+	Stats combat.Stats // class, characteristics and max HP included (zero: neutral warrior)
 	HP    int
 	Mana  int
 	Pos   world.Pos
 
-	// LLMConsent : le joueur a accepté que ses messages soient envoyés à un
-	// service de langage tiers pour dialoguer avec les PNJ.
+	// LLMConsent: the player has agreed to have their messages sent to a
+	// third-party language service to converse with NPCs.
 	LLMConsent bool
 
-	// Quêtes et réputation par lieu (voir internal/quest). QuestsDirty indique que la
-	// sauvegarde doit les réécrire en base.
+	// Quests and reputation per place (see internal/quest). QuestsDirty indicates that the
+	// save must rewrite them in the database.
 	Quests      []quest.Quest
 	Rep         map[world.RegionPos]int
 	QuestsDirty bool
 
-	// Sac d'équipement et objets portés (voir internal/gear). GearDirty : à réécrire en base.
+	// Equipment bag and worn items (see internal/gear). GearDirty: to be rewritten in the database.
 	Gear      gear.Inventory
 	GearDirty bool
 
-	// Donjons découverts (régions qui les cachent). DiscoveredDirty: à réécrire en base.
+	// Discovered dungeons (regions that hide them). DiscoveredDirty: to be rewritten in the database.
 	Discovered      []world.RegionPos
 	DiscoveredDirty bool
 
-	// Point de réapparition (feu de camp) et pierres dressées activées.
+	// Respawn point (campfire) and activated standing stones.
 	Respawn *world.Pos
 	Stones  []world.RegionPos
-	Maps    []world.Pos // cartes au trésor détenues : la case à creuser de chacune
+	Maps    []world.Pos // treasure maps held: the tile to dig for each
 
-	// Sac de matières : quantité par identifiant de ressource (voir gather.go).
+	// Materials bag: quantity per resource identifier (see gather.go).
 	Resources map[string]int
-	// Expérience cumulée des métiers de récolte, par clé de catégorie (resource.Category.Key).
+	// Accumulated experience of gathering jobs, per category key (resource.Category.Key).
 	Skills map[string]int
 }
 
-// Game est l'état du monde vivant.
+// Game is the state of the living world.
 type Game struct {
 	World *world.World
 
-	// Talker, si défini et disponible, fait parler les PNJ avec un modèle de langage
-	// (voir talk.go). nil: pas de discussion libre, seulement les menus. À définir avant Run.
+	// Talker, if set and available, makes NPCs speak with a language model
+	// (see talk.go). nil: no free discussion, only menus. To be set before Run.
 	Talker Talker
 
-	// Dungeons active les donjons : marcher sur une entrée emmène dans une instance. Éteint par
-	// défaut, tant que le client ne sait pas afficher une carte de donjon.
+	// Dungeons enables dungeons: walking onto an entrance leads into an instance. Off by
+	// default, as long as the client cannot display a dungeon map.
 	Dungeons bool
 
-	geo map[geoKey][]npcai.Landmark // lieux connus des chefs et maires (voir geography.go)
+	geo map[geoKey][]npcai.Landmark // places known to chiefs and mayors (see geography.go)
 
-	// Étalages des vendeurs d'équipement (voir shop.go).
+	// Stalls of equipment vendors (see shop.go).
 	shops        map[world.NPCKey]shopWares
 	stockPending map[world.NPCKey]bool
 	stockRetryAt map[world.NPCKey]uint64
 
-	// Clock donne l'heure des quêtes (création, remise, expiration). nil: time.Now.
-	// À définir avant Run (tests).
+	// Clock gives the quests' time (creation, handing in, expiry). nil: time.Now.
+	// To be set before Run (tests).
 	Clock func() time.Time
 
-	// Persist, si défini, est appelé pour enregistrer un joueur (déconnexion,
-	// fin de combat, sauvegarde périodique, arrêt). Il est appelé depuis la
-	// goroutine de jeu et ne doit jamais bloquer. À définir avant Run.
+	// Persist, if set, is called to save a player (disconnection,
+	// end of combat, periodic save, shutdown). It is called from the
+	// game goroutine and must never block. To be set before Run.
 	Persist func(name string, s Saved)
 
 	inbox chan func()
-	done  chan struct{} // fermé quand Run se termine
+	done  chan struct{} // closed when Run ends
 
-	// Propriété exclusive de la goroutine de Run :
+	// Exclusive property of the Run goroutine:
 	players map[int]*player
-	idCache []int             // identifiants triés, valide si non nil; invalidé quand players change
-	byPos   map[world.Pos]int // index de la carte principale (zone 0); chaque instance a le sien
+	idCache []int             // sorted identifiers, valid if non-nil; invalidated when players changes
+	byPos   map[world.Pos]int // main map index (zone 0); each instance has its own
 	nextID  int
 	tick    uint64
 
-	metrics metrics // lisible depuis n'importe quelle goroutine
+	metrics metrics // readable from any goroutine
 
-	talkSeq uint64 // dernier numéro de conversation attribué
+	talkSeq uint64 // last conversation number assigned
 
 	monsters      map[int]*monster
-	monsterAt     map[world.Pos]int        // idem : carte principale seulement
-	slotMonster   map[world.SlotKey]int    // emplacement de forteresse -> monstre vivant
-	slotDefeated  map[world.SlotKey]uint64 // emplacement -> tick de la dernière victoire (repousse)
-	gd            guardState               // gardes des villages et des villes (voir guards.go)
-	garrisonCount int                      // monstres de garnison vivants
-	car           caravanState             // marchands ambulants suivis (voir caravan.go)
-	spent         map[world.Pos]uint64     // nœud de ressource -> tick de sa récolte (voir gather.go)
-	spentVer      uint64                   // change à chaque modification de spent
-	lairOpened    map[world.POIKey]uint64  // repaire -> tick de l'ouverture de son coffre (voir poi.go)
+	monsterAt     map[world.Pos]int        // same: main map only
+	slotMonster   map[world.SlotKey]int    // fortress slot -> living monster
+	slotDefeated  map[world.SlotKey]uint64 // slot -> tick of the last victory (respawn)
+	gd            guardState               // guards of villages and towns (see guards.go)
+	garrisonCount int                      // living garrison monsters
+	car           caravanState             // tracked travelling merchants (see caravan.go)
+	spent         map[world.Pos]uint64     // resource node -> tick of its gathering (see gather.go)
+	spentVer      uint64                   // changes on every modification of spent
+	lairOpened    map[world.POIKey]uint64  // lair -> tick of its chest's opening (see poi.go)
 	nextMonsterID int
 
-	instances       map[ZoneID]*instance // instances de donjon (voir dungeon.go)
-	dungeonZone     map[string]ZoneID    // donjon (identifiant) -> son instance en cours
+	instances       map[ZoneID]*instance // dungeon instances (see dungeon.go)
+	dungeonZone     map[string]ZoneID    // dungeon (identifier) -> its current instance
 	nextZone        ZoneID
-	dungeonMonsters int // monstres vivants dans les donjons (hors quotas de la carte principale)
+	dungeonMonsters int // living monsters in dungeons (outside the main map's quotas)
 
-	rng *rand.Rand // aléa du jeu (apparitions, errance); injectable en test
+	rng *rand.Rand // game randomness (spawns, wandering); injectable in tests
 }
 
-// New crée un jeu pour le monde donné. Lancer ensuite Run.
+// New creates a game for the given world. Then launch Run.
 func New(w *world.World) *Game {
 	return &Game{
 		World:   w,
@@ -232,7 +232,7 @@ func New(w *world.World) *Game {
 	}
 }
 
-// Run exécute la boucle de jeu jusqu'à l'annulation de ctx.
+// Run executes the game loop until ctx is cancelled.
 func (g *Game) Run(ctx context.Context) {
 	defer close(g.done)
 	t := time.NewTicker(TickInterval)
@@ -252,8 +252,8 @@ func (g *Game) Run(ctx context.Context) {
 	}
 }
 
-// do exécute fn dans la goroutine de jeu. Renvoie false si le jeu est arrêté.
-// Bloque si la file est pleine (réservé aux commandes qui ne doivent pas être perdues).
+// do executes fn in the game goroutine. Returns false if the game is stopped.
+// Blocks if the queue is full (reserved for commands that must not be lost).
 func (g *Game) do(fn func()) bool {
 	select {
 	case g.inbox <- fn:
@@ -263,27 +263,27 @@ func (g *Game) do(fn func()) bool {
 	}
 }
 
-// Handlers regroupe les callbacks d'un joueur. Snapshot et Combat sont appelés
-// depuis la goroutine de jeu: ils ne doivent jamais bloquer.
+// Handlers groups a player's callbacks. Snapshot and Combat are called
+// from the game goroutine: they must never block.
 type Handlers struct {
-	// Lang est la langue des messages adressés au joueur (le zéro vaut le français).
+	// Lang is the language of the messages addressed to the player (the zero value is English).
 	Lang i18n.Lang
-	// State, si non nil, restaure un joueur déjà connu (niveau, PV, position).
+	// State, if non-nil, restores an already known player (level, HP, position).
 	State    *Saved
 	Snapshot func(protocol.Snapshot)
-	Combat   func(protocol.Combat)    // optionnel
-	NPC      func(protocol.NPCDialog) // optionnel
-	Quests   func(protocol.Quests)    // optionnel: livre de quêtes
-	Bag      func(protocol.Bag)       // optionnel: sac d'équipement
-	Zone     func(protocol.Zone)      // optionnel: entrée ou sortie d'un donjon, coffres ouverts
-	Dungeons func(protocol.Dungeons)  // optionnel: donjons découverts
-	Nodes    func(protocol.Nodes)     // optionnel: nœuds de ressources épuisés autour du joueur
-	// Joined est appelé dans la goroutine de jeu avant tout instantané, ce qui
-	// permet d'envoyer le message de bienvenue avant le premier snapshot.
+	Combat   func(protocol.Combat)    // optional
+	NPC      func(protocol.NPCDialog) // optional
+	Quests   func(protocol.Quests)    // optional: quest book
+	Bag      func(protocol.Bag)       // optional: equipment bag
+	Zone     func(protocol.Zone)      // optional: entering or leaving a dungeon, opened chests
+	Dungeons func(protocol.Dungeons)  // optional: discovered dungeons
+	Nodes    func(protocol.Nodes)     // optional: depleted resource nodes around the player
+	// Joined is called in the game goroutine before any snapshot, which
+	// allows sending the welcome message before the first snapshot.
 	Joined func(id, x, y int)
 }
 
-// Join ajoute un joueur et renvoie son identifiant.
+// Join adds a player and returns their identifier.
 func (g *Game) Join(name string, h Handlers) (int, error) {
 	reply := make(chan int, 1)
 	if !g.do(func() {
@@ -299,7 +299,7 @@ func (g *Game) Join(name string, h Handlers) (int, error) {
 		if h.Joined != nil {
 			h.Joined(p.id, p.pos.X, p.pos.Y)
 		}
-		g.sendQuests(p) // après le message de bienvenue
+		g.sendQuests(p) // after the welcome message
 		g.sendDungeons(p, "")
 		g.sendBag(p)
 		reply <- p.id
@@ -314,8 +314,8 @@ func (g *Game) Join(name string, h Handlers) (int, error) {
 	}
 }
 
-// Leave retire un joueur et n'attend que le traitement du départ (y compris
-// l'appel à Persist). Renvoie immédiatement si le jeu est arrêté.
+// Leave removes a player and only waits for the departure to be processed (including
+// the Persist call). Returns immediately if the game is stopped.
 func (g *Game) Leave(id int) {
 	done := make(chan struct{})
 	if !g.do(func() { g.leave(id); close(done) }) {
@@ -327,8 +327,8 @@ func (g *Game) Leave(id int) {
 	}
 }
 
-// Move enregistre l'intention de déplacement d'un joueur (la dernière écrase
-// les précédentes). Peut être perdue si le serveur est saturé.
+// Move records a player's movement intent (the last overwrites
+// the previous ones). May be lost if the server is saturated.
 func (g *Game) Move(id, dx, dy int) {
 	select {
 	case g.inbox <- func() { g.move(id, dx, dy) }:
@@ -336,8 +336,8 @@ func (g *Game) Move(id, dx, dy int) {
 	}
 }
 
-// Nearby renvoie les identifiants des joueurs dans la zone de vision du joueur
-// id (lui-même inclus). Sert à la portée du chat local.
+// Nearby returns the identifiers of the players within the vision zone of player
+// id (themselves included). Used for local chat range.
 func (g *Game) Nearby(id int) ([]int, error) {
 	reply := make(chan []int, 1)
 	if !g.do(func() { reply <- g.nearby(id) }) {
@@ -351,9 +351,9 @@ func (g *Game) Nearby(id int) ([]int, error) {
 	}
 }
 
-// --- Fonctions internes, appelées uniquement depuis la goroutine de jeu ---
+// --- Internal functions, called only from the game goroutine ---
 
-// sees indique si b est dans la zone de vision de a.
+// sees says whether b is in a's vision zone.
 func sees(a, b *player) bool {
 	return a.zone == b.zone && abs(a.pos.X-b.pos.X) <= protocol.ViewHalfW && abs(a.pos.Y-b.pos.Y) <= protocol.ViewHalfH
 }
@@ -376,9 +376,9 @@ func (g *Game) join(name string, send func(protocol.Snapshot)) *player {
 	return g.joinWith(name, send, nil)
 }
 
-// joinWith ajoute un joueur, neuf ou restauré depuis saved. Une position
-// sauvegardée devenue occupée est remplacée par la case libre la plus proche;
-// les valeurs hors bornes sont ramenées dans les bornes valides.
+// joinWith adds a player, new or restored from saved. A saved
+// position that has become occupied is replaced by the nearest free tile;
+// out-of-range values are brought back within valid bounds.
 func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved) *player {
 	p := &player{id: g.nextID, name: name, send: send, stats: combat.NewStats(), rep: map[world.RegionPos]int{}, nextQuestID: 1,
 		discovered: map[world.RegionPos]bool{}, stones: map[world.RegionPos]bool{}, poiCooling: map[world.POIKey]uint64{}}
@@ -406,7 +406,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 		for _, rp := range saved.Stones {
 			p.stones[rp] = true
 		}
-		p.gearDirty = saved.GearDirty // objets ajoutés avant la connexion (arme de départ): à écrire à la première sauvegarde
+		p.gearDirty = saved.GearDirty // items added before connection (starting weapon): to be written at the first save
 		p.hp = max(1, min(saved.HP, p.stats.MaxHP))
 		p.mana = max(0, min(saved.Mana, p.stats.MaxMana))
 		start = saved.Pos
@@ -418,11 +418,11 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 	return p
 }
 
-// save transmet l'état du joueur au callback de persistance.
+// save passes the player's state to the persistence callback.
 func (g *Game) save(p *player) {
 	if g.Persist != nil {
-		// Les quêtes sont toujours jointes (une reconnexion avant l'écriture doit les retrouver) ;
-		// QuestsDirty dit seulement s'il faut les réécrire en base.
+		// Quests are always attached (a reconnection before the write must find them);
+		// QuestsDirty only says whether they must be rewritten in the database.
 		g.Persist(p.name, Saved{
 			Stats: p.stats, HP: p.hp, Mana: p.mana, Pos: p.surfacePos(), LLMConsent: p.consent,
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
@@ -465,7 +465,7 @@ func (g *Game) move(id, dx, dy int) {
 
 func clamp1(v int) int { return max(-1, min(1, v)) }
 
-// setPos place p en pos en maintenant l'index des positions.
+// setPos places p at pos while maintaining the position index.
 func (g *Game) setPos(p *player, pos world.Pos) {
 	at := g.playerIndex(p.zone)
 	if cur, ok := at[p.pos]; ok && cur == p.id {
@@ -482,11 +482,11 @@ func (g *Game) setPos(p *player, pos world.Pos) {
 	}
 }
 
-// blocked indique si une tuile de la carte principale est infranchissable (terrain, joueur,
-// monstre ou PNJ).
+// blocked says whether a main map tile is impassable (terrain, player,
+// monster or NPC).
 func (g *Game) blocked(pos world.Pos) bool { return g.blockedIn(0, pos) }
 
-// blockedIn est blocked pour la zone z : la carte principale (0) ou l'instance d'un donjon.
+// blockedIn is blocked for zone z: the main map (0) or a dungeon instance.
 func (g *Game) blockedIn(z ZoneID, pos world.Pos) bool {
 	if z != 0 {
 		inst := g.instances[z]
@@ -508,23 +508,23 @@ func (g *Game) blockedIn(z ZoneID, pos world.Pos) bool {
 	if _, occupied := g.monsterAt[pos]; occupied {
 		return true
 	}
-	if g.guardAt(pos) != nil { // un garde aussi
+	if g.guardAt(pos) != nil { // a guard too
 		return true
 	}
-	if g.caravanAt(pos) != nil { // et une caravane
+	if g.caravanAt(pos) != nil { // and a caravan
 		return true
 	}
-	_, npc := g.World.NPCAt(pos.X, pos.Y) // un PNJ occupe sa case
+	_, npc := g.World.NPCAt(pos.X, pos.Y) // an NPC occupies their tile
 	return npc
 }
 
-// freeSpawn renvoie une case libre et praticable proche du point de départ du monde.
+// freeSpawn returns a free, walkable tile near the world's starting point.
 func (g *Game) freeSpawn() world.Pos { return g.freeNear(g.World.FindSpawn()) }
 
-// freeNear renvoie la case libre et praticable la plus proche de c (en anneaux).
+// freeNear returns the free, walkable tile nearest to c (in rings).
 func (g *Game) freeNear(c world.Pos) world.Pos { return g.freeNearIn(0, c, 0) }
 
-// freeNearIn est freeNear dans la zone z, en ignorant les cases à moins de minR de c.
+// freeNearIn is freeNear in zone z, ignoring tiles within minR of c.
 func (g *Game) freeNearIn(z ZoneID, c world.Pos, minR int) world.Pos {
 	for r := minR; r <= spawnSearchMax; r++ {
 		for dy := -r; dy <= r; dy++ {
@@ -548,22 +548,22 @@ func abs(a int) int {
 	return a
 }
 
-// step avance le monde d'un tick.
+// step advances the world by one tick.
 func (g *Game) step() {
 	g.tick++
 
 	ids := g.sortedIDs()
 
-	// Déplacements, par identifiant croissant pour un arbitrage déterministe.
+	// Movements, by increasing identifier for deterministic arbitration.
 	for _, id := range ids {
 		p := g.players[id]
 		if p.cooldown > 0 {
 			p.cooldown--
 		}
 		if p.expireBuffs(g.tick) {
-			g.sendBag(p) // la fiche de personnage ne doit plus afficher la bénédiction
+			g.sendBag(p) // the character sheet must no longer show the blessing
 		}
-		if p.fight != nil || p.talk != nil { // en combat ou en conversation: immobile
+		if p.fight != nil || p.talk != nil { // in combat or conversation: immobile
 			p.hasPending = false
 			continue
 		}
@@ -572,24 +572,24 @@ func (g *Game) step() {
 		}
 		p.hasPending = false
 		dst := world.Pos{X: p.pos.X + p.pendingDX, Y: p.pos.Y + p.pendingDY}
-		if mid, ok := g.monsterIndex(p.zone)[dst]; ok { // marcher sur un monstre l'attaque
+		if mid, ok := g.monsterIndex(p.zone)[dst]; ok { // walking onto a monster attacks it
 			g.startFight(p, g.monsters[mid], true)
 			continue
 		}
 		if p.zone == 0 {
-			if c := g.caravanAt(dst); c != nil { // marcher sur une caravane ouvre sa boutique
+			if c := g.caravanAt(dst); c != nil { // walking onto a caravan opens its shop
 				g.bumpCaravan(p, c)
 				continue
 			}
-			if gd := g.guardAt(dst); gd != nil { // marcher sur un garde lui parle (ou l'affronte, si l'on est hors-la-loi)
+			if gd := g.guardAt(dst); gd != nil { // walking onto a guard talks to it (or fights it, if one is an outlaw)
 				g.bumpGuard(p, gd)
 				continue
 			}
-			if npc, ok := g.World.NPCAt(dst.X, dst.Y); ok { // marcher sur un PNJ lui adresse la parole
+			if npc, ok := g.World.NPCAt(dst.X, dst.Y); ok { // walking onto an NPC addresses them
 				g.startTalk(p, npc)
 				continue
 			}
-			// L'entrée secrète d'un donjon est une case ordinaire : on y entre en marchant dessus.
+			// A dungeon's secret entrance is an ordinary tile: one enters it by walking onto it.
 			if d := g.World.DungeonAt(dst.X, dst.Y); d != nil && g.Dungeons && !g.blocked(dst) {
 				g.enterDungeon(p, d)
 				continue
@@ -604,9 +604,9 @@ func (g *Game) step() {
 		g.setPos(p, dst)
 		p.cooldown = MoveCooldown
 		if inst := g.instances[p.zone]; inst != nil && inst.dmap.TileAt(dst.X, dst.Y) == world.Chest {
-			g.openChest(p, inst, dst) // marcher sur un coffre l'ouvre
+			g.openChest(p, inst, dst) // walking onto a chest opens it
 		} else if p.zone == 0 {
-			g.poiStep(p, dst) // feu de camp, sanctuaire, repaire, tour, pierre dressée
+			g.poiStep(p, dst) // campfire, shrine, lair, tower, standing stone
 		}
 	}
 
@@ -622,7 +622,7 @@ func (g *Game) step() {
 		}
 	}
 
-	// Monstres: déplacement, puis apparitions/disparitions périodiques.
+	// Monsters: movement, then periodic spawns/despawns.
 	mids := g.sortedMonsterIDs()
 	g.stepMonsters(mids)
 	g.stepGuards()
@@ -637,7 +637,7 @@ func (g *Game) step() {
 		mids = g.sortedMonsterIDs()
 	}
 
-	// Instantanés, uniquement si ce que voit le joueur a changé.
+	// Snapshots, only if what the player sees has changed.
 	g.expireNodes()
 	for _, id := range ids {
 		g.sendSnapshot(g.players[id], mids)
@@ -649,10 +649,10 @@ func (g *Game) step() {
 	}
 }
 
-// sortedIDs renvoie les identifiants des joueurs, triés. Le résultat est mis en
-// cache jusqu'au prochain départ ou arrivée: il est consulté des milliers de
-// fois par tick (une fois par monstre et par joueur) et ne doit pas être
-// retrié à chaque appel. L'appelant ne doit pas modifier la tranche renvoyée.
+// sortedIDs returns the players' identifiers, sorted. The result is
+// cached until the next departure or arrival: it is consulted thousands of
+// times per tick (once per monster and per player) and must not be
+// re-sorted on every call. The caller must not modify the returned slice.
 func (g *Game) sortedIDs() []int {
 	if g.idCache == nil {
 		ids := make([]int, 0, len(g.players))
@@ -669,7 +669,7 @@ func entityOf(p *player) protocol.Entity {
 	return protocol.Entity{ID: p.id, Name: p.name, X: p.pos.X, Y: p.pos.Y, Fighting: p.fight != nil}
 }
 
-// snapshotFor construit ce que p voit (zone de vision rectangulaire).
+// snapshotFor builds what p sees (rectangular vision zone).
 func (g *Game) snapshotFor(p *player, monsterIDs []int) protocol.Snapshot {
 	snap := protocol.Snapshot{Tick: g.tick, Self: entityOf(p), Stats: statsOf(p), Online: len(g.players)}
 	for _, id := range g.sortedIDs() {
@@ -707,11 +707,11 @@ func (g *Game) sendSnapshot(p *player, monsterIDs []int) {
 	p.send(snap)
 }
 
-// unloadChunks libère les chunks éloignés de tous les joueurs.
+// unloadChunks frees the chunks far from all players.
 func (g *Game) unloadChunks() {
 	keep := make(map[world.ChunkPos]bool)
 	for _, p := range g.players {
-		sp := p.surfacePos() // en donjon, on garde les abords de l'entrée
+		sp := p.surfacePos() // in a dungeon, keep the surroundings of the entrance
 		c := world.ChunkOf(sp.X, sp.Y)
 		for dy := -2; dy <= 2; dy++ {
 			for dx := -2; dx <= 2; dx++ {
@@ -722,42 +722,42 @@ func (g *Game) unloadChunks() {
 	g.World.Unload(keep)
 }
 
-// metrics contient les compteurs de santé de la boucle (écrits par la
-// goroutine de jeu, lus par n'importe qui sans verrou).
+// metrics contains the loop's health counters (written by the
+// game goroutine, read by anyone without a lock).
 type metrics struct {
 	ticks     atomic.Uint64
-	slowTicks atomic.Uint64 // ticks plus longs que TickInterval
+	slowTicks atomic.Uint64 // ticks longer than TickInterval
 	totalNs   atomic.Uint64
 	maxNs     atomic.Uint64
 	players   atomic.Int64
 	monsters  atomic.Int64
 
-	// Fenêtre glissante des dernières durées de tick (goroutine de jeu seulement),
-	// résumée dans les atomiques ci-dessous: on voit ainsi le régime établi,
-	// sans que le démarrage ne masque la mesure.
+	// Sliding window of the latest tick durations (game goroutine only),
+	// summarised in the atomics below: this shows the steady state,
+	// without startup masking the measurement.
 	ring      [recentTicks]time.Duration
 	recentP99 atomic.Uint64
 	recentMax atomic.Uint64
 }
 
 const (
-	recentTicks    = 600 // 60 s de ticks
+	recentTicks    = 600 // 60 s of ticks
 	summarizeEvery = 50
 )
 
-// Metrics est une copie des compteurs de la boucle de jeu.
+// Metrics is a copy of the game loop counters.
 type Metrics struct {
-	Ticks     uint64        // ticks exécutés depuis le démarrage
-	SlowTicks uint64        // ticks ayant dépassé TickInterval (la cadence a alors fléchi)
-	TickTotal time.Duration // temps cumulé passé dans les ticks
-	TickMax   time.Duration // tick le plus long depuis le démarrage
-	RecentP99 time.Duration // 99e centile des 60 dernières secondes
-	RecentMax time.Duration // tick le plus long des 60 dernières secondes
+	Ticks     uint64        // ticks executed since startup
+	SlowTicks uint64        // ticks that exceeded TickInterval (the cadence then slipped)
+	TickTotal time.Duration // cumulative time spent in ticks
+	TickMax   time.Duration // longest tick since startup
+	RecentP99 time.Duration // 99th percentile of the last 60 seconds
+	RecentMax time.Duration // longest tick of the last 60 seconds
 	Players   int
 	Monsters  int
 }
 
-// Metrics renvoie l'état des compteurs. Sûr depuis n'importe quelle goroutine.
+// Metrics returns the state of the counters. Safe from any goroutine.
 func (g *Game) Metrics() Metrics {
 	return Metrics{
 		Ticks:     g.metrics.ticks.Load(),
@@ -771,7 +771,7 @@ func (g *Game) Metrics() Metrics {
 	}
 }
 
-// timedStep exécute un tick et enregistre sa durée.
+// timedStep executes a tick and records its duration.
 func (g *Game) timedStep() {
 	start := time.Now()
 	g.step()
@@ -785,7 +785,7 @@ func (g *Game) record(d time.Duration) {
 	if d > TickInterval {
 		m.slowTicks.Add(1)
 	}
-	for { // maximum sans verrou
+	for { // maximum without a lock
 		cur := m.maxNs.Load()
 		if uint64(d) <= cur || m.maxNs.CompareAndSwap(cur, uint64(d)) {
 			break
@@ -800,10 +800,10 @@ func (g *Game) record(d time.Duration) {
 	m.monsters.Store(int64(len(g.monsters)))
 }
 
-// summarize calcule le p99 et le maximum des n dernières durées.
+// summarize computes the p99 and the maximum of the last n durations.
 func (m *metrics) summarize(n int) {
 	buf := make([]time.Duration, n)
-	copy(buf, m.ring[:n]) // l'ordre importe peu pour un centile; avant 600 ticks, seules les n premières cases sont remplies
+	copy(buf, m.ring[:n]) // order matters little for a percentile; before 600 ticks, only the first n cells are filled
 	slices.Sort(buf)
 	m.recentP99.Store(uint64(buf[min(n-1, n*99/100)]))
 	m.recentMax.Store(uint64(buf[n-1]))

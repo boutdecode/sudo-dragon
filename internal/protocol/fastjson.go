@@ -5,31 +5,31 @@ import (
 	"unicode/utf8"
 )
 
-// Encodage JSON écrit à la main des instantanés.
+// Hand-written JSON encoding of snapshots.
 //
-// Les instantanés sont les messages les plus fréquents et les plus gros: avec
-// 250 joueurs au même endroit, chacun en reçoit dix par seconde contenant
-// 250 entités. Le profil a montré que l'encodage par réflexion représentait
-// 70 % du CPU du serveur. Cet encodeur produit exactement les mêmes octets que
-// encoding/json pour ces types (vérifié par les tests), sans réflexion.
+// Snapshots are the most frequent and the largest messages: with
+// 250 players in the same place, each one receives ten per second containing
+// 250 entities. Profiling showed that reflection-based encoding accounted for
+// 70 % of the server CPU. This encoder produces exactly the same bytes as
+// encoding/json for these types (verified by the tests), without reflection.
 //
-// Toute modification des champs ou balises json de Snapshot, Entity, Monster
-// ou Stats doit être répercutée ici; TestFastSnapshotMatchesEncodingJSON
-// échoue sinon.
+// Any change to the json fields or tags of Snapshot, Entity, Monster
+// or Stats must be mirrored here; TestFastSnapshotMatchesEncodingJSON
+// fails otherwise.
 
-// appender est implémenté par les charges utiles qui savent s'encoder seules.
+// appender is implemented by payloads that know how to encode themselves.
 type appender interface{ AppendJSON(b []byte) []byte }
 
-// sizeHinter permet d'allouer le tampon d'un coup, sans agrandissements successifs.
+// sizeHinter allows allocating the buffer at once, without successive growth.
 type sizeHinter interface{ SizeHint() int }
 
-// SizeHint estime la taille encodée de l'instantané (entités de ~60 octets).
+// SizeHint estimates the encoded size of the snapshot (entities of ~60 bytes).
 func (s *Snapshot) SizeHint() int { return 256 + 64*(len(s.Others)+len(s.Monsters)) }
 
 const hexDigits = "0123456789abcdef"
 
-// appendString ajoute s sous forme de chaîne JSON, avec les mêmes échappements
-// qu'encoding/json (dont ceux de <, > et & et des séparateurs U+2028/U+2029).
+// appendString appends s as a JSON string, with the same escaping
+// as encoding/json (including that of <, > and & and of the U+2028/U+2029 separators).
 func appendString(b []byte, s string) []byte {
 	b = append(b, '"')
 	start := 0
@@ -50,7 +50,7 @@ func appendString(b []byte, s string) []byte {
 				b = append(b, '\\', 'r')
 			case '\t':
 				b = append(b, '\\', 't')
-			default: // contrôles, <, >, &
+			default: // control characters, <, >, &
 				b = append(b, '\\', 'u', '0', '0', hexDigits[c>>4], hexDigits[c&0xf])
 			}
 			i++
@@ -83,7 +83,7 @@ func appendInt(b []byte, key string, v int) []byte {
 	return strconv.AppendInt(b, int64(v), 10)
 }
 
-// AppendJSON encode l'entité.
+// AppendJSON encodes the entity.
 func (e Entity) AppendJSON(b []byte) []byte {
 	b = appendInt(b, `{"id":`, e.ID)
 	b = append(b, `,"name":`...)
@@ -96,7 +96,7 @@ func (e Entity) AppendJSON(b []byte) []byte {
 	return append(b, '}')
 }
 
-// AppendJSON encode le monstre.
+// AppendJSON encodes the monster.
 func (m Monster) AppendJSON(b []byte) []byte {
 	b = appendInt(b, `{"id":`, m.ID)
 	b = append(b, `,"kind":`...)
@@ -109,7 +109,7 @@ func (m Monster) AppendJSON(b []byte) []byte {
 	return append(b, '}')
 }
 
-// AppendJSON encode la fiche.
+// AppendJSON encodes the sheet.
 func (s Stats) AppendJSON(b []byte) []byte {
 	b = appendInt(b, `{"lvl":`, s.Level)
 	b = appendInt(b, `,"xp":`, s.XP)
@@ -127,7 +127,7 @@ func (s Stats) AppendJSON(b []byte) []byte {
 	return append(b, '}')
 }
 
-// AppendJSON encode l'instantané.
+// AppendJSON encodes the snapshot.
 func (s *Snapshot) AppendJSON(b []byte) []byte {
 	b = append(b, `{"tick":`...)
 	b = strconv.AppendUint(b, s.Tick, 10)

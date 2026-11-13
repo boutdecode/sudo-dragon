@@ -12,18 +12,18 @@ import (
 
 const maxReplyRunes = 400
 
-// output est la réponse analysée du modèle.
+// output is the parsed model response.
 type output struct {
 	Reply  string
-	Intro  *lore.Intro // nil si le joueur ne s'est pas présenté (ou champs inexploitables)
+	Intro  *lore.Intro // nil if the player did not introduce themselves (or unusable fields)
 	Memory string
-	Quest  *quest.Proposal // proposition brute, à valider (quest.Validate) ; nil si aucune
-	// Structured est faux quand le modèle n'a pas respecté le format JSON: on
-	// garde alors son texte comme réplique, mais on n'en tire aucune mémoire.
+	Quest  *quest.Proposal // raw proposal, to be validated (quest.Validate); nil if none
+	// Structured is false when the model did not follow the JSON format: its
+	// text is then kept as the reply, but no memory is drawn from it.
 	Structured bool
 }
 
-// flexString accepte une chaîne, un nombre, un booléen ou null.
+// flexString accepts a string, a number, a boolean or null.
 type flexString string
 
 func (f *flexString) UnmarshalJSON(b []byte) error {
@@ -36,7 +36,7 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 		*f = flexString(x)
 	case float64, bool:
 		*f = flexString(strings.TrimSpace(string(b)))
-	default: // null, objet, tableau
+	default: // null, object, array
 		*f = ""
 	}
 	return nil
@@ -49,8 +49,8 @@ type rawOutput struct {
 	Quest  json.RawMessage `json:"quest"`
 }
 
-// flexInt accepte un nombre, une chaîne numérique ou null (0). Les valeurs hors bornes sont ramenées
-// dans [-1e9, 1e9] : la validation de la quête fait le reste.
+// flexInt accepts a number, a numeric string or null (0). Out-of-range values are clamped
+// to [-1e9, 1e9]: quest validation does the rest.
 type flexInt int
 
 func (f *flexInt) UnmarshalJSON(b []byte) error {
@@ -113,10 +113,9 @@ type rawIntro struct {
 	Trait  flexString `json:"trait"`
 }
 
-// parseOutput analyse la réponse du modèle de façon tolérante: blocs de code
-// markdown, texte autour de l'objet JSON, champs de mauvais type. Le texte est
-// nettoyé pour l'affichage dans un terminal. ok est faux si aucune réplique
-// exploitable n'a pu être extraite.
+// parseOutput parses the model response leniently: markdown code blocks,
+// text around the JSON object, wrongly typed fields. The text is cleaned for
+// display in a terminal. ok is false if no usable reply could be extracted.
 func parseOutput(content string) (out output, ok bool) {
 	body := extractJSON(content)
 	if body != "" {
@@ -132,9 +131,9 @@ func parseOutput(content string) (out output, ok bool) {
 			}
 		}
 	}
-	// Pas de JSON exploitable: le texte brut devient la réplique, sans mémoire.
+	// No usable JSON: the raw text becomes the reply, with no memory.
 	text := textsafe.Clean(stripFences(content), maxReplyRunes)
-	if text == "" || strings.HasPrefix(text, "{") { // un JSON cassé n'est pas une réplique
+	if text == "" || strings.HasPrefix(text, "{") { // broken JSON is not a reply
 		return output{}, false
 	}
 	return output{Reply: text}, true
@@ -143,7 +142,7 @@ func parseOutput(content string) (out output, ok bool) {
 func parseIntro(raw json.RawMessage) *lore.Intro {
 	raw = []byte(strings.TrimSpace(string(raw)))
 	if len(raw) == 0 || raw[0] != '{' {
-		return nil // null, false, chaîne…: pas de présentation
+		return nil // null, false, string...: no introduction
 	}
 	var ri rawIntro
 	if err := json.Unmarshal(raw, &ri); err != nil {
@@ -156,7 +155,7 @@ func parseIntro(raw json.RawMessage) *lore.Intro {
 	return &in
 }
 
-// stripFences retire les clôtures ```json … ``` autour d'une réponse.
+// stripFences removes the ```json ... ``` fences around a response.
 func stripFences(s string) string {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "```") {
@@ -169,7 +168,7 @@ func stripFences(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// extractJSON renvoie le premier objet JSON équilibré de s, ou "".
+// extractJSON returns the first balanced JSON object in s, or "".
 func extractJSON(s string) string {
 	s = stripFences(s)
 	start := strings.IndexByte(s, '{')

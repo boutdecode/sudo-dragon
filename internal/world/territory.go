@@ -10,29 +10,29 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
-// Contrées : un découpage organique du monde, posé PAR-DESSUS la grille de régions (qui reste
-// l'unité technique des lieux, des rumeurs et de la réputation). C'est un diagramme de Voronoi
-// à germes décalés (Worley) : chaque case de territorySize × territorySize porte un germe, et
-// un point appartient à la contrée du germe le plus proche. Les frontières sont irrégulières.
+// Districts: an organic partition of the world, laid OVER the region grid (which remains
+// the technical unit of places, rumours and reputation). It is a Voronoi diagram
+// with offset seeds (Worley): each territorySize x territorySize cell carries a seed, and
+// a point belongs to the district of the nearest seed. The borders are irregular.
 //
-// Tout se calcule par arithmétique et hachage, depuis la seed seulement : le serveur et le
-// client (qui dessine le titre de la carte) obtiennent les mêmes contrées sans rien échanger.
+// Everything is computed by arithmetic and hashing, from the seed only: the server and the
+// client (which draws the map title) get the same districts without exchanging anything.
 
-// territorySize est le côté de la case porteuse d'un germe, donc l'ordre de grandeur d'une contrée.
+// territorySize is the side of the cell carrying a seed, hence the order of magnitude of a district.
 const territorySize = 1000
 
-// TerritoryID identifie une contrée : la case de son germe.
+// TerritoryID identifies a district: the cell of its seed.
 type TerritoryID struct{ X, Y int }
 
-// terrainTheme classe le terrain dominant d'une contrée (donne le mot de son nom).
+// terrainTheme classifies the dominant terrain of a district (gives the word of its name).
 type terrainTheme uint8
 
 const (
-	themeCoast terrainTheme = iota // eau, plages
+	themeCoast terrainTheme = iota // water, beaches
 	themePlain
 	themeForest
 	themeHills
-	themeMountain // montagnes, neige
+	themeMountain // mountains, snow
 	themeDesert
 	themeJungle
 	themeSwamp
@@ -42,25 +42,25 @@ const (
 
 var themeKeys = [numThemes]string{"coast", "plain", "forest", "hills", "mountain", "desert", "jungle", "swamp", "tundra"}
 
-// Taille de la famille de radicaux d'une contrée.
+// Size of the stem family of a district.
 const familySize = 8
 
-// Territory est une contrée nommée.
+// Territory is a named district.
 type Territory struct {
 	ID    TerritoryID
 	Site  Pos
 	Theme terrainTheme
 
-	// climate est le climat visuel (voir climate.go): tiré de la graine en v1, du climat du germe en v2.
+	// climate is the visual climate (see climate.go): drawn from the seed in v1, from the seed cell's climate in v2.
 	climate Climate
 
-	// Famille de noms de lieux de la contrée : familySize débuts et fins de placeStart/placeEnd.
+	// Family of place names of the district: familySize starts and ends of placeStart/placeEnd.
 	starts, ends [familySize]int
-	// Radical du nom de la contrée (indices dans la famille) et variante du mot de thème (0 ou 1).
+	// Stem of the district's name (indices into the family) and variant of the theme word (0 or 1).
 	nameStart, nameEnd, variant int
 }
 
-// terrHash combine la seed, une case et un sel en une valeur bien mélangée.
+// terrHash combines the seed, a cell and a salt into a well-mixed value.
 func terrHash(seed int64, x, y int, salt uint64) uint64 {
 	h := mix64(uint64(seed) ^ 0x7E221702)
 	h = mix64(h + uint64(int64(x)))
@@ -70,14 +70,14 @@ func terrHash(seed int64, x, y int, salt uint64) uint64 {
 
 func unit(h uint64) float64 { return float64(h>>11) / (1 << 53) }
 
-// siteOf renvoie le germe de la case (cx, cy), décalé de 15 % à 85 % de la case.
+// siteOf returns the seed of cell (cx, cy), offset by 15 % to 85 % of the cell.
 func siteOf(seed int64, cx, cy int) Pos {
 	fx := 0.15 + 0.7*unit(terrHash(seed, cx, cy, 1))
 	fy := 0.15 + 0.7*unit(terrHash(seed, cx, cy, 2))
 	return Pos{cx*territorySize + int(fx*territorySize), cy*territorySize + int(fy*territorySize)}
 }
 
-// territoryIDAt renvoie la contrée du point (x, y) : le germe le plus proche parmi ceux des 3 × 3 cases voisines.
+// territoryIDAt returns the district of point (x, y): the nearest seed among those of the 3 x 3 neighbouring cells.
 func territoryIDAt(seed int64, x, y int) TerritoryID {
 	cx, cy := floorDiv(x, territorySize), floorDiv(y, territorySize)
 	best, bestD := TerritoryID{cx, cy}, int64(-1)
@@ -99,8 +99,8 @@ func territoryRNG(seed int64, id TerritoryID, salt uint64) *rand.Rand {
 	return rand.New(rand.NewPCG(h, mix64(h^0x3C6EF372FE94F82B)))
 }
 
-// familyOf renvoie les débuts et fins de radicaux de la contrée, sans échantillonner le terrain
-// (utilisé pour nommer les lieux : c'est du hachage pur).
+// familyOf returns the starts and ends of the district's stems, without sampling the terrain
+// (used to name places: it is pure hashing).
 func familyOf(seed int64, id TerritoryID) (starts, ends [familySize]int) {
 	rng := territoryRNG(seed, id, 10)
 	s := rng.Perm(len(placeStart))[:familySize]
@@ -112,7 +112,7 @@ func familyOf(seed int64, id TerritoryID) (starts, ends [familySize]int) {
 	return
 }
 
-// TerritoryAt renvoie la contrée du point (x, y) (mise en cache).
+// TerritoryAt returns the district of point (x, y) (cached).
 func (w *World) TerritoryAt(x, y int) *Territory {
 	id := territoryIDAt(w.Seed, x, y)
 	w.tmu.Lock()
@@ -131,13 +131,13 @@ func (w *World) TerritoryAt(x, y int) *Territory {
 func (w *World) buildTerritory(id TerritoryID) *Territory {
 	t := &Territory{ID: id, Site: siteOf(w.Seed, id.X, id.Y)}
 	t.climate = climateOf(w.Seed, id)
-	var sumTemp, sumWet float64 // climat réel moyen des points de terre (v2)
+	var sumTemp, sumWet float64 // real mean climate of the land points (v2)
 	var nLand int
 	t.starts, t.ends = familyOf(w.Seed, id)
 	rng := territoryRNG(w.Seed, id, 20)
 	t.nameStart, t.nameEnd, t.variant = rng.IntN(familySize), rng.IntN(familySize), rng.IntN(2)
 
-	// Terrain dominant : une grille de points autour du germe, restreinte à la contrée.
+	// Dominant terrain: a grid of points around the seed, restricted to the district.
 	var count [numThemes]int
 	const step, half = 80, 4
 	for j := -half; j <= half; j++ {
@@ -154,9 +154,9 @@ func (w *World) buildTerritory(id TerritoryID) *Territory {
 			}
 			switch w.terrainAt(x, y) {
 			case DeepWater:
-				// La haute mer ne nomme pas une contrée : seules ses côtes comptent.
+				// The open sea does not name a district: only its coasts count.
 			case Water, Sand:
-				count[themeCoast]++ // la terre pèse double : une contrée n'est dite « côtière » que si l'eau domine vraiment
+				count[themeCoast]++ // land counts double: a district is only called "coastal" if water really dominates
 			case Plain:
 				count[themePlain] += 2
 			case Forest:
@@ -181,7 +181,7 @@ func (w *World) buildTerritory(id TerritoryID) *Territory {
 	if nLand > 0 {
 		t.climate = climateFrom(sumTemp/float64(nLand), sumWet/float64(nLand))
 	}
-	t.Theme = themePlain // contrée presque entièrement marine : on la dit de plaine, à défaut
+	t.Theme = themePlain // almost entirely marine district: we call it plain, for lack of better
 	best := 0
 	for th := terrainTheme(0); th < numThemes; th++ {
 		if count[th] > best {
@@ -191,12 +191,12 @@ func (w *World) buildTerritory(id TerritoryID) *Territory {
 	return t
 }
 
-// Stem est le radical qui donne son nom à la contrée.
+// Stem is the stem that gives the district its name.
 func (t *Territory) Stem() string {
 	return placeStart[t.starts[t.nameStart]] + placeEnd[t.ends[t.nameEnd]]
 }
 
-// NameIn compose le nom de la contrée dans la langue l : « Forêts d'Aube », « Forests of Aube ».
+// NameIn composes the name of the district in language l: "Forêts d'Aube", "Forests of Aube".
 func (t *Territory) NameIn(l i18n.Lang) string {
 	stem := t.Stem()
 	of := i18n.T(l, "region.of")
@@ -213,7 +213,7 @@ func startsWithVowel(s string) bool {
 	return false
 }
 
-// TerritoryOfRegion renvoie la contrée du centre d'une région de la grille (celle qui nomme le lieu de cette région).
+// TerritoryOfRegion returns the district of the centre of a grid region (the one that names the place of that region).
 func (w *World) TerritoryOfRegion(rp RegionPos) *Territory {
 	return w.TerritoryAt(rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2)
 }

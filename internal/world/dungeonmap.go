@@ -5,30 +5,30 @@ import (
 	"sort"
 )
 
-// Dimensions de la carte d'un donjon, en tuiles. Ses coordonnées sont locales : (0,0) est
-// son coin haut-gauche, quelle que soit la position de l'entrée sur la carte principale.
+// Dimensions of a dungeon map, in tiles. Its coordinates are local: (0,0) is
+// its top-left corner, whatever the position of the entrance on the main map.
 const (
 	DungeonW = 64
 	DungeonH = 40
 )
 
-// DungeonMap est le plan d'un donjon : des salles reliées par des couloirs dans la roche.
-// Tout est tiré de la seed du donjon, le client le recalcule donc à l'identique.
+// DungeonMap is the plan of a dungeon: rooms linked by corridors in the rock.
+// Everything is drawn from the dungeon's seed, so the client recomputes it identically.
 type DungeonMap struct {
 	W, H  int
-	Spawn Pos    // case où arrivent les joueurs, à côté de l'escalier
-	Exit  Pos    // escalier de sortie
-	Slots []Slot // emplacements des monstres : RoleGuard, RoleElite, et un RoleBoss
-	// Chests est la liste des coffres (la tuile correspondante est Chest).
+	Spawn Pos    // tile where players arrive, next to the staircase
+	Exit  Pos    // exit staircase
+	Slots []Slot // monster slots: RoleGuard, RoleElite, and one RoleBoss
+	// Chests is the list of chests (the matching tile is Chest).
 	Chests []Pos
-	// Boss est la case du boss, au centre de la dernière salle de la chaîne ; BossChest est son trésor (aussi dans Chests).
+	// Boss is the boss's tile, at the centre of the last room of the chain; BossChest is its treasure (also in Chests).
 	Boss      Pos
 	BossChest Pos
 
 	tiles []Tile
 }
 
-// TileAt renvoie la tuile de la case (x, y); hors de la carte, c'est de la roche (Rock).
+// TileAt returns the tile of cell (x, y); off the map, it is rock (Rock).
 func (m *DungeonMap) TileAt(x, y int) Tile {
 	if x < 0 || y < 0 || x >= m.W || y >= m.H {
 		return Rock
@@ -38,7 +38,7 @@ func (m *DungeonMap) TileAt(x, y int) Tile {
 
 func (m *DungeonMap) set(x, y int, t Tile) { m.tiles[y*m.W+x] = t }
 
-// NewDungeonMap génère le plan de d. Le résultat ne dépend que de d.Seed et d.Tier.
+// NewDungeonMap generates the plan of d. The result depends only on d.Seed and d.Tier.
 func NewDungeonMap(d *Dungeon) *DungeonMap {
 	rng := rand.New(rand.NewPCG(uint64(d.Seed), mix64(uint64(d.Seed)^0xD06E0)))
 	m := &DungeonMap{W: DungeonW, H: DungeonH, tiles: make([]Tile, DungeonW*DungeonH)}
@@ -46,8 +46,8 @@ func NewDungeonMap(d *Dungeon) *DungeonMap {
 		m.tiles[i] = Rock
 	}
 
-	// Salles : tirées au hasard sans se toucher, puis triées de gauche à droite ; l'entrée est
-	// dans la première, le boss dans la dernière, le chemin de l'une à l'autre les traverse toutes.
+	// Rooms: drawn at random without touching, then sorted left to right; the entrance is
+	// in the first, the boss in the last, the path from one to the other crosses them all.
 	want := 5 + d.Tier + rng.IntN(2)
 	var rooms []rect
 	for range 400 {
@@ -68,7 +68,7 @@ func NewDungeonMap(d *Dungeon) *DungeonMap {
 		}
 	}
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].x+rooms[i].w/2 < rooms[j].x+rooms[j].w/2 })
-	// Garde-fou : 400 essais sur une grille de cette taille donnent toujours plus de trois salles.
+	// Safeguard: 400 attempts on a grid of this size always give more than three rooms.
 	for len(rooms) < 3 {
 		rooms = append(rooms, rect{4 + 20*len(rooms), 10, 8, 6})
 	}
@@ -93,7 +93,7 @@ func NewDungeonMap(d *Dungeon) *DungeonMap {
 	m.Boss = center(last)
 
 	used := map[Pos]bool{m.Exit: true, m.Spawn: true, m.Boss: true}
-	// free tire une case libre de la salle r (ni escalier, ni emplacement déjà pris).
+	// free draws a free tile of room r (neither staircase nor an already taken slot).
 	free := func(r rect) (Pos, bool) {
 		for range 40 {
 			p := Pos{r.x + rng.IntN(r.w), r.y + rng.IntN(r.h)}
@@ -111,7 +111,7 @@ func NewDungeonMap(d *Dungeon) *DungeonMap {
 			m.Slots = append(m.Slots, Slot{p, RoleElite})
 		}
 	}
-	if p, ok := free(last); ok { // le trésor du boss
+	if p, ok := free(last); ok { // the boss's treasure
 		m.BossChest = p
 		m.set(p.X, p.Y, Chest)
 		m.Chests = append(m.Chests, p)
@@ -129,7 +129,7 @@ func NewDungeonMap(d *Dungeon) *DungeonMap {
 			}
 		}
 	}
-	// La salle d'entrée reste sûre : un coffre au plus, aucun monstre.
+	// The entrance room stays safe: at most one chest, no monster.
 	if rng.IntN(3) == 0 {
 		if p, ok := free(first); ok {
 			m.set(p.X, p.Y, Chest)
@@ -139,7 +139,7 @@ func NewDungeonMap(d *Dungeon) *DungeonMap {
 	return m
 }
 
-// corridor creuse un couloir d'une case de large en L entre a et b.
+// corridor digs a one-tile-wide L-shaped corridor between a and b.
 func (m *DungeonMap) corridor(a, b Pos, horizontalFirst bool) {
 	x, y := a.X, a.Y
 	carve := func() {
@@ -168,7 +168,7 @@ func (m *DungeonMap) corridor(a, b Pos, horizontalFirst bool) {
 	}
 }
 
-// Reachable renvoie les cases praticables atteignables depuis from (parcours en largeur).
+// Reachable returns the walkable tiles reachable from from (breadth-first traversal).
 func (m *DungeonMap) Reachable(from Pos) map[Pos]bool {
 	seen := map[Pos]bool{from: true}
 	queue := []Pos{from}

@@ -15,11 +15,11 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// detailMinHeight est la hauteur minimale de la colonne d'actions pour afficher le panneau de détail.
+// detailMinHeight is the minimal height of the action column to show the detail panel.
 const detailMinHeight = 6
 
-// combatView dessine l'écran de combat dans exactement w x h cellules: à gauche l'encart Combat en deux
-// colonnes (joueur, ennemi), à droite les actions et le détail de l'action choisie, dessous le journal.
+// combatView draws the combat screen in exactly w x h cells: on the left the Combat box in two
+// columns (player, enemy), on the right the actions and the detail of the chosen action, the log below.
 func (m Model) combatView(w, h int) string {
 	c := m.combat
 	name := m.groupTitle()
@@ -29,7 +29,7 @@ func (m Model) combatView(w, h int) string {
 	logH := min(8, h-6)
 	midH := h - logH
 
-	colW := (leftW - 2 - 1) / 2 // deux colonnes et un filet
+	colW := (leftW - 2 - 1) / 2 // two columns and a rule
 	ih := midH - 2
 	left := m.playerColumn(colW, ih)
 	right := shiftBlockLines(m.enemyColumn(leftW-2-colW-1, ih), m.foeShake, leftW-2-colW-1)
@@ -84,12 +84,12 @@ func (m Model) combatView(w, h int) string {
 	return shiftBlock(mid+"\n"+journalPanel(m.t("fight.journal"), m.combatLog, w, logH), dx, dy, w, h)
 }
 
-// playerColumn: les informations du joueur, sur h lignes de w cellules.
+// playerColumn: the player's information, over h lines of w cells.
 func (m Model) playerColumn(w, h int) []string {
 	c, st := m.combat, m.snap.Stats
 	barW := max(4, min(30, w-12))
 	hp := fmt.Sprintf(" %s %3d/%d", ui.Bar(c.PlayerHP, c.PlayerMaxHP, barW), c.PlayerHP, c.PlayerMaxHP)
-	if m.fx.flashHP && m.flashing() { // coup reçu: les PV clignotent en rouge
+	if m.fx.flashHP && m.flashing() { // hit received: HP blink red
 		hp = " " + errStyle.Bold(true).Render(ansi.Strip(hp[1:]))
 	}
 	lines := []string{
@@ -112,7 +112,7 @@ func (m Model) playerColumn(w, h int) []string {
 	return padLines(lines, h)
 }
 
-// groupTitle résume les ennemis pour le titre de l'encart: "Loup ×2, Rat".
+// groupTitle summarizes the enemies for the box title: "Wolf ×2, Rat".
 func (m Model) groupTitle() string {
 	var order []string
 	count := map[string]int{}
@@ -131,16 +131,16 @@ func (m Model) groupTitle() string {
 	return strings.Join(order, ", ")
 }
 
-// enemyColumn: le portrait du monstre le plus fort (la moitié de la place disponible), puis la liste des ennemis.
+// enemyColumn: the portrait of the strongest monster (half of the available space), then the list of enemies.
 func (m Model) enemyColumn(w, h int) []string {
 	c := m.combat
 	if len(c.Enemies) == 0 {
 		return padLines(nil, h)
 	}
-	barW := max(4, min(30, w-17)) // de la place pour les dégâts affichés à côté
+	barW := max(4, min(30, w-17)) // room for the damage shown alongside
 	redStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ui.ColErr))
 
-	// Une ligne de nom et une de PV par ennemi; la cible ajoute sa fiche si la place le permet.
+	// One name line and one HP line per enemy; the target adds its sheet if space allows.
 	statsRoom := h-2*len(c.Enemies)-6 >= 1
 	var info []string
 	for i, e := range c.Enemies {
@@ -157,7 +157,7 @@ func (m Model) enemyColumn(w, h int) []string {
 			head = " " + mark + dimStyle.Render(e.Name+" ✝")
 		}
 		hpLine := fmt.Sprintf("   %s %3d/%d", ui.Bar(e.HP, e.MaxHP, barW), e.HP, e.MaxHP)
-		if txt := m.foeHitText(i); txt != "" { // coup donné: dégâts à côté de la barre, nom en surbrillance une image sur deux
+		if txt := m.foeHitText(i); txt != "" { // hit dealt: damage next to the bar, name highlighted every other frame
 			hpLine += errStyle.Bold(true).Render(txt)
 			if m.flashing() && !dead {
 				head = " " + mark + ui.Select.Render(e.Name)
@@ -191,7 +191,7 @@ func (m Model) enemyColumn(w, h int) []string {
 	return padLines(append(lines, info...), h)
 }
 
-// shiftBlockLines décale les lignes d'une colonne de w cellules du décalage donné par off.
+// shiftBlockLines shifts the lines of a w-cell column by the offset given by off.
 func shiftBlockLines(lines []string, off func() (int, int), w int) []string {
 	dx, dy := off()
 	if dx == 0 && dy == 0 {
@@ -200,7 +200,7 @@ func shiftBlockLines(lines []string, off func() (int, int), w int) []string {
 	return strings.Split(shiftBlock(strings.Join(lines, "\n"), dx, dy, w, len(lines)), "\n")
 }
 
-// padLines complète (ou coupe) les lignes à exactement h.
+// padLines pads (or cuts) the lines to exactly h.
 func padLines(lines []string, h int) []string {
 	for len(lines) < h {
 		lines = append(lines, "")
@@ -208,7 +208,7 @@ func padLines(lines []string, h int) []string {
 	return lines[:h]
 }
 
-// actionDetail décrit l'action choisie dans le menu de combat (w cellules de large).
+// actionDetail describes the action chosen in the combat menu (w cells wide).
 func (m Model) actionDetail(action string, w int) []string {
 	c, st := m.combat, m.snap.Stats
 	var out []string

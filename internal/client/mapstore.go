@@ -17,15 +17,15 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Persistance locale de la carte : repères et zones explorées sont écrits dans un fichier JSON du
-// dossier de configuration de l'utilisateur, une entrée par graine de monde. Le serveur n'en sait rien.
+// Local map persistence: markers and explored areas are written to a JSON file in the
+// user's configuration directory, one entry per world seed. The server knows nothing about it.
 
 const (
-	exploreSaveEvery = 15 * time.Second // écriture différée de l'exploration
+	exploreSaveEvery = 15 * time.Second // deferred exploration write
 	maxMarkerName    = 24
 )
 
-// marker est un repère posé sur la carte.
+// marker is a marker placed on the map.
 type marker struct {
 	Pos  world.Pos
 	Name string
@@ -42,7 +42,7 @@ type storedWorld struct {
 	Explored [][2]int       `json:"explored"`
 }
 
-// mapStorePath renvoie le fichier de sauvegarde ("" = pas de sauvegarde). Variable pour les tests.
+// mapStorePath returns the save file ("" = no saving). A variable so tests can override it.
 var mapStorePath = defaultMapStorePath
 
 func defaultMapStorePath() string {
@@ -55,13 +55,13 @@ func defaultMapStorePath() string {
 
 var (
 	mapStoreMu   sync.Mutex
-	mapStoreSeq  atomic.Uint64 // numérote les demandes d'écriture
-	mapStoreDone uint64        // dernière demande écrite (sous mapStoreMu)
+	mapStoreSeq  atomic.Uint64 // numbers the write requests
+	mapStoreDone uint64        // last request written (under mapStoreMu)
 )
 
-// seedKey est la clé d'un monde dans le fichier: la graine, suivie de la version du générateur de terrain au-delà de
-// la première (une même graine ne donne pas le même terrain d'une version à l'autre; les clés d'avant le
-// versionnage restent valables).
+// seedKey is a world's key in the file: the seed, followed by the terrain generator version beyond
+// the first (the same seed does not give the same terrain from one version to another; keys from before
+// versioning remain valid).
 func seedKey(seed int64, gen int) string {
 	k := strconv.FormatUint(uint64(seed), 16)
 	if gen > 1 {
@@ -70,7 +70,7 @@ func seedKey(seed int64, gen int) string {
 	return k
 }
 
-// readStore lit le fichier complet ; absent ou corrompu = vide.
+// readStore reads the whole file; missing or corrupt = empty.
 func readStore(path string) map[string]storedWorld {
 	all := map[string]storedWorld{}
 	if data, err := os.ReadFile(path); err == nil {
@@ -81,7 +81,7 @@ func readStore(path string) map[string]storedWorld {
 	return all
 }
 
-// loadMapState charge les repères et l'exploration enregistrés pour cette graine.
+// loadMapState loads the markers and exploration saved for this seed.
 func loadMapState(seed int64, gen int) mapState {
 	st := mapState{explored: map[[2]int]struct{}{}}
 	path := mapStorePath()
@@ -102,7 +102,7 @@ func loadMapState(seed int64, gen int) mapState {
 	return st
 }
 
-// snapshotStore copie l'état à écrire (triée pour un fichier stable).
+// snapshotStore copies the state to write (sorted for a stable file).
 func (m *Model) snapshotStore() (key string, sw storedWorld) {
 	key = seedKey(m.world.Seed, m.world.GenVersion)
 	sw.Markers = make([]storedMarker, len(m.wmap.markers))
@@ -120,8 +120,8 @@ func (m *Model) snapshotStore() (key string, sw storedWorld) {
 	return key, sw
 }
 
-// writeStore écrit sw dans le fichier de façon atomique ; une demande plus ancienne qu'une demande
-// déjà écrite est abandonnée. Les erreurs sont ignorées : la carte fonctionne sans sauvegarde.
+// writeStore writes sw to the file atomically; a request older than a request
+// already written is dropped. Errors are ignored: the map works without saving.
 func writeStore(path, key string, sw storedWorld, seq uint64) {
 	mapStoreMu.Lock()
 	defer mapStoreMu.Unlock()
@@ -147,7 +147,7 @@ func writeStore(path, key string, sw storedWorld, seq uint64) {
 	mapStoreDone = seq
 }
 
-// saveMap prépare l'écriture asynchrone de la carte (nil si rien à écrire).
+// saveMap prepares the asynchronous map write (nil if nothing to write).
 func (m *Model) saveMap() tea.Cmd {
 	path := mapStorePath()
 	if path == "" || m.world == nil {
@@ -162,14 +162,14 @@ func (m *Model) saveMap() tea.Cmd {
 	}
 }
 
-// saveMapNow écrit tout de suite (fermeture du client).
+// saveMapNow writes immediately (client shutdown).
 func (m *Model) saveMapNow() {
 	if cmd := m.saveMap(); cmd != nil {
 		cmd()
 	}
 }
 
-// maybeSaveExplored écrit l'exploration si elle a changé depuis au moins exploreSaveEvery.
+// maybeSaveExplored writes the exploration if it changed at least exploreSaveEvery ago.
 func (m *Model) maybeSaveExplored() tea.Cmd {
 	if !m.wmap.dirty || time.Since(m.wmap.lastSave) < exploreSaveEvery {
 		return nil
@@ -177,12 +177,12 @@ func (m *Model) maybeSaveExplored() tea.Cmd {
 	return m.saveMap()
 }
 
-// cleanMarkerName nettoie un nom saisi.
+// cleanMarkerName cleans up an entered name.
 func cleanMarkerName(s string) string {
 	return strings.TrimSpace(textsafe.Clean(s, maxMarkerName))
 }
 
-// uniqueMarkerName rend name unique (sans tenir compte de la casse) parmi les repères, sauf celui d'indice skip.
+// uniqueMarkerName makes name unique (case-insensitive) among the markers, except the one at index skip.
 func (s mapState) uniqueMarkerName(name string, skip int) string {
 	taken := func(n string) bool {
 		for i, mk := range s.markers {
@@ -202,8 +202,8 @@ func (s mapState) uniqueMarkerName(name string, skip int) string {
 	}
 }
 
-// findMarker cherche un repère par son nom : égalité exacte (sans casse), sinon préfixe. Renvoie le
-// nombre de correspondances (0 = inconnu, >1 = ambigu).
+// findMarker looks up a marker by name: exact match (case-insensitive), otherwise prefix. It returns the
+// number of matches (0 = unknown, >1 = ambiguous).
 func (s mapState) findMarker(name string) (marker, int) {
 	name = strings.TrimSpace(name)
 	var pre []marker

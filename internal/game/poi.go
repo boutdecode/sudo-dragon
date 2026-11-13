@@ -13,59 +13,59 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Points d'intérêt de la carte principale (voir world/poi.go) : on interagit en marchant sur leur case.
+// Points of interest on the main map (see world/poi.go): you interact by walking onto their tile.
 //
-//   - feu de camp : soigne à moitié et devient le point de réapparition après une défaite ;
-//   - sanctuaire : bonus temporaire, selon le climat de la contrée ;
-//   - repaire : trois monstres gardent un coffre ;
-//   - tour de guet : révèle les entrées de donjon alentour (le client révèle aussi la carte) ;
-//   - pierre dressée : s'active au premier passage ; deux pierres activées se relient (/menhir).
+//   - campfire: heals half and becomes the respawn point after a defeat;
+//   - shrine: temporary buff, depending on the region's climate;
+//   - lair: three monsters guard a chest;
+//   - watchtower: reveals nearby dungeon entrances (the client also reveals the map);
+//   - standing stone: activates on first visit; two activated stones link up (/menhir).
 //
-// L'état qui change (cooldowns, bonus, coffres de repaire) reste en mémoire ; seuls le feu de camp et les pierres
-// activées sont sauvegardés avec le personnage.
+// The state that changes (cooldowns, buffs, lair chests) stays in memory; only campfires and activated
+// stones are saved with the character.
 
 const (
-	campfireCooldown = 3000 // ticks (5 min) entre deux repos au même feu
-	shrineCooldown   = 6000 // ticks (10 min) entre deux bénédictions du même sanctuaire
-	shrineDuration   = 3000 // ticks (5 min) de bonus
-	springCooldown   = 1200 // ticks (2 min) entre deux gorgées à la même source
-	towerRadius      = 12   // rayon (en cases) dans lequel une tour révèle les entrées de donjon
+	campfireCooldown = 3000 // ticks (5 min) between two rests at the same fire
+	shrineCooldown   = 6000 // ticks (10 min) between two blessings from the same shrine
+	shrineDuration   = 3000 // ticks (5 min) of buff
+	springCooldown   = 1200 // ticks (2 min) between two sips from the same spring
+	towerRadius      = 12   // radius (in tiles) within which a tower reveals dungeon entrances
 
 	shrineDefBonus = 2 // DEF
-	shrineHitBonus = 2 // toucher
+	shrineHitBonus = 2 // to-hit
 
-	lairRespawn    = 18000 // ticks (30 min) avant que les gardiens reviennent et que le coffre se remplisse
-	lairLeash      = 6     // distance maximale à laquelle un gardien s'éloigne de son poste
-	lairLevelBonus = 2     // niveaux de région de plus pour les gardiens (un repaire est un défi)
-	ruinLevelBonus = 3     // idem pour le gardien d'une ruine
-	lairGearChance = 0.5   // part des coffres de repaire qui contiennent un objet
-	ruinGearChance = 0.8   // idem pour une ruine
-	lairSlotStride = 10    // écart entre les numéros d'emplacements de deux repaires d'une même région
-	lairSlotBase   = 100   // les emplacements d'un repaire sont numérotés à partir de là (ceux d'une forteresse, de 0)
-	lairGold       = 12    // or minimal par niveau du coffre ; le maximum est le double
+	lairRespawn    = 18000 // ticks (30 min) before the guardians return and the chest refills
+	lairLeash      = 6     // maximum distance a guardian strays from its post
+	lairLevelBonus = 2     // extra region levels for the guardians (a lair is a challenge)
+	ruinLevelBonus = 3     // same for a ruin's guardian
+	lairGearChance = 0.5   // share of lair chests that contain an item
+	ruinGearChance = 0.8   // same for a ruin
+	lairSlotStride = 10    // gap between slot numbers of two lairs in the same region
+	lairSlotBase   = 100   // a lair's slots are numbered from here (a fortress's, from 0)
+	lairGold       = 12    // minimum gold per chest level; the maximum is double
 
-	stoneMinCost   = 20 // or pour la plus courte traversée
-	stoneRegionFee = 15 // or par région de distance
+	stoneMinCost   = 20 // gold for the shortest crossing
+	stoneRegionFee = 15 // gold per region of distance
 	maxStones      = 500
 )
 
-// buffKind est le genre d'un bonus de sanctuaire.
+// buffKind is the kind of a shrine buff.
 type buffKind uint8
 
 const (
 	buffDef   buffKind = iota + 1 // + DEF
-	buffHit                       // + toucher
+	buffHit                       // + to-hit
 	buffXP                        // XP ×1,5
-	buffRegen                     // 1 PV de plus par seconde hors combat
+	buffRegen                     // 1 extra HP per second out of combat
 )
 
-// buff est un bonus actif jusqu'au tick until.
+// buff is a buff active until tick until.
 type buff struct {
 	kind  buffKind
 	until uint64
 }
 
-// shrineBuff donne le bonus d'un sanctuaire selon le climat de sa contrée.
+// shrineBuff gives a shrine's buff depending on its region's climate.
 func shrineBuff(c world.Climate) buffKind {
 	switch c {
 	case world.Tropical:
@@ -78,9 +78,9 @@ func shrineBuff(c world.Climate) buffKind {
 	return buffDef
 }
 
-// info décrit le bonus pour la fiche de personnage, avec le temps restant à l'instant now.
+// info describes the buff for the character sheet, with the time remaining at instant now.
 func (b buff) info(now uint64) protocol.Blessing {
-	bl := protocol.Blessing{Secs: int((b.until - min(now, b.until) + 9) / 10)} // 10 ticks par seconde
+	bl := protocol.Blessing{Secs: int((b.until - min(now, b.until) + 9) / 10)} // 10 ticks per second
 	switch b.kind {
 	case buffDef:
 		bl.Kind, bl.Bonus = protocol.BlessDef, shrineDefBonus
@@ -103,7 +103,7 @@ func (p *player) hasBuff(k buffKind) bool {
 	return false
 }
 
-// expireBuffs retire les bonus échus (fighter() ne regarde jamais l'horloge) et dit s'il y en avait.
+// expireBuffs removes expired buffs (fighter() never looks at the clock) and says whether there were any.
 func (p *player) expireBuffs(now uint64) bool {
 	if len(p.buffs) == 0 {
 		return false
@@ -113,7 +113,7 @@ func (p *player) expireBuffs(now uint64) bool {
 	return len(p.buffs) != n
 }
 
-// stoneList renvoie les régions des pierres activées, dans un ordre stable (Y puis X).
+// stoneList returns the regions of the activated stones, in a stable order (Y then X).
 func (p *player) stoneList() []world.RegionPos {
 	out := make([]world.RegionPos, 0, len(p.stones))
 	for rp := range p.stones {
@@ -123,16 +123,16 @@ func (p *player) stoneList() []world.RegionPos {
 	return out
 }
 
-// poiNotice affiche un message au joueur (même canal que les coffres).
+// poiNotice shows a message to the player (same channel as chests).
 func (g *Game) poiNotice(p *player, key string, args ...any) {
 	p.gearNotices = append(p.gearNotices, i18n.T(p.lang, key, args...))
 	g.sendBag(p)
 }
 
-// ticksToMinutes arrondit à la minute supérieure (une minute = 600 ticks).
+// ticksToMinutes rounds up to the minute (one minute = 600 ticks).
 func ticksToMinutes(t uint64) int { return int((t + 599) / 600) }
 
-// cooling dit si le point k est encore sans effet pour p. Sinon, il arme le délai d.
+// cooling says whether point k still has no effect for p. Otherwise, it arms the delay d.
 func (g *Game) cooling(p *player, k world.POIKey, d uint64) (left uint64, cooling bool) {
 	if until := p.poiCooling[k]; g.tick < until {
 		return until - g.tick, true
@@ -144,10 +144,10 @@ func (g *Game) cooling(p *player, k world.POIKey, d uint64) (left uint64, coolin
 	return 0, false
 }
 
-// poiStep applique l'effet du point d'intérêt sur lequel p vient d'arriver, s'il y en a un.
+// poiStep applies the effect of the point of interest p has just arrived on, if any.
 func (g *Game) poiStep(p *player, pos world.Pos) {
 	if len(p.maps) > 0 {
-		g.dig(p, pos) // une case de carte au trésor est une case ordinaire
+		g.dig(p, pos) // a treasure map tile is an ordinary tile
 	}
 	poi := g.World.POIAt(pos.X, pos.Y)
 	if poi == nil {
@@ -183,7 +183,7 @@ func (g *Game) campfire(p *player, poi *world.POI) {
 	hp := min(p.stats.MaxHP-p.hp, (p.stats.MaxHP+1)/2)
 	mana := min(p.stats.MaxMana-p.mana, (p.stats.MaxMana+1)/2)
 	if hp <= 0 && mana <= 0 {
-		delete(p.poiCooling, poi.Key()) // rien à soigner : le feu reste disponible
+		delete(p.poiCooling, poi.Key()) // nothing to heal: the fire stays available
 		return
 	}
 	p.hp += hp
@@ -191,7 +191,7 @@ func (g *Game) campfire(p *player, poi *world.POI) {
 	g.poiNotice(p, "poi.camp.rest", hp, mana)
 }
 
-// respawnSpot renvoie la case où réapparaît p après une défaite et si c'est un feu de camp.
+// respawnSpot returns the tile where p respawns after a defeat and whether it is a campfire.
 func (g *Game) respawnSpot(p *player) (world.Pos, bool) {
 	if p.respawn != nil {
 		return g.freeNear(*p.respawn), true
@@ -199,8 +199,8 @@ func (g *Game) respawnSpot(p *player) (world.Pos, bool) {
 	return g.freeSpawn(), false
 }
 
-// spring soigne 30 % des PV et 50 % du mana (une oasis, en climat aride : 60 % et tout le mana). Le délai ne court que
-// si l'on a bu : on ne perd rien à passer à pleine forme.
+// spring heals 30% of HP and 50% of mana (an oasis, in arid climate: 60% and all the mana). The delay only runs
+// if one drank: nothing is lost by passing at full health.
 func (g *Game) spring(p *player, poi *world.POI) {
 	hpFrac, manaFrac, key := 0.3, 0.5, "poi.spring.drink"
 	if g.World.ClimateAt(poi.Pos.X, poi.Pos.Y) == world.Arid {
@@ -231,7 +231,7 @@ func (g *Game) shrine(p *player, poi *world.POI) {
 	g.poiNotice(p, fmt.Sprintf("poi.shrine.buff.%d", kind), name, shrineDuration/600)
 }
 
-// applyBuffs ajoute les bonus de sanctuaire à une fiche de combat.
+// applyBuffs adds shrine buffs to a combat sheet.
 func (p *player) applyBuffs(def, hit *int) {
 	if p.hasBuff(buffDef) {
 		*def += shrineDefBonus
@@ -241,7 +241,7 @@ func (p *player) applyBuffs(def, hit *int) {
 	}
 }
 
-// xpWithBuff applique le bonus d'XP d'un sanctuaire.
+// xpWithBuff applies a shrine's XP bonus.
 func (p *player) xpWithBuff(xp int) int {
 	if p.hasBuff(buffXP) {
 		return xp * 3 / 2
@@ -249,7 +249,7 @@ func (p *player) xpWithBuff(xp int) int {
 	return xp
 }
 
-// regenBuffs rend 1 PV de plus par seconde aux joueurs qui ont la bénédiction de régénération.
+// regenBuffs gives 1 extra HP per second to players with the regeneration blessing.
 func (g *Game) regenBuffs(ids []int) {
 	for _, id := range ids {
 		p := g.players[id]
@@ -271,12 +271,12 @@ func (g *Game) tower(p *player, poi *world.POI) {
 
 // --- Repaires ---
 
-// lairKey est la clé de l'emplacement i du repaire poi.
+// lairKey is the key of slot i of lair poi.
 func lairKey(poi *world.POI, i int) world.SlotKey {
 	return world.SlotKey{Region: poi.Region, Index: lairSlotBase + poi.Index*lairSlotStride + i}
 }
 
-// activateLairs peuple les repaires proches d'un joueur, comme activateGarrisons pour les forteresses.
+// activateLairs populates the lairs near a player, like activateGarrisons for fortresses.
 func (g *Game) activateLairs() {
 	for _, id := range g.sortedIDs() {
 		p := g.players[id]
@@ -308,7 +308,7 @@ func (g *Game) fillLairSlot(poi *world.POI, i int, pos world.Pos) {
 	if g.blocked(pos) {
 		return
 	}
-	// Les gardiens sont des bêtes du biome, un peu plus fortes que la région.
+	// The guardians are biome beasts, a bit stronger than the region.
 	list := speciesByTile[g.World.TileAt(pos.X, pos.Y)]
 	if len(list) == 0 {
 		list = speciesByTile[world.Plain]
@@ -316,7 +316,7 @@ func (g *Game) fillLairSlot(poi *world.POI, i int, pos world.Pos) {
 	sp := list[int((uint64(poi.Seed)>>8+uint64(i))%uint64(len(list)))]
 	bonus := lairLevelBonus
 	if poi.Kind == world.POIRuin {
-		bonus = ruinLevelBonus // le gardien d'une ruine est une élite
+		bonus = ruinLevelBonus // a ruin's guardian is an elite
 	}
 	level := min(world.LevelAt(pos.X, pos.Y)+bonus, 20)
 	m := g.addMonster(scaledForLevel(sp, level), pos)
@@ -326,7 +326,7 @@ func (g *Game) fillLairSlot(poi *world.POI, i int, pos world.Pos) {
 	g.garrisonCount++
 }
 
-// lairGuarded dit si un gardien du repaire est encore en vie.
+// lairGuarded says whether a lair guardian is still alive.
 func (g *Game) lairGuarded(poi *world.POI) bool {
 	for i := range poi.Slots {
 		if _, alive := g.slotMonster[lairKey(poi, i)]; alive {
@@ -336,9 +336,9 @@ func (g *Game) lairGuarded(poi *world.POI) bool {
 	return false
 }
 
-// openLairChest ouvre le coffre d'un repaire ou d'une ruine dont les gardiens sont tombés. Le coffre se remplit de
-// nouveau lairRespawn ticks après son ouverture ; un sac plein le laisse fermé. Une ruine donne en plus un fragment
-// de lore et, avec les donjons, l'entrée du plus proche.
+// openLairChest opens the chest of a lair or ruin whose guardians have fallen. The chest refills
+// lairRespawn ticks after being opened; a full bag leaves it closed. A ruin also gives a lore fragment
+// and, with dungeons, the entrance of the nearest one.
 func (g *Game) openLairChest(p *player, poi *world.POI) {
 	ruin := poi.Kind == world.POIRuin
 	prefix := "poi.lair"
@@ -393,8 +393,8 @@ func (g *Game) openLairChest(p *player, poi *world.POI) {
 	g.save(p)
 }
 
-// ruinLore ajoute au journal le fragment de lore de la ruine (texte statique tiré de sa graine) et, si le joueur ne
-// la connaît pas encore, révèle l'entrée du donjon le plus proche (3 régions au plus).
+// ruinLore adds the ruin's lore fragment to the journal (static text drawn from its seed) and, if the player does not
+// yet know it, reveals the nearest dungeon entrance (3 regions at most).
 func (g *Game) ruinLore(p *player, poi *world.POI) {
 	p.gearNotices = append(p.gearNotices, i18n.Pick(p.lang, "poi.lore", int(uint64(poi.Seed)>>8)))
 	if !g.Dungeons {
@@ -414,7 +414,7 @@ func (g *Game) ruinLore(p *player, poi *world.POI) {
 	p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "poi.ruin.hint", best.NameIn(p.lang)))
 }
 
-// --- Pierres dressées ---
+// --- Standing stones ---
 
 func (g *Game) stone(p *player, poi *world.POI) {
 	name := poi.NameIn(p.lang)
@@ -430,14 +430,14 @@ func (g *Game) stone(p *player, poi *world.POI) {
 	g.save(p)
 }
 
-// stoneCost est le prix du trajet entre deux pierres : proportionnel à la distance en régions.
+// stoneCost is the price of the trip between two stones: proportional to the distance in regions.
 func stoneCost(a, b world.RegionPos) int {
 	return max(stoneMinCost, stoneRegionFee*max(abs(a.X-b.X), abs(a.Y-b.Y)))
 }
 
-// Menhir traite la commande /menhir : sans argument, liste les pierres activées avec le prix du trajet ; avec un
-// numéro ou un début de nom, y emmène le joueur, qui doit se tenir sur une pierre activée. Renvoie le texte à lui
-// montrer, dans sa langue.
+// Menhir handles the /menhir command: with no argument, lists the activated stones with the trip price; with a
+// number or the start of a name, takes the player there, who must stand on an activated stone. Returns the text to
+// show them, in their language.
 func (g *Game) Menhir(id int, arg string) (string, error) {
 	reply := make(chan string, 1)
 	if !g.do(func() { reply <- g.menhir(id, arg) }) {

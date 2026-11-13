@@ -1,8 +1,8 @@
-// Package gear définit l'équipement : arme, armure, bouclier et casque.
+// Package gear defines equipment: weapon, armour, shield and helmet.
 //
-// Un modèle de langage peut PROPOSER des objets (nom, description, palier, bonus, prix) pour l'étalage
-// d'un forgeron ou d'un armurier, mais Validate est la seule porte d'entrée : elle ramène chaque valeur
-// dans des bornes calculées d'après l'emplacement et le palier, et ne garde du modèle que du texte.
+// A language model may PROPOSE items (name, description, tier, bonus, price) for the stock
+// of a blacksmith or an armourer, but Validate is the only entry point: it clamps each value
+// into bounds computed from the slot and the tier, and keeps only text from the model.
 package gear
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Slot est un emplacement d'équipement.
+// Slot is an equipment slot.
 type Slot string
 
 const (
@@ -27,10 +27,10 @@ const (
 	Helm   Slot = "helm"
 )
 
-// Slots liste les emplacements, dans l'ordre d'affichage.
+// Slots lists the slots, in display order.
 var Slots = []Slot{Weapon, Armor, Shield, Helm}
 
-// Valid indique si s est un emplacement connu.
+// Valid reports whether s is a known slot.
 func (s Slot) Valid() bool {
 	switch s {
 	case Weapon, Armor, Shield, Helm:
@@ -39,65 +39,65 @@ func (s Slot) Valid() bool {
 	return false
 }
 
-// Limites.
+// Limits.
 const (
 	MaxName     = 40
 	MaxDesc     = 120
 	MaxTier     = 5
 	BagCapacity = 24
-	SellPercent = 40 // prix de revente, en pour cent du prix
+	SellPercent = 40 // resale price, as a percentage of the price
 )
 
-// MinLevelOf est le niveau minimal pour équiper un objet d'un palier (le palier est aussi le rang :
-// nombre de dés de l'arme ou de réduction de l'armure).
+// MinLevelOf is the minimum level to equip an item of a tier (the tier is also the rank:
+// number of weapon dice or armour reduction dice).
 var MinLevelOf = [MaxTier + 1]int{0, 1, 5, 10, 15, 20}
 
-// Plafonds du bonus de DEF par emplacement et par palier (index 1 à 5). Un point de DEF vaut 5 points de chance de
-// toucher sur 20 : ils sont réglés par TestBalance.
+// Caps on the DEF bonus per slot and per tier (index 1 to 5). One DEF point is worth 5 points of chance to
+// hit out of 20: they are tuned by TestBalance.
 var defCap = map[Slot][MaxTier + 1]int{
 	Armor:  {0, 1, 1, 2, 2, 3},
 	Shield: {0, 1, 2, 2, 3, 4},
 	Helm:   {0, 1, 1, 1, 2, 2},
 }
 
-// Item est un objet d'équipement.
+// Item is an equipment item.
 //
-// Arme : dégâts « Tier d(Die de la famille) + Quality » (Damage), style (Kind) de la famille.
-// Armure : bonus de DEF (Def) et dés de réduction « Tier d(Die de la famille) » (Reduction).
-// Bouclier et casque : bonus de DEF seulement.
+// Weapon: damage "Tier d(family Die) + Quality" (Damage), style (Kind) of the family.
+// Armour: DEF bonus (Def) and reduction dice "Tier d(family Die)" (Reduction).
+// Shield and helmet: DEF bonus only.
 type Item struct {
 	ID      int64
 	Name    string
 	Desc    string
 	Slot    Slot
 	Tier    int
-	Family  string // famille d'arme ou d'armure ; vide pour un bouclier ou un casque
-	Quality int    // bonus fixe aux dégâts d'une arme
-	Def     int    // bonus de DEF
+	Family  string // weapon or armour family; empty for a shield or a helmet
+	Quality int    // fixed damage bonus of a weapon
+	Def     int    // DEF bonus
 	Price   int
-	Kind    hero.Kind    // style d'une arme (mêlée, distance, magie) ; vide pour le reste
-	Origin  world.NPCKey // vendeur d'origine
+	Kind    hero.Kind    // style of a weapon (melee, ranged, magic); empty for the rest
+	Origin  world.NPCKey // origin vendor
 }
 
-// MinLevel est le niveau requis pour équiper l'objet.
+// MinLevel is the level required to equip the item.
 func (it Item) MinLevel() int { return MinLevelOf[max(1, min(it.Tier, MaxTier))] }
 
-// SellPrice est ce que rapporte la revente.
+// SellPrice is what reselling brings in.
 func (it Item) SellPrice() int { return max(1, it.Price*SellPercent/100) }
 
-// Rank est le rang de l'objet (son palier, 1 à 5).
+// Rank is the rank of the item (its tier, 1 to 5).
 func (it Item) Rank() int { return max(1, min(it.Tier, MaxTier)) }
 
-// FamilyInfo renvoie la famille de l'objet, si elle existe.
+// FamilyInfo returns the family of the item, if it exists.
 func (it Item) FamilyInfo() (Family, bool) { return FamilyByID(it.Slot, it.Family) }
 
-// TwoHanded : l'objet occupe les deux mains (arme).
+// TwoHanded: the item occupies both hands (weapon).
 func (it Item) TwoHanded() bool {
 	f, ok := it.FamilyInfo()
 	return ok && f.TwoHanded
 }
 
-// Damage renvoie les dés de dégâts d'une arme (zéro pour le reste).
+// Damage returns the damage dice of a weapon (zero for the rest).
 func (it Item) Damage() dice.Dice {
 	if f, ok := it.FamilyInfo(); ok && it.Slot == Weapon {
 		return dice.D(it.Rank(), f.Die, it.Quality)
@@ -105,7 +105,7 @@ func (it Item) Damage() dice.Dice {
 	return dice.Dice{}
 }
 
-// Reduction renvoie les dés de réduction des dégâts d'une armure (zéro pour le reste).
+// Reduction returns the damage reduction dice of an armour (zero for the rest).
 func (it Item) Reduction() dice.Dice {
 	if f, ok := it.FamilyInfo(); ok && it.Slot == Armor {
 		return dice.D(it.Rank(), f.Die, 0)
@@ -113,15 +113,15 @@ func (it Item) Reduction() dice.Dice {
 	return dice.Dice{}
 }
 
-// Power résume la puissance de l'objet pour fixer son prix.
+// Power summarises the power of the item to set its price.
 func (it Item) Power() int {
 	return it.Damage().Avg() + it.Reduction().Avg() + 4*it.Def
 }
 
-// Equipped est l'équipement porté (un objet par emplacement).
+// Equipped is the worn equipment (one item per slot).
 type Equipped struct{ Weapon, Armor, Shield, Helm *Item }
 
-// Get renvoie l'objet porté dans un emplacement.
+// Get returns the item worn in a slot.
 func (e Equipped) Get(s Slot) *Item {
 	switch s {
 	case Weapon:
@@ -136,7 +136,7 @@ func (e Equipped) Get(s Slot) *Item {
 	return nil
 }
 
-// Set place (ou retire, si it est nil) l'objet d'un emplacement.
+// Set places (or removes, if it is nil) the item of a slot.
 func (e *Equipped) Set(s Slot, it *Item) {
 	switch s {
 	case Weapon:
@@ -150,7 +150,7 @@ func (e *Equipped) Set(s Slot, it *Item) {
 	}
 }
 
-// Defense renvoie le bonus de DEF total de l'équipement porté.
+// Defense returns the total DEF bonus of the worn equipment.
 func (e Equipped) Defense() (def int) {
 	for _, s := range Slots {
 		if it := e.Get(s); it != nil {
@@ -160,7 +160,7 @@ func (e Equipped) Defense() (def int) {
 	return
 }
 
-// Reduction renvoie les dés de réduction de l'armure portée.
+// Reduction returns the reduction dice of the worn armour.
 func (e Equipped) Reduction() dice.Dice {
 	if e.Armor == nil {
 		return dice.Dice{}
@@ -168,8 +168,8 @@ func (e Equipped) Reduction() dice.Dice {
 	return e.Armor.Reduction()
 }
 
-// Bounds renvoie les bornes [min, max] du bonus principal d'un emplacement et d'un palier : la qualité pour
-// une arme, la DEF pour le reste.
+// Bounds returns the [min, max] bounds of the main bonus of a slot and a tier: quality for
+// a weapon, DEF for the rest.
 func Bounds(s Slot, tier int) (lo, hi int) {
 	tier = max(1, min(tier, MaxTier))
 	if s == Weapon {
@@ -179,40 +179,40 @@ func Bounds(s Slot, tier int) (lo, hi int) {
 	return max(1, hi*2/3), hi
 }
 
-// PriceBounds renvoie les bornes de prix d'un objet de puissance power au palier tier.
+// PriceBounds returns the price bounds of an item of power power at tier tier.
 func PriceBounds(tier, power int) (lo, hi int) {
 	ref := 10 * power * (1 + tier)
 	return max(5, ref*7/10), max(8, ref*3/2)
 }
 
-// Proposal est ce que dit le modèle pour un objet, déjà extrait du JSON mais pas encore vérifié.
+// Proposal is what the model says for an item, already extracted from the JSON but not yet verified.
 type Proposal struct {
 	Slot, Name, Desc string
 	Tier             int
-	Family           string // famille d'arme ou d'armure (inconnue ou absente: famille par défaut)
-	Quality          int    // bonus aux dégâts d'une arme
-	Def              int    // bonus de DEF
+	Family           string // weapon or armour family (unknown or absent: default family)
+	Quality          int    // damage bonus of a weapon
+	Def              int    // DEF bonus
 	Price            int
-	Kind             string // ancien format: style de l'arme, sert à choisir une famille par défaut
+	Kind             string // old format: weapon style, used to choose a default family
 }
 
-// Context est ce que le serveur autorise pour l'étalage d'un vendeur.
+// Context is what the server allows for a vendor's stock.
 type Context struct {
-	Slots   []Slot // emplacements que ce vendeur peut proposer
-	MaxTier int    // palier maximal du lieu
-	MinTier int    // palier minimal du lieu (0: aucun plancher)
+	Slots   []Slot // slots this vendor may offer
+	MaxTier int    // maximum tier of the place
+	MinTier int    // minimum tier of the place (0: no floor)
 	Origin  world.NPCKey
 }
 
-// ErrInvalid est l'erreur de toute proposition refusée.
-var ErrInvalid = errors.New("objet invalide")
+// ErrInvalid is the error for any refused proposal.
+var ErrInvalid = errors.New("invalid item")
 
 func reject(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, a...))
 }
 
-// shape ramène famille, style, qualité et DEF d'un objet dans les valeurs permises à son emplacement et à son
-// palier. Les dés ne sont jamais stockés: ils découlent du palier et de la famille.
+// shape clamps family, style, quality and DEF of an item into the values allowed for its slot and its
+// tier. Dice are never stored: they derive from the tier and the family.
 func shape(it Item, rawKind hero.Kind) Item {
 	it.Tier = max(1, min(it.Tier, MaxTier))
 	fam, ok := FamilyByID(it.Slot, strings.ToLower(strings.TrimSpace(it.Family)))
@@ -234,26 +234,26 @@ func shape(it Item, rawKind hero.Kind) Item {
 	return it
 }
 
-// Validate transforme une proposition en objet, ou la refuse. L'objet n'a pas encore d'identifiant.
-// La modération des textes reste à faire.
+// Validate turns a proposal into an item, or refuses it. The item does not have an identifier yet.
+// Text moderation remains to be done.
 func Validate(p Proposal, c Context) (Item, error) {
 	slot := Slot(strings.ToLower(strings.TrimSpace(p.Slot)))
 	if !slot.Valid() {
-		return Item{}, reject("emplacement inconnu %q", p.Slot)
+		return Item{}, reject("unknown slot %q", p.Slot)
 	}
 	allowed := false
 	for _, s := range c.Slots {
 		allowed = allowed || s == slot
 	}
 	if !allowed {
-		return Item{}, reject("emplacement %q non vendu ici", slot)
+		return Item{}, reject("slot %q not sold here", slot)
 	}
 	name, desc := textsafe.Clean(p.Name, MaxName), textsafe.Clean(p.Desc, MaxDesc)
 	if name == "" {
-		return Item{}, reject("nom vide")
+		return Item{}, reject("empty name")
 	}
 	if lore.LooksLikeLink(name) || lore.LooksLikeLink(desc) {
-		return Item{}, reject("lien ou adresse dans le texte")
+		return Item{}, reject("link or address in the text")
 	}
 	maxTier := max(1, min(c.MaxTier, MaxTier))
 	minTier := max(1, min(c.MinTier, maxTier))
@@ -266,9 +266,9 @@ func Validate(p Proposal, c Context) (Item, error) {
 	return it, nil
 }
 
-// Sanitize revalide un objet relu d'une sauvegarde : mêmes bornes que Validate, sans faire confiance
-// aux valeurs stockées (un objet d'avant les familles reçoit la famille par défaut de son style).
-// Renvoie faux si l'objet est inexploitable.
+// Sanitize revalidates an item read back from a save: same bounds as Validate, without trusting
+// the stored values (an item from before families gets the default family of its style).
+// It returns false if the item is unusable.
 func Sanitize(it Item) (Item, bool) {
 	if !it.Slot.Valid() || it.ID <= 0 {
 		return Item{}, false
@@ -284,7 +284,7 @@ func Sanitize(it Item) (Item, bool) {
 	return it, true
 }
 
-// SlotsOfSmith et SlotsOfArmorer sont les emplacements vendus par chaque type de vendeur.
+// SlotsOfSmith and SlotsOfArmorer are the slots sold by each type of vendor.
 var (
 	SlotsOfSmith   = []Slot{Weapon}
 	SlotsOfArmorer = []Slot{Armor, Shield, Helm}

@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// layoutFingerprint résume ce qui définit les plans de 81 régions: type,
-// emplacement, tuiles, PNJ d'origine (type et position, sans les villageois) et postes de garnison. Les
-// noms et personnalités n'y figurent volontairement pas.
+// layoutFingerprint summarises what defines the plans of 81 regions: type,
+// location, tiles, original NPCs (type and position, without the villagers) and garrison posts. The
+// names and personalities deliberately do not appear in it.
 func layoutFingerprint(seed int64, gen int) uint64 {
 	h := fnv.New64a()
 	w := NewVersion(seed, gen)
@@ -27,7 +27,7 @@ func layoutFingerprint(seed int64, gen int) uint64 {
 			h.Write(b)
 			for _, n := range s.NPCs {
 				if n.Kind != NPCMerchant && n.Kind != NPCHealer {
-					continue // ajoutés après coup : ne modifient ni les plans ni les PNJ d'origine
+					continue // added afterwards: change neither the plans nor the original NPCs
 				}
 				fmt.Fprintf(h, "npc:%s@%d,%d;", n.Kind, n.Pos.X, n.Pos.Y)
 			}
@@ -39,12 +39,12 @@ func layoutFingerprint(seed int64, gen int) uint64 {
 	return h.Sum64()
 }
 
-// goldenLayouts sont les empreintes des plans telles que livrées avec la
-// première version des lieux. Les mondes déjà joués dépendent de ces plans
-// (positions sauvegardées, garnisons…): ce test échoue si une évolution du
-// générateur les modifie. Ajouter des champs (noms, personnalités) est permis
-// tant que ces empreintes restent inchangées; tirer de nouvelles valeurs dans
-// le flux aléatoire de la génération ne l'est pas.
+// goldenLayouts are the plan fingerprints as shipped with the
+// first version of the places. Already played worlds depend on these plans
+// (saved positions, garrisons...): this test fails if a change to the
+// generator modifies them. Adding fields (names, personalities) is allowed
+// as long as these fingerprints remain unchanged; drawing new values from
+// the generation random stream is not.
 var goldenLayouts = map[int64]uint64{
 	1:    0xc0018379d3525092,
 	2:    0xea12344f9eb1917f,
@@ -53,7 +53,7 @@ var goldenLayouts = map[int64]uint64{
 	1234: 0xe348716afb567060,
 }
 
-// goldenLayoutsV2 fige de même les plans du générateur v2, dès sa mise en service.
+// goldenLayoutsV2 likewise freezes the plans of generator v2, from its release.
 var goldenLayoutsV2 = map[int64]uint64{
 	1:    0x1b75386754ae80d4,
 	2:    0x26d720c375a07de4,
@@ -65,8 +65,8 @@ var goldenLayoutsV2 = map[int64]uint64{
 func TestExistingLayoutsAreFrozen(t *testing.T) {
 	for seed, want := range goldenLayouts {
 		if got := layoutFingerprint(seed, GenV1); got != want {
-			t.Errorf("seed %d: les plans ont changé (empreinte 0x%016x, attendue 0x%016x): "+
-				"les mondes déjà joués seraient modifiés", seed, got, want)
+			t.Errorf("seed %d: the plans changed (fingerprint 0x%016x, expected 0x%016x): "+
+				"already played worlds would be modified", seed, got, want)
 		}
 	}
 }
@@ -74,7 +74,7 @@ func TestExistingLayoutsAreFrozen(t *testing.T) {
 func TestExistingLayoutsAreFrozenV2(t *testing.T) {
 	for seed, want := range goldenLayoutsV2 {
 		if got := layoutFingerprint(seed, GenV2); got != want {
-			t.Errorf("seed %d: les plans v2 ont changé (empreinte 0x%016x, attendue 0x%016x)", seed, got, want)
+			t.Errorf("seed %d: the v2 plans changed (fingerprint 0x%016x, expected 0x%016x)", seed, got, want)
 		}
 	}
 }

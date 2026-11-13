@@ -13,7 +13,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// chiefSpots renvoie le chef du village de départ et deux accès libres.
+// chiefSpots returns the chief of the starting village and two free access tiles.
 func chiefSpots(t *testing.T) (world.NPC, []spot) {
 	t.Helper()
 	w := world.New(1)
@@ -34,7 +34,7 @@ func chiefSpots(t *testing.T) (world.NPC, []spot) {
 			}
 		}
 	}
-	t.Skip("pas de chef avec un accès libre près du départ")
+	t.Skip("no chief with a free access tile near the start")
 	return world.NPC{}, nil
 }
 
@@ -67,20 +67,20 @@ func TestChiefPromptNamesNearbyPlacesOnly(t *testing.T) {
 		}
 	}
 	if near == "" || far == "" {
-		t.Skip("pas de lieu proche et de lieu lointain dans cet échantillon")
+		t.Skip("no nearby place and distant place in this sample")
 	}
 
 	p := e.joinChar(t, "aldric", spots[0], store.Character{Level: 5, HP: 30, LLMConsent: true})
 	menu := p.approach()
 	if !hasOffer(menu, protocol.NPCTalk) || hasOffer(menu, protocol.NPCHeal) || hasOffer(menu, protocol.NPCBuy) {
-		t.Fatalf("menu du chef: %+v", menu.Offers)
+		t.Fatalf("chief menu: %+v", menu.Offers)
 	}
 	p.startChat(false)
 	if !prompts.any("lieux_connus") || !prompts.any(`"nom":"`+near+`"`) {
-		t.Fatalf("le chef devrait connaître %q", near)
+		t.Fatalf("the chief should know %q", near)
 	}
 	if prompts.any(`"nom":"` + far + `"`) {
-		t.Fatalf("le chef connaît %q, trop loin", far)
+		t.Fatalf("the chief knows %q, too far away", far)
 	}
 }
 

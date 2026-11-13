@@ -16,7 +16,7 @@ func readCreate(t *testing.T, c *websocket.Conn) protocol.Create {
 	t.Helper()
 	env := recvRaw(t, c)
 	if env.T != protocol.TCreate {
-		t.Fatalf("TCreate attendu, reçu %q", env.T)
+		t.Fatalf("TCreate expected, got %q", env.T)
 	}
 	var cr protocol.Create
 	if err := env.Payload(&cr); err != nil {
@@ -32,11 +32,11 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 
 	cr := readCreate(t, c)
 	if len(cr.Scores) != 6 || cr.Left != 3 || len(cr.Classes) != 3 || cr.Level != 1 {
-		t.Fatalf("tirage initial: %+v", cr)
+		t.Fatalf("initial roll: %+v", cr)
 	}
 	for _, v := range cr.Scores {
 		if v < 3 || v > 18 {
-			t.Fatalf("score hors 3-18: %v", cr.Scores)
+			t.Fatalf("score outside 3-18: %v", cr.Scores)
 		}
 	}
 	dice := map[string]int{}
@@ -44,13 +44,13 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 		dice[ci.ID] = ci.Die
 	}
 	if dice["warrior"] != 12 || dice["rogue"] != 8 || dice["mage"] != 6 {
-		t.Fatalf("dés de vie: %v", dice)
+		t.Fatalf("hit dice: %v", dice)
 	}
 
-	// Un indice invalide ne coûte rien.
+	// An invalid index costs nothing.
 	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateReroll, Index: 9})
 	if again := readCreate(t, c); again.Left != 3 {
-		t.Fatalf("relance invalide décomptée: %+v", again)
+		t.Fatalf("invalid reroll counted: %+v", again)
 	}
 
 	prev := cr
@@ -58,11 +58,11 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 		send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateReroll, Index: 3})
 		next := readCreate(t, c)
 		if next.Left != left {
-			t.Fatalf("relances restantes %d, attendu %d", next.Left, left)
+			t.Fatalf("rerolls left %d, expected %d", next.Left, left)
 		}
 		for i := range next.Scores {
 			if i != 3 && next.Scores[i] != prev.Scores[i] {
-				t.Fatalf("la caractéristique %d a changé", i)
+				t.Fatalf("ability %d changed", i)
 			}
 		}
 		prev = next
@@ -70,10 +70,10 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateReroll, Index: 0})
 	last := readCreate(t, c)
 	if last.Left != 0 || last.Scores[0] != prev.Scores[0] {
-		t.Fatalf("une 4e relance a été acceptée: %+v", last)
+		t.Fatalf("a 4th reroll was accepted: %+v", last)
 	}
 
-	// Une classe inconnue redonne le tirage sans rien enregistrer.
+	// An unknown class gives the roll again without saving anything.
 	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "paladin"})
 	readCreate(t, c)
 	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "mage"})
@@ -81,22 +81,22 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 
 	var sc hero.Scores
 	copy(sc[:], last.Scores)
-	// Le personnage est enregistré au départ du joueur, avec son arme de départ équipée (bâton du magicien).
+	// The character is saved on the player's departure, with their starting weapon equipped (mage's staff).
 	c.Close(websocket.StatusNormalClosure, "")
-	waitUntil(t, "personnage créé enregistré", func() bool {
+	waitUntil(t, "created character saved", func() bool {
 		ch, _ := be.LoadCharacter("alice")
 		return ch != nil && ch.Class == "mage" && hero.Scores(ch.Scores) == sc && ch.MaxHP == hero.FirstHP(hero.Mage, sc) && ch.Potions == 2 && ch.Level == 1 &&
 			len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "staff" && ch.Gear.Worn["weapon"] == ch.Gear.Items[0].ID
 	})
 
-	// Le même compte ne repasse plus par la création.
+	// The same account no longer goes through creation.
 	c2, w := signInEventually(t, url, "alice")
 	defer c2.Close(websocket.StatusNormalClosure, "")
 	if w.Name != "alice" {
 		t.Fatalf("welcome: %+v", w)
 	}
 	if hp := readSnapshot(t, c2).Stats; hp.MaxHP != hero.FirstHP(hero.Mage, sc) {
-		t.Fatalf("PV après reconnexion: %d", hp.MaxHP)
+		t.Fatalf("HP after reconnection: %d", hp.MaxHP)
 	}
 }
 
@@ -108,12 +108,12 @@ func TestDroppingDuringCreationSavesNothingAndRollsAgainNextTime(t *testing.T) {
 	c.Close(websocket.StatusNormalClosure, "")
 	time.Sleep(100 * time.Millisecond)
 	if ch, _ := be.LoadCharacter("alice"); ch != nil {
-		t.Fatalf("personnage enregistré avant la validation: %+v", ch)
+		t.Fatalf("character saved before confirmation: %+v", ch)
 	}
 	c = dial(t, url)
 	send(t, c, protocol.TLogin, signIn("alice", testPass))
 	if cr := readCreate(t, c); cr.Left != 3 {
-		t.Fatalf("nouveau tirage attendu: %+v", cr)
+		t.Fatalf("new roll expected: %+v", cr)
 	}
 }
 
@@ -126,14 +126,14 @@ func TestExistingCharacterWithoutSheetKeepsItsProgress(t *testing.T) {
 	giver, _ := giverSpots(t)
 	q := quest.Quest{ID: 2, Giver: giver.Key(), Title: "Les loups", Story: "x", State: quest.Active, Tier: 1,
 		Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}, Reward: quest.Reward{Gold: 5}, CreatedAt: time.Now()}
-	old := store.Character{Level: 6, XP: 4, Potions: 3, HP: 20, X: sp.X, Y: sp.Y, Gold: 250, Kills: 12, Quests: []quest.Quest{q}, QuestsDirty: true, GearDirty: true} // GearDirty : vide le sac laissé par register
-	be.SaveCharacter("alice", old)                                                                                                                                    // sans fiche: la création est à faire
+	old := store.Character{Level: 6, XP: 4, Potions: 3, HP: 20, X: sp.X, Y: sp.Y, Gold: 250, Kills: 12, Quests: []quest.Quest{q}, QuestsDirty: true, GearDirty: true} // GearDirty: empties the bag left by register
+	be.SaveCharacter("alice", old)                                                                                                                                    // no sheet: creation is still to be done
 
 	c := dial(t, url)
 	send(t, c, protocol.TLogin, signIn("alice", testPass))
 	cr := readCreate(t, c)
 	if cr.Level != 6 {
-		t.Fatalf("niveau conservé attendu: %+v", cr)
+		t.Fatalf("kept level expected: %+v", cr)
 	}
 	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "rogue"})
 	var w protocol.Welcome
@@ -141,18 +141,18 @@ func TestExistingCharacterWithoutSheetKeepsItsProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	if w.X != sp.X || w.Y != sp.Y {
-		t.Fatalf("position perdue: (%d,%d)", w.X, w.Y)
+		t.Fatalf("position lost: (%d,%d)", w.X, w.Y)
 	}
 	st := readSnapshot(t, c).Stats
 	if st.Level != 6 || st.Gold != 250 || st.Potions != 3 {
-		t.Fatalf("progression perdue: %+v", st)
+		t.Fatalf("progress lost: %+v", st)
 	}
-	// 6 niveaux de d8: entre 6 et 8+5*8 (CON ≥ 3 donne au moins 1 par niveau).
+	// 6 levels of d8: between 6 and 8+5*8 (CON >= 3 gives at least 1 per level).
 	if st.MaxHP < 6 || st.MaxHP > 8+4+5*(8+4) || st.HP != st.MaxHP {
-		t.Fatalf("PV recalculés: %d/%d", st.HP, st.MaxHP)
+		t.Fatalf("HP recomputed: %d/%d", st.HP, st.MaxHP)
 	}
 	c.Close(websocket.StatusNormalClosure, "")
-	waitUntil(t, "fiche enregistrée avec la progression", func() bool {
+	waitUntil(t, "sheet saved with the progress", func() bool {
 		ch, _ := be.LoadCharacter("alice")
 		return ch != nil && ch.Class == "rogue" && ch.Gold == 250 && len(ch.Quests) == 1 && ch.Kills == 12 && len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "shortbow"
 	})

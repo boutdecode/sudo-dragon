@@ -1,9 +1,9 @@
-// Package quest définit les quêtes confiées par les PNJ.
+// Package quest defines the quests handed out by NPCs.
 //
-// Un modèle de langage peut PROPOSER une quête (titre, histoire, objectif, récompense),
-// mais jamais en décider : Validate est la seule porte d'entrée. Elle n'accepte que des
-// objectifs que le serveur sait vérifier lui-même, et ramène toute récompense dans des
-// plafonds calculés d'après la difficulté. Le texte libre n'a aucun effet de jeu.
+// A language model can PROPOSE a quest (title, story, objective, reward),
+// but never decide it: Validate is the only entry point. It accepts only
+// objectives the server can verify itself, and brings every reward within
+// caps computed from the difficulty. Free text has no game effect.
 package quest
 
 import (
@@ -18,65 +18,65 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Limites.
+// Limits.
 const (
 	MaxTitle    = 60
 	MaxStory    = 280
 	MaxNote     = 80
 	MinCount    = 3
 	MaxCount    = 12
-	MaxActive   = 5                  // quêtes actives par joueur
-	Lifetime    = 7 * 24 * time.Hour // une quête non rendue expire
-	GiverPause  = 30 * time.Minute   // délai avant une nouvelle quête du même donneur
-	BossLevel   = 10                 // niveau minimal pour une quête contre le seigneur de guerre
-	PlaceRange  = 3                  // distance maximale (en régions) d'un lieu cible
-	bossDiff    = 250                // difficulté d'une quête de boss (XP du seigneur de guerre)
-	dungeonBase = 150                // difficulté d'une quête de donjon: dungeonBase + dungeonStep × palier du donjon
+	MaxActive   = 5                  // active quests per player
+	Lifetime    = 7 * 24 * time.Hour // an unreturned quest expires
+	GiverPause  = 30 * time.Minute   // delay before a new quest from the same giver
+	BossLevel   = 10                 // minimum level for a quest against the warlord
+	PlaceRange  = 3                  // maximum distance (in regions) of a target place
+	bossDiff    = 250                // difficulty of a boss quest (warlord's XP)
+	dungeonBase = 150                // difficulty of a dungeon quest: dungeonBase + dungeonStep × dungeon tier
 	dungeonStep = 50
 	reachBase   = 20
 	reachStep   = 15
 )
 
-// Kind est le type d'objectif.
+// Kind is the objective type.
 type Kind string
 
 const (
-	Kill  Kind = "kill"  // vaincre N monstres d'une espèce
-	Reach Kind = "reach" // entrer dans un lieu
-	Boss  Kind = "boss"  // vaincre le seigneur de guerre
-	// Dungeon: vaincre le maître d'un donjon secret (Objective.Target est la région qui le cache).
+	Kill  Kind = "kill"  // defeat N monsters of a species
+	Reach Kind = "reach" // enter a place
+	Boss  Kind = "boss"  // defeat the warlord
+	// Dungeon: defeat the master of a secret dungeon (Objective.Target is the region hiding it).
 	Dungeon Kind = "dungeon"
 )
 
-// DungeonLevel est le niveau minimal pour qu'on vous confie le donjon d'un palier (1 à 5): 3, 5, 7, 9, 11.
+// DungeonLevel is the minimum level at which a dungeon of a given tier (1 to 5) is entrusted to you: 3, 5, 7, 9, 11.
 func DungeonLevel(tier int) int { return 2*max(1, min(tier, 5)) + 1 }
 
-// State est l'état d'une quête.
+// State is the state of a quest.
 type State string
 
 const (
 	Active    State = "active"
-	Ready     State = "ready" // objectif atteint, à rendre au donneur
+	Ready     State = "ready" // objective reached, to be returned to the giver
 	Done      State = "done"
 	Abandoned State = "abandoned"
 	Expired   State = "expired"
 )
 
-// Objective est ce que le joueur doit accomplir, vérifié par le serveur.
+// Objective is what the player must accomplish, verified by the server.
 type Objective struct {
 	Kind    Kind
 	Species string          // Kill, Boss
-	Count   int             // Kill (3 à 12), 1 sinon
-	Target  world.RegionPos // Reach : région du lieu à atteindre ; Dungeon : région qui cache le donjon
+	Count   int             // Kill (3 to 12), 1 otherwise
+	Target  world.RegionPos // Reach: region of the place to reach; Dungeon: region hiding the dungeon
 }
 
-// Reward est ce que le serveur donne à la remise. Note est un texte sans effet.
+// Reward is what the server gives on turn-in. Note is text with no effect.
 type Reward struct {
 	Gold, XP, Potions int
 	Note              string
 }
 
-// Quest est une quête confiée à un joueur.
+// Quest is a quest entrusted to a player.
 type Quest struct {
 	ID        int64
 	Account   string
@@ -86,20 +86,20 @@ type Quest struct {
 	Objective Objective
 	Progress  int
 	Reward    Reward
-	Tier      int // difficulté, 1 à 3 : points de réputation = 1 + Tier
+	Tier      int // difficulty, 1 to 3: reputation points = 1 + Tier
 	State     State
 	CreatedAt time.Time
 	DoneAt    time.Time
 }
 
-// Place est le lieu du donneur (la réputation s'acquiert là).
+// Place is the giver's place (reputation is earned there).
 func (q Quest) Place() world.RegionPos { return q.Giver.Region }
 
-// Need est le nombre d'actions à accomplir.
+// Need is the number of actions to accomplish.
 func (q Quest) Need() int { return max(1, q.Objective.Count) }
 
-// PauseLeft donne le temps restant avant que le donneur confie une nouvelle quête, quand celle-ci vient
-// d'être rendue (0 sinon).
+// PauseLeft gives the time remaining before the giver hands out a new quest, when this one has just
+// been turned in (0 otherwise).
 func (q Quest) PauseLeft(now time.Time) time.Duration {
 	if q.State != Done {
 		return 0
@@ -107,65 +107,65 @@ func (q Quest) PauseLeft(now time.Time) time.Duration {
 	return max(0, GiverPause-now.Sub(q.DoneAt))
 }
 
-// Open indique que la quête est en cours (active ou prête).
+// Open reports that the quest is in progress (active or ready).
 func (q Quest) Open() bool { return q.State == Active || q.State == Ready }
 
-// Proposal est ce que dit le modèle, déjà extrait du JSON mais pas encore vérifié.
+// Proposal is what the model says, already extracted from the JSON but not yet verified.
 type Proposal struct {
 	Title, Story string
 	Type         string // "kill" | "reach" | "boss" | "dungeon"
 	Species      string
-	Place        string // nom d'un lieu (reach) ou d'un donjon (dungeon) proposé par le contexte
+	Place        string // name of a place (reach) or a dungeon (dungeon) offered by the context
 	Count        int
 	Gold, XP     int
 	Potions      int
 	Note         string
 }
 
-// Species est une espèce que le joueur peut se voir demander de chasser.
+// Species is a species the player may be asked to hunt.
 type Species struct {
 	Kind string
 	XP   int
 }
 
-// DungeonRef désigne un donjon que le serveur autorise à confier: la région qui le cache et son palier.
+// DungeonRef designates a dungeon the server allows to be entrusted: the region hiding it and its tier.
 type DungeonRef struct {
 	Region world.RegionPos
 	Tier   int
 }
 
-// Context est ce que le serveur autorise pour cette proposition.
+// Context is what the server allows for this proposal.
 type Context struct {
 	Level      int
 	Giver      world.NPCKey
-	Species    []Species                  // espèces autorisées (hors garnisons, adaptées au niveau)
-	Places     map[string]world.RegionPos // nom du lieu (en minuscules) → région ; lieux à portée seulement
-	BossAround bool                       // une forteresse est à portée
-	Dungeons   map[string]DungeonRef      // nom du donjon (en minuscules) → donjon ; à portée et accessibles au niveau seulement
+	Species    []Species                  // allowed species (excluding garrisons, adapted to the level)
+	Places     map[string]world.RegionPos // place name (lowercase) → region; places in range only
+	BossAround bool                       // a fortress is in range
+	Dungeons   map[string]DungeonRef      // dungeon name (lowercase) → dungeon; in range and accessible at the level only
 	Now        time.Time
 }
 
 // Errors.
 var (
-	ErrInvalid = errors.New("quête invalide")
+	ErrInvalid = errors.New("invalid quest")
 )
 
 func reject(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, a...))
 }
 
-// Validate transforme une proposition en quête, ou la refuse. La quête renvoyée n'a pas
-// d'ID ni de compte (le jeu les fixe). La modération des textes reste à faire.
+// Validate turns a proposal into a quest, or refuses it. The returned quest has no
+// ID or account (the game sets them). Moderation of the texts remains to be done.
 func Validate(p Proposal, c Context) (Quest, error) {
 	title := textsafe.Clean(p.Title, MaxTitle)
 	story := textsafe.Clean(p.Story, MaxStory)
 	note := textsafe.Clean(p.Note, MaxNote)
 	if title == "" || story == "" {
-		return Quest{}, reject("titre ou histoire vide")
+		return Quest{}, reject("empty title or story")
 	}
 	for _, s := range []string{title, story, note} {
 		if lore.LooksLikeLink(s) {
-			return Quest{}, reject("lien ou adresse dans le texte")
+			return Quest{}, reject("link or address in the text")
 		}
 	}
 
@@ -175,42 +175,42 @@ func Validate(p Proposal, c Context) (Quest, error) {
 	case Kill:
 		sp, ok := findSpecies(c.Species, p.Species)
 		if !ok {
-			return Quest{}, reject("espèce non autorisée %q", p.Species)
+			return Quest{}, reject("species not allowed %q", p.Species)
 		}
 		count := p.Count
 		if count < MinCount || count > MaxCount {
-			return Quest{}, reject("nombre %d hors de [%d, %d]", count, MinCount, MaxCount)
+			return Quest{}, reject("count %d outside [%d, %d]", count, MinCount, MaxCount)
 		}
 		q.Objective = Objective{Kind: Kill, Species: sp.Kind, Count: count}
 		difficulty = sp.XP * count
 	case Reach:
 		target, ok := c.Places[strings.ToLower(strings.TrimSpace(p.Place))]
 		if !ok {
-			return Quest{}, reject("lieu inconnu ou hors de portée %q", p.Place)
+			return Quest{}, reject("place unknown or out of range %q", p.Place)
 		}
 		if target == c.Giver.Region {
-			return Quest{}, reject("le lieu cible est celui du donneur")
+			return Quest{}, reject("the target place is the giver's")
 		}
 		q.Objective = Objective{Kind: Reach, Count: 1, Target: target}
 		difficulty = reachBase + reachStep*lore.Distance(target, c.Giver.Region)
 	case Boss:
 		if !c.BossAround || c.Level < BossLevel {
-			return Quest{}, reject("quête de seigneur de guerre indisponible")
+			return Quest{}, reject("warlord quest unavailable")
 		}
 		q.Objective = Objective{Kind: Boss, Species: "warlord", Count: 1}
 		difficulty = bossDiff
 	case Dungeon:
 		ref, ok := c.Dungeons[strings.ToLower(strings.TrimSpace(p.Place))]
 		if !ok {
-			return Quest{}, reject("donjon inconnu ou hors de portée %q", p.Place)
+			return Quest{}, reject("dungeon unknown or out of range %q", p.Place)
 		}
 		if c.Level < DungeonLevel(ref.Tier) {
-			return Quest{}, reject("niveau %d insuffisant pour un donjon de palier %d", c.Level, ref.Tier)
+			return Quest{}, reject("level %d insufficient for a tier %d dungeon", c.Level, ref.Tier)
 		}
 		q.Objective = Objective{Kind: Dungeon, Species: "lich", Count: 1, Target: ref.Region}
 		difficulty = dungeonBase + dungeonStep*ref.Tier
 	default:
-		return Quest{}, reject("type d'objectif inconnu %q", p.Type)
+		return Quest{}, reject("unknown objective type %q", p.Type)
 	}
 
 	q.Tier = TierOf(difficulty)
@@ -228,7 +228,7 @@ func findSpecies(list []Species, kind string) (Species, bool) {
 	return Species{}, false
 }
 
-// TierOf classe une difficulté en palier 1 à 3.
+// TierOf classifies a difficulty into tier 1 to 3.
 func TierOf(difficulty int) int {
 	switch {
 	case difficulty < 40:
@@ -239,7 +239,7 @@ func TierOf(difficulty int) int {
 	return 3
 }
 
-// RewardBounds renvoie les bornes de la récompense pour une difficulté donnée.
+// RewardBounds returns the reward bounds for a given difficulty.
 func RewardBounds(difficulty int, boss bool) (minR, maxR Reward) {
 	maxPotions := 2
 	if boss {
@@ -250,8 +250,8 @@ func RewardBounds(difficulty int, boss bool) (minR, maxR Reward) {
 	return
 }
 
-// ClampReward ramène une récompense proposée dans les bornes. Une valeur absente ou
-// aberrante devient le minimum (ou le maximum si elle dépasse) : jamais plus que le plafond.
+// ClampReward brings a proposed reward within bounds. A missing or
+// absurd value becomes the minimum (or the maximum if it exceeds): never more than the cap.
 func ClampReward(r Reward, difficulty int, boss bool) Reward {
 	lo, hi := RewardBounds(difficulty, boss)
 	r.Gold = max(lo.Gold, min(r.Gold, hi.Gold))
@@ -260,11 +260,11 @@ func ClampReward(r Reward, difficulty int, boss bool) Reward {
 	return r
 }
 
-// ReputationGain est le gain de réputation d'une quête rendue.
+// ReputationGain is the reputation gain of a completed quest.
 func (q Quest) ReputationGain() int { return 1 + max(1, min(q.Tier, 3)) }
 
-// Advance fait progresser une quête et la passe à Ready quand l'objectif est atteint.
-// Elle renvoie vrai si quelque chose a changé. Sans effet sur une quête non active.
+// Advance progresses a quest and moves it to Ready when the objective is reached.
+// It returns true if something changed. No effect on a non-active quest.
 func (q *Quest) Advance(by int) bool {
 	if q.State != Active || by <= 0 {
 		return false
@@ -276,32 +276,32 @@ func (q *Quest) Advance(by int) bool {
 	return true
 }
 
-// Expired indique si la quête, encore ouverte, a dépassé sa durée de vie.
+// Expired reports whether the quest, still open, has exceeded its lifetime.
 func (q Quest) Expired(now time.Time) bool {
 	return q.Open() && now.Sub(q.CreatedAt) > Lifetime
 }
 
-// SameObjective indique que deux quêtes ont le même donneur et le même objectif.
+// SameObjective reports that two quests have the same giver and the same objective.
 func SameObjective(a, b Quest) bool {
 	return a.Giver == b.Giver && a.Objective == b.Objective
 }
 
-// ---------------------------------------------------------------- réputation
+// ---------------------------------------------------------------- reputation
 
-// Paliers de réputation par lieu.
+// Reputation tiers per place.
 const (
 	Known    = 3
 	Esteemed = 8
 	Honored  = 15
 
-	// Suspect et Wanted sont les paliers négatifs : à Wanted, les gardes du lieu attaquent.
+	// Suspect and Wanted are the negative tiers: at Wanted, the place's guards attack.
 	Suspect = -5
 	Wanted  = -10
-	// MinReputation borne la chute : au-delà, un lieu ne peut pas être plus hostile.
+	// MinReputation bounds the fall: beyond it, a place cannot be more hostile.
 	MinReputation = -20
 )
 
-// TierName donne le palier de réputation.
+// TierName gives the reputation tier (French names).
 func TierName(points int) string {
 	switch {
 	case points >= Honored:
@@ -318,7 +318,7 @@ func TierName(points int) string {
 	return "Inconnu"
 }
 
-// TierLabel donne le palier de réputation dans la langue du joueur.
+// TierLabel gives the reputation tier in the player's language.
 func TierLabel(l i18n.Lang, points int) string {
 	switch {
 	case points >= Honored:
@@ -335,8 +335,8 @@ func TierLabel(l i18n.Lang, points int) string {
 	return i18n.T(l, "quest.tier.0")
 }
 
-// NextTier renvoie les points manquants pour le palier suivant (0 au maximum, et 0 pour un joueur mal vu :
-// il n'a pas de « palier suivant » à viser).
+// NextTier returns the points missing for the next tier (0 at the maximum, and 0 for a player in bad standing:
+// they have no "next tier" to aim for).
 func NextTier(points int) int {
 	if points < 0 {
 		return 0
@@ -349,10 +349,10 @@ func NextTier(points int) int {
 	return 0
 }
 
-// IsWanted indique que le lieu considère le joueur comme un hors-la-loi.
+// IsWanted reports that the place considers the player an outlaw.
 func IsWanted(points int) bool { return points <= Wanted }
 
-// DiscountPercent est la réduction des prix dans le lieu (soins, potions).
+// DiscountPercent is the price reduction in the place (healing, potions).
 func DiscountPercent(points int) int {
 	switch {
 	case points >= Honored:
@@ -363,7 +363,7 @@ func DiscountPercent(points int) int {
 	return 0
 }
 
-// Discount applique la réduction de réputation à un prix (jamais en dessous de 1 si le prix est positif).
+// Discount applies the reputation discount to a price (never below 1 if the price is positive).
 func Discount(price, points int) int {
 	if price <= 0 {
 		return price

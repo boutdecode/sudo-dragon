@@ -14,20 +14,20 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Marche automatique (/goto x y): le client calcule un chemin puis envoie
-// un pas à intervalle régulier, comme si le joueur appuyait sur les touches.
-// Le serveur reste seul juge des collisions.
+// Automatic walking (/goto x y): the client computes a path then sends
+// one step at regular intervals, as if the player pressed the keys.
+// The server remains the sole judge of collisions.
 
-// walkEvery vaut MoveCooldown (2 ticks) × TickInterval (100 ms).
+// walkEvery is MoveCooldown (2 ticks) × TickInterval (100 ms).
 const walkEvery = 200 * time.Millisecond
 
 const (
-	walkReplanAt = 4 // ticks sans progrès avant de recalculer le chemin
-	walkGiveUpAt = 8 // ticks sans progrès avant d'abandonner
+	walkReplanAt = 4 // ticks without progress before recomputing the path
+	walkGiveUpAt = 8 // ticks without progress before giving up
 )
 
-// walkTickMsg déclenche un pas; gen invalide les minuteurs d'une marche
-// annulée ou remplacée.
+// walkTickMsg triggers a step; gen invalidates the timers of a cancelled
+// or replaced walk.
 type walkTickMsg struct {
 	conn *Conn
 	gen  int
@@ -37,8 +37,8 @@ func walkTick(c *Conn, gen int) tea.Cmd {
 	return tea.Tick(walkEvery, func(time.Time) tea.Msg { return walkTickMsg{c, gen} })
 }
 
-// parseGoto reconnaît "/goto x y". isCmd est vrai si le texte est la
-// commande (même mal formée); ok est faux si les arguments sont invalides.
+// parseGoto recognizes "/goto x y". isCmd is true if the text is the
+// command (even malformed); ok is false if the arguments are invalid.
 func parseGoto(text string) (target world.Pos, isCmd, ok bool) {
 	f := strings.Fields(text)
 	if len(f) == 0 || !strings.EqualFold(f[0], "/goto") {
@@ -55,8 +55,8 @@ func parseGoto(text string) (target world.Pos, isCmd, ok bool) {
 	return world.Pos{X: x, Y: y}, true, true
 }
 
-// parseGotoName reconnaît "/goto nom du repère" : la commande avec des arguments qui ne sont pas
-// deux entiers. Le nom est l'ensemble des arguments, séparés par une espace.
+// parseGotoName recognizes "/goto marker name": the command with arguments that are not
+// two integers. The name is all the arguments, separated by a space.
 func parseGotoName(text string) (name string, ok bool) {
 	f := strings.Fields(text)
 	if len(f) < 2 || !strings.EqualFold(f[0], "/goto") {
@@ -68,15 +68,15 @@ func parseGotoName(text string) (name string, ok bool) {
 	return strings.Join(f[1:], " "), true
 }
 
-// target est une destination désignée par son nom : un repère ou un lieu découvert.
+// target is a destination designated by name: a marker or a discovered place.
 type target struct {
 	Pos   world.Pos
 	Name  string
-	place bool // lieu (centre à ajuster vers une case praticable)
+	place bool // place (center to adjust toward a walkable tile)
 }
 
-// discoveredPlaces renvoie les lieux (village, ville, forteresse) dont le centre est sur une zone
-// explorée de la carte.
+// discoveredPlaces returns the places (village, town, fortress) whose center is in an
+// explored area of the map.
 func (m Model) discoveredPlaces() []*world.Structure {
 	if m.world == nil || m.dmap != nil {
 		return nil
@@ -96,9 +96,9 @@ func (m Model) discoveredPlaces() []*world.Structure {
 	return out
 }
 
-// findTarget résout un nom de repère ou de lieu découvert, sans tenir compte de la casse : égalité
-// exacte (repère d'abord, puis lieu, le plus proche en cas de lieux jumeaux), sinon préfixe. Renvoie
-// le nombre de correspondances (0 = inconnu, >1 = ambigu).
+// findTarget resolves a marker or discovered place name, case-insensitively: exact
+// match (marker first, then place, the nearest in case of twin places), otherwise prefix. It returns
+// the number of matches (0 = unknown, >1 = ambiguous).
 func (m Model) findTarget(query string) (target, int) {
 	if m.dmap != nil {
 		return m.dungeonTarget(query)
@@ -123,7 +123,7 @@ func (m Model) findTarget(query string) (target, int) {
 		}
 	}
 	var exact []target
-	groups := map[string][]target{} // lieux dont le nom commence par q, groupés par nom
+	groups := map[string][]target{} // places whose name starts with q, grouped by name
 	for _, s := range m.discoveredPlaces() {
 		name := s.NameIn(m.lang)
 		t := target{Pos: s.Center(), Name: name, place: true}
@@ -135,7 +135,7 @@ func (m Model) findTarget(query string) (target, int) {
 			groups[low] = append(groups[low], t)
 		}
 	}
-	for _, d := range m.dungeons { // les entrées de donjon se rejoignent comme les lieux: on s'arrête devant
+	for _, d := range m.dungeons { // dungeon entrances are reached like places: we stop in front of them
 		t := target{Pos: world.Pos{X: d.X, Y: d.Y}, Name: d.Name, place: true}
 		low := strings.ToLower(d.Name)
 		if low == q {
@@ -168,8 +168,8 @@ func (m Model) findTarget(query string) (target, int) {
 
 func dist2(a, b world.Pos) int { return (a.X-b.X)*(a.X-b.X) + (a.Y-b.Y)*(a.Y-b.Y) }
 
-// walkableNear renvoie la case libre la plus proche de p dans un rayon donné, en préférant les
-// chemins (le centre d'un lieu tombe souvent dans un bâtiment). Repli sur p.
+// walkableNear returns the free tile nearest to p within a given radius, preferring
+// paths (a place's center often falls inside a building). Falls back to p.
 func (m Model) walkableNear(p world.Pos, radius int) world.Pos {
 	free := m.freeFn()
 	for _, roadOnly := range []bool{true, false} {
@@ -200,7 +200,7 @@ func (m Model) walkableNear(p world.Pos, radius int) world.Pos {
 	return p
 }
 
-// gotoName lance la marche vers un repère ou un lieu découvert désigné par son nom.
+// gotoName starts the walk to a marker or discovered place designated by name.
 func (m Model) gotoName(name string) (Model, tea.Cmd) {
 	t, n := m.findTarget(name)
 	switch {
@@ -224,12 +224,12 @@ func (m *Model) sysLine(key string, args ...any) {
 	m.addChat(chatLine{Channel: protocol.ChanSystem, Text: m.t(key, args...)})
 }
 
-// freeFn renvoie un test de case praticable: terrain, PNJ, monstres et
-// autres joueurs (positions de l'instantané courant).
+// freeFn returns a walkable-tile test: terrain, NPCs, monsters and
+// other players (positions from the current snapshot).
 func (m Model) freeFn() func(world.Pos) bool { return m.freeFnTo(m.walkTarget) }
 
-// freeFnTo est freeFn pour une marche vers to. Les escaliers d'un donjon et l'entrée d'un donjon sont des
-// passages: on ne les traverse pas par mégarde, seulement si c'est la destination.
+// freeFnTo is freeFn for a walk to to. Dungeon stairs and a dungeon entrance are
+// passages: we do not cross them by accident, only if it is the destination.
 func (m Model) freeFnTo(to world.Pos) func(world.Pos) bool {
 	busy := map[world.Pos]bool{}
 	for _, mo := range m.snap.Monsters {
@@ -255,7 +255,7 @@ func (m Model) freeFnTo(to world.Pos) func(world.Pos) bool {
 	}
 }
 
-// startGoto lance la marche vers target.
+// startGoto starts the walk to target.
 func (m Model) startGoto(target world.Pos) (Model, tea.Cmd) {
 	m.walkGen++
 	m.walking, m.walkPath = false, nil
@@ -277,7 +277,7 @@ func (m Model) startGoto(target world.Pos) (Model, tea.Cmd) {
 	return m, walkTick(m.conn, m.walkGen)
 }
 
-// stopWalk annule la marche; key est le message à afficher ("" = aucun).
+// stopWalk cancels the walk; key is the message to display ("" = none).
 func (m *Model) stopWalk(key string) {
 	if !m.walking {
 		return
@@ -289,7 +289,7 @@ func (m *Model) stopWalk(key string) {
 	}
 }
 
-// updateWalk traite un pas de la marche automatique.
+// updateWalk handles one step of the automatic walk.
 func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 	if !m.walking || msg.conn != m.conn || msg.gen != m.walkGen || m.state != statePlaying {
 		return m, nil
@@ -305,8 +305,8 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 	}
 	again := walkTick(m.conn, m.walkGen)
 
-	// Pas de progrès: l'instantané n'est peut-être pas encore arrivé, ou un
-	// obstacle nous bloque. On patiente, puis on recalcule, puis on abandonne.
+	// No progress: the snapshot may not have arrived yet, or an
+	// obstacle blocks us. We wait, then recompute, then give up.
 	if self == m.walkLast {
 		m.walkStuck++
 		if m.walkStuck >= walkGiveUpAt {
@@ -323,7 +323,7 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 		m.walkStuck = 0
 	}
 
-	// Recale le chemin sur la position actuelle.
+	// Realign the path on the current position.
 	idx := -1
 	for i, p := range m.walkPath {
 		if p == self {
@@ -339,7 +339,7 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 		m.walkPath = m.findWalkPath(self, m.walkTarget, free)
 		if m.walkPath == nil {
 			if m.walkStuck > 0 {
-				return m, again // peut-être un obstacle passager
+				return m, again // maybe a passing obstacle
 			}
 			m.stopWalk("cli.goto.unreachable_now")
 			return m, nil
@@ -354,9 +354,9 @@ func (m Model) updateWalk(msg walkTickMsg) (Model, tea.Cmd) {
 	return m, again
 }
 
-// gotoCandidates liste les noms que /goto sait résoudre (pour la complétion par Tab): repères,
-// lieux découverts (nom seul et libellé « Village Foo ») et entrées de donjon; sous terre,
-// l'escalier et les coffres.
+// gotoCandidates lists the names /goto can resolve (for Tab completion): markers,
+// discovered places (name alone and label "Village Foo") and dungeon entrances; underground,
+// the stairs and the chests.
 func (m Model) gotoCandidates() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -385,9 +385,9 @@ func (m Model) gotoCandidates() []string {
 	return out
 }
 
-// completeGoto complète « /goto début » avec les candidats dont le nom commence par ce début (casse
-// ignorée). Renvoie le nouveau texte et les correspondances; le texte est inchangé si l'entrée n'est
-// pas un /goto par nom ou s'il n'y a aucune correspondance.
+// completeGoto completes "/goto start" with the candidates whose name starts with that start (case
+// ignored). It returns the new text and the matches; the text is unchanged if the input is
+// not a /goto by name or if there is no match.
 func completeGoto(input string, cands []string) (string, []string) {
 	const cmd = "/goto "
 	if len(input) < len(cmd) || !strings.EqualFold(input[:len(cmd)], cmd) {
@@ -420,14 +420,14 @@ func completeGoto(input string, cands []string) (string, []string) {
 		}
 		common = common[:n]
 	}
-	if len(common) < len([]rune(prefix)) { // ne jamais raccourcir ce que le joueur a tapé
+	if len(common) < len([]rune(prefix)) { // never shorten what the player typed
 		return input, matches
 	}
 	return input[:len(cmd)] + string(common), matches
 }
 
-// completeChat gère Tab dans le chat: complète un /goto et, si rien ne progresse alors que
-// plusieurs noms conviennent, les liste dans le chat.
+// completeChat handles Tab in the chat: completes a /goto and, if nothing progresses while
+// several names fit, lists them in the chat.
 func (m *Model) completeChat() {
 	cur := m.chatInput.Value()
 	next, matches := completeGoto(cur, m.gotoCandidates())
@@ -443,8 +443,8 @@ func (m *Model) completeChat() {
 
 const maxChatHist = 100
 
-// pushHistory mémorise une ligne envoyée depuis le chat (sans doublon consécutif) et ramène le
-// rappel à la saisie en cours.
+// pushHistory remembers a line sent from the chat (without consecutive duplicates) and resets
+// recall to the input in progress.
 func (m *Model) pushHistory(text string) {
 	if text != "" && (len(m.chatHist) == 0 || m.chatHist[len(m.chatHist)-1] != text) {
 		m.chatHist = append(m.chatHist, text)
@@ -455,10 +455,10 @@ func (m *Model) pushHistory(text string) {
 	m.histPos, m.histDraft = len(m.chatHist), ""
 }
 
-// recallHistory remonte (-1) ou redescend (+1) dans les lignes déjà envoyées; en bas on retrouve la
-// saisie en cours.
+// recallHistory goes up (-1) or down (+1) in the lines already sent; at the bottom we get back the
+// input in progress.
 func (m *Model) recallHistory(dir int) {
-	if m.histPos > len(m.chatHist) { // historique raccourci entre-temps
+	if m.histPos > len(m.chatHist) { // history shortened in the meantime
 		m.histPos = len(m.chatHist)
 	}
 	pos := m.histPos + dir

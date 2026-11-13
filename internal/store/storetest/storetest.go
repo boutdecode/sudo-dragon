@@ -1,4 +1,4 @@
-// Package storetest fournit une base temporaire pour les tests des autres paquets.
+// Package storetest provides a temporary database for the tests of other packages.
 package storetest
 
 import (
@@ -11,12 +11,12 @@ import (
 	"github.com/kevin/ascii-adventure/internal/store"
 )
 
-// Password est un mot de passe valide pour les comptes de test.
+// Password is a valid password for test accounts.
 const Password = "motdepasse-test"
 
-// NewBackend crée une base SQLite temporaire (bcrypt au coût minimal) et son
-// écrivain, fermés à la fin du test. flushEvery règle l'intervalle d'écriture
-// (une valeur longue permet de tester la lecture des sauvegardes en attente).
+// NewBackend creates a temporary SQLite database (bcrypt at minimum cost) and its
+// writer, closed at the end of the test. flushEvery sets the write interval
+// (a long value allows testing the reading of pending saves).
 func NewBackend(t testing.TB, flushEvery time.Duration) store.Backend {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"), store.WithBcryptCost(bcrypt.MinCost))
@@ -26,7 +26,7 @@ func NewBackend(t testing.TB, flushEvery time.Duration) store.Backend {
 	p := store.NewPersister(st, flushEvery, nil)
 	t.Cleanup(func() {
 		if err := p.Close(); err != nil {
-			t.Errorf("fermeture de l'écrivain: %v", err)
+			t.Errorf("closing the writer: %v", err)
 		}
 		st.Close()
 	})

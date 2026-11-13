@@ -10,22 +10,22 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Quêtes de donjon: « vaincre le maître d'un donjon secret ». Deux sources, qui passent par la même validation
-// (quest.Validate): le modèle de langage, qui propose librement un donjon de la liste autorisée, et un villageois
-// qui confie du travail, sans modèle de langage, en désignant le donjon accessible le plus proche. Accepter la
-// quête révèle l'entrée du donjon ; la mort de la liche dans son donjon l'accomplit.
+// Dungeon quests: "defeat the master of a secret dungeon". Two sources, which go through the same validation
+// (quest.Validate): the language model, which freely proposes a dungeon from the allowed list, and a villager
+// who entrusts work, without a language model, by designating the nearest accessible dungeon. Accepting the
+// quest reveals the dungeon entrance; the lich's death in its dungeon completes it.
 
-// dungeonRange est la distance maximale (en régions) du donneur à un donjon qu'il confie.
+// dungeonRange is the maximum distance (in regions) from the giver to a dungeon it entrusts.
 const dungeonRange = quest.PlaceRange
 
-// workReward donne la récompense proposée pour un donjon: confortable, mais bornée par quest.ClampReward.
+// workReward gives the reward offered for a dungeon: comfortable, but bounded by quest.ClampReward.
 func workReward(tier int) quest.Reward {
 	diff := 150 + 50*tier
 	return quest.Reward{Gold: diff * 5 / 4, XP: diff / 5, Potions: 2}
 }
 
-// dungeonsFor liste les donjons que npc peut confier à p: à portée, au niveau du joueur, pas déjà en cours ni
-// rendus. Le plus proche d'abord, puis par identifiant (ordre stable).
+// dungeonsFor lists the dungeons that npc can entrust to p: within range, at the player's level, not already in progress nor
+// completed. Nearest first, then by identifier (stable order).
 func (g *Game) dungeonsFor(p *player, npc world.NPC) []*world.Dungeon {
 	taken := map[world.RegionPos]bool{}
 	for _, q := range p.quests {
@@ -37,7 +37,7 @@ func (g *Game) dungeonsFor(p *player, npc world.NPC) []*world.Dungeon {
 	for ry := npc.Region.Y - dungeonRange; ry <= npc.Region.Y+dungeonRange; ry++ {
 		for rx := npc.Region.X - dungeonRange; rx <= npc.Region.X+dungeonRange; rx++ {
 			d := g.World.DungeonOfRegion(world.RegionPos{X: rx, Y: ry})
-			// Un donjon dont le boss vient de tomber ne peut pas être vaincu avant son retour: on ne le confie pas.
+			// A dungeon whose boss has just fallen cannot be defeated before it returns: do not entrust it.
 			if d != nil && !taken[d.Region] && p.stats.Level >= quest.DungeonLevel(d.Tier) && !g.coolingDown(d) {
 				out = append(out, d)
 			}
@@ -62,9 +62,9 @@ func compareStrings(a, b string) int {
 	return 0
 }
 
-// dungeonRefs donne au contexte de validation les donjons que npc peut confier, par nom dans la langue de p.
-// Deux donjons de même nom (impossible à moins de 3 régions l'un de l'autre, mais le donneur voit plus loin)
-// ne sont proposés ni l'un ni l'autre.
+// dungeonRefs gives the validation context the dungeons that npc can entrust, by name in p's language.
+// Two dungeons with the same name (impossible within 3 regions of each other, but the giver sees further)
+// are offered neither.
 func (g *Game) dungeonRefs(p *player, npc world.NPC) map[string]quest.DungeonRef {
 	refs := map[string]quest.DungeonRef{}
 	dup := map[string]bool{}
@@ -81,13 +81,13 @@ func (g *Game) dungeonRefs(p *player, npc world.NPC) map[string]quest.DungeonRef
 	return refs
 }
 
-// hasWork dit si npc a un donjon à confier à p (et peut lui confier une quête).
+// hasWork says whether npc has a dungeon to entrust to p (and can entrust a quest).
 func (g *Game) hasWork(p *player, npc world.NPC) bool {
 	return npc.GivesQuests && g.canOffer(p, npc) && len(g.dungeonsFor(p, npc)) > 0
 }
 
-// workQuest fabrique la quête de donjon que npc confie à p, ou nil. Elle passe par quest.Validate comme toute
-// proposition: le niveau, la portée et les plafonds de récompense sont les mêmes que pour le modèle de langage.
+// workQuest builds the dungeon quest that npc entrusts to p, or nil. It goes through quest.Validate like any
+// proposal: the level, range and reward caps are the same as for the language model.
 func (g *Game) workQuest(p *player, npc world.NPC) *quest.Quest {
 	if !g.hasWork(p, npc) {
 		return nil
@@ -115,7 +115,7 @@ func (g *Game) workQuest(p *player, npc world.NPC) *quest.Quest {
 	return &q
 }
 
-// askWork répond à « avez-vous du travail ? » : la quête de donjon est proposée, ou le PNJ n'a rien à confier.
+// askWork answers "do you have any work?": the dungeon quest is offered, or the NPC has nothing to entrust.
 func (g *Game) askWork(p *player) []string {
 	t := p.talk
 	q := g.workQuest(p, t.npc)
@@ -123,13 +123,13 @@ func (g *Game) askWork(p *player) []string {
 		return []string{i18n.T(p.lang, "npc.no_work")}
 	}
 	g.proposeQuest(p, q)
-	if t.proposal == nil { // déjà en cours auprès de ce PNJ, ou plus recevable
+	if t.proposal == nil { // already in progress with this NPC, or no longer acceptable
 		return []string{i18n.T(p.lang, "npc.no_work")}
 	}
 	return nil
 }
 
-// revealDungeonOf révèle l'entrée du donjon visé par la quête q à son porteur.
+// revealDungeonOf reveals the entrance of the dungeon targeted by quest q to its bearer.
 func (g *Game) revealDungeonOf(p *player, q quest.Quest) {
 	if q.Objective.Kind != quest.Dungeon {
 		return
@@ -139,7 +139,7 @@ func (g *Game) revealDungeonOf(p *player, q quest.Quest) {
 	}
 }
 
-// questDungeon compte la victoire sur le maître du donjon de la région rp. Renvoie des lignes de journal.
+// questDungeon counts the victory over the dungeon master of region rp. Returns journal lines.
 func (g *Game) questDungeon(p *player, rp world.RegionPos) []string {
 	var log []string
 	changed := false

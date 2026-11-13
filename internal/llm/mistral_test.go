@@ -16,15 +16,15 @@ import (
 
 const testKey = "cle-secrete-de-test-0123456789"
 
-// recorded est une requête reçue par le faux serveur.
+// recorded is a request received by the fake server.
 type recorded struct {
 	Method, Path string
 	Header       http.Header
 	Body         map[string]any
 }
 
-// fakeAPI démarre un faux serveur Mistral. handler décide de la réponse; les
-// requêtes reçues sont enregistrées.
+// fakeAPI starts a fake Mistral server. handler decides the response; the
+// requests received are recorded.
 func fakeAPI(t *testing.T, handler func(n int, w http.ResponseWriter, r *http.Request)) (*Mistral, *[]recorded) {
 	t.Helper()
 	var mu sync.Mutex
@@ -42,7 +42,7 @@ func fakeAPI(t *testing.T, handler func(n int, w http.ResponseWriter, r *http.Re
 	t.Cleanup(srv.Close)
 
 	m := NewMistral(testKey, WithBaseURL(srv.URL), WithRetries(2, time.Millisecond))
-	// Temps instantané et traçable.
+	// Instant, traceable time.
 	m.sleep = func(ctx context.Context, d time.Duration) error { return ctx.Err() }
 	m.jitter = func(d time.Duration) time.Duration { return d }
 	return m, &got
@@ -78,14 +78,14 @@ func TestChatRequestShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Content != "Bonjour" || resp.FinishReason != "stop" || resp.Model != "m-test" {
-		t.Fatalf("réponse: %+v", resp)
+		t.Fatalf("response: %+v", resp)
 	}
 	if resp.Usage != (Usage{11, 7, 18}) {
-		t.Fatalf("consommation: %+v", resp.Usage)
+		t.Fatalf("usage: %+v", resp.Usage)
 	}
 
 	if len(*got) != 1 {
-		t.Fatalf("%d requêtes", len(*got))
+		t.Fatalf("%d requests", len(*got))
 	}
 	r := (*got)[0]
 	if r.Method != "POST" || r.Path != "/v1/chat/completions" {
@@ -98,7 +98,7 @@ func TestChatRequestShape(t *testing.T) {
 		t.Fatalf("Content-Type = %q", r.Header.Get("Content-Type"))
 	}
 	if r.Body["model"] != DefaultModel {
-		t.Fatalf("modèle = %v, attendu le défaut %s", r.Body["model"], DefaultModel)
+		t.Fatalf("model = %v, want the default %s", r.Body["model"], DefaultModel)
 	}
 	msgs := r.Body["messages"].([]any)
 	wantRoles := []string{"system", "user", "assistant", "user"}
@@ -107,14 +107,14 @@ func TestChatRequestShape(t *testing.T) {
 	}
 	for i, role := range wantRoles {
 		if msgs[i].(map[string]any)["role"] != role {
-			t.Fatalf("message %d: rôle %v, attendu %s", i, msgs[i].(map[string]any)["role"], role)
+			t.Fatalf("message %d: role %v, want %s", i, msgs[i].(map[string]any)["role"], role)
 		}
 	}
 	if msgs[0].(map[string]any)["content"] != "Tu es un soigneur." {
-		t.Fatal("contenu du message système altéré")
+		t.Fatal("system message content altered")
 	}
 	if r.Body["temperature"] != 0.4 || r.Body["max_tokens"] != float64(150) || r.Body["random_seed"] != float64(42) {
-		t.Fatalf("paramètres: %v", r.Body)
+		t.Fatalf("parameters: %v", r.Body)
 	}
 	if rf, _ := r.Body["response_format"].(map[string]any); rf["type"] != "json_object" {
 		t.Fatalf("response_format = %v", r.Body["response_format"])
@@ -129,11 +129,11 @@ func TestChatOmitsUnsetFields(t *testing.T) {
 	body := (*got)[0].Body
 	for _, k := range []string{"temperature", "max_tokens", "response_format", "random_seed", "guardrails"} {
 		if _, present := body[k]; present {
-			t.Errorf("le champ %q ne devrait pas être envoyé quand il n'est pas demandé", k)
+			t.Errorf("field %q should not be sent when not requested", k)
 		}
 	}
 	if body["model"] != "mon-modele" {
-		t.Fatalf("modèle = %v", body["model"])
+		t.Fatalf("model = %v", body["model"])
 	}
 }
 
@@ -156,17 +156,17 @@ func TestChatGuardrailShape(t *testing.T) {
 	}
 	th := mod["custom_category_thresholds"].(map[string]any)
 	if th["pii"] != 0.5 || th["jailbreaking"] != 0.3 {
-		t.Fatalf("seuils: %v", th)
+		t.Fatalf("thresholds: %v", th)
 	}
 }
 
 func TestChatEmptyRequestIsRejectedLocally(t *testing.T) {
 	m, got := fakeAPI(t, okChat("x"))
 	if _, err := m.Chat(context.Background(), Request{}); !errors.Is(err, ErrBadRequest) {
-		t.Fatalf("erreur: %v", err)
+		t.Fatalf("error: %v", err)
 	}
 	if len(*got) != 0 {
-		t.Fatal("une requête vide ne devrait pas atteindre le réseau")
+		t.Fatal("an empty request should not reach the network")
 	}
 }
 
@@ -179,23 +179,23 @@ func TestChatContentAsChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Content != "Bonjour" {
-		t.Fatalf("contenu = %q (les fragments autres que du texte doivent être ignorés)", resp.Content)
+		t.Fatalf("content = %q (non-text fragments must be ignored)", resp.Content)
 	}
 }
 
 func TestChatBadResponses(t *testing.T) {
 	for name, body := range map[string]string{
-		"json invalide":     `{pas du json`,
-		"sans choix":        `{"choices":[]}`,
-		"contenu nul":       `{"choices":[{"message":{"content":null}}]}`,
-		"contenu absent":    `{"choices":[{"message":{}}]}`,
-		"contenu numérique": `{"choices":[{"message":{"content":42}}]}`,
-		"fragments vides":   `{"choices":[{"message":{"content":[{"type":"image_url"}]}}]}`,
-		"corps vide":        ``,
+		"invalid json":    `{pas du json`,
+		"no choices":      `{"choices":[]}`,
+		"null content":    `{"choices":[{"message":{"content":null}}]}`,
+		"missing content": `{"choices":[{"message":{}}]}`,
+		"numeric content": `{"choices":[{"message":{"content":42}}]}`,
+		"empty fragments": `{"choices":[{"message":{"content":[{"type":"image_url"}]}}]}`,
+		"empty body":      ``,
 	} {
 		m, _ := fakeAPI(t, func(_ int, w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) })
 		if _, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}}); !errors.Is(err, ErrBadResponse) {
-			t.Errorf("%s: erreur %v, attendu ErrBadResponse", name, err)
+			t.Errorf("%s: error %v, want ErrBadResponse", name, err)
 		}
 	}
 }
@@ -210,20 +210,20 @@ func TestChatMissingUsageIsEstimated(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp.Usage != (Usage{}) {
-		t.Fatalf("usage inventé: %+v", resp.Usage)
+		t.Fatalf("made-up usage: %+v", resp.Usage)
 	}
 	if got := resp.TotalTokens(req); got < 30 || got > 40 {
-		t.Fatalf("estimation = %d jetons, attendu environ (90+9)/3", got)
+		t.Fatalf("estimate = %d tokens, want about (90+9)/3", got)
 	}
 	if got := (Response{Usage: Usage{Total: 50}}).TotalTokens(req); got != 50 {
-		t.Fatalf("total fourni ignoré: %d", got)
+		t.Fatalf("provided total ignored: %d", got)
 	}
 	if got := (Response{Usage: Usage{Prompt: 20, Completion: 5}}).TotalTokens(req); got != 25 {
-		t.Fatalf("somme prompt+completion ignorée: %d", got)
+		t.Fatalf("prompt+completion sum ignored: %d", got)
 	}
 }
 
-// --- Erreurs HTTP ---
+// --- HTTP errors ---
 
 func status(code int, body string) func(int, http.ResponseWriter, *http.Request) {
 	return func(_ int, w http.ResponseWriter, _ *http.Request) {
@@ -243,14 +243,14 @@ func TestNoRetryForClientErrors(t *testing.T) {
 		m, got := fakeAPI(t, status(c.code, `{"message":"détail de l'erreur"}`))
 		_, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 		if !errors.Is(err, c.want) {
-			t.Errorf("HTTP %d: erreur %v, attendu %v", c.code, err, c.want)
+			t.Errorf("HTTP %d: error %v, want %v", c.code, err, c.want)
 		}
 		if len(*got) != 1 {
-			t.Errorf("HTTP %d: %d tentatives, aucune reprise attendue", c.code, len(*got))
+			t.Errorf("HTTP %d: %d attempts, no retry expected", c.code, len(*got))
 		}
 		var ae *APIError
 		if !errors.As(err, &ae) || ae.Status != c.code || !strings.Contains(ae.Body, "détail") {
-			t.Errorf("HTTP %d: détails de l'erreur absents: %v", c.code, err)
+			t.Errorf("HTTP %d: error details missing: %v", c.code, err)
 		}
 	}
 }
@@ -265,10 +265,10 @@ func TestRetryOnServerErrorThenSucceed(t *testing.T) {
 	})
 	resp, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	if err != nil || resp.Content != "enfin" {
-		t.Fatalf("réponse %+v, erreur %v", resp, err)
+		t.Fatalf("response %+v, error %v", resp, err)
 	}
 	if len(*got) != 3 {
-		t.Fatalf("%d tentatives, attendu 3 (2 échecs puis succès)", len(*got))
+		t.Fatalf("%d attempts, want 3 (2 failures then success)", len(*got))
 	}
 }
 
@@ -280,7 +280,7 @@ func TestRetriesAreBounded(t *testing.T) {
 			t.Errorf("HTTP %d: %v", code, err)
 		}
 		if len(*got) != 3 {
-			t.Errorf("HTTP %d: %d tentatives, attendu 1 + 2 reprises", code, len(*got))
+			t.Errorf("HTTP %d: %d attempts, want 1 + 2 retries", code, len(*got))
 		}
 	}
 }
@@ -299,10 +299,10 @@ func TestRateLimitHonoursRetryAfter(t *testing.T) {
 
 	resp, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	if err != nil || resp.Content != "ok" {
-		t.Fatalf("réponse %+v, erreur %v", resp, err)
+		t.Fatalf("response %+v, error %v", resp, err)
 	}
 	if len(*got) != 2 || len(waits) != 1 || waits[0] != 3*time.Second {
-		t.Fatalf("%d tentatives, attentes %v: Retry-After: 3 devait être respecté", len(*got), waits)
+		t.Fatalf("%d attempts, waits %v: Retry-After: 3 should have been honored", len(*got), waits)
 	}
 }
 
@@ -314,13 +314,13 @@ func TestRateLimitWithoutHeaderUsesBackoff(t *testing.T) {
 
 	_, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	if !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("erreur: %v", err)
+		t.Fatalf("error: %v", err)
 	}
 	if len(*got) != 3 {
-		t.Fatalf("%d tentatives", len(*got))
+		t.Fatalf("%d attempts", len(*got))
 	}
 	if len(waits) != 2 || waits[0] != 100*time.Millisecond || waits[1] != 200*time.Millisecond {
-		t.Fatalf("attentes %v, attendu 100 ms puis 200 ms (exponentiel)", waits)
+		t.Fatalf("waits %v, want 100 ms then 200 ms (exponential)", waits)
 	}
 }
 
@@ -335,23 +335,23 @@ func TestRetryAfterTooLongFailsFast(t *testing.T) {
 	_, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	var ae *APIError
 	if !errors.Is(err, ErrRateLimited) || !errors.As(err, &ae) || ae.RetryAfter != 120*time.Second {
-		t.Fatalf("erreur: %v", err)
+		t.Fatalf("error: %v", err)
 	}
 	if slept || len(*got) != 1 {
-		t.Fatalf("attente de %v inutile: dormi=%v, %d tentatives", ae.RetryAfter, slept, len(*got))
+		t.Fatalf("useless wait of %v: slept=%v, %d attempts", ae.RetryAfter, slept, len(*got))
 	}
 }
 
 func TestParseRetryAfter(t *testing.T) {
 	future := time.Now().Add(30 * time.Second).UTC().Format(http.TimeFormat)
 	cases := map[string]func(time.Duration) bool{
-		"":        func(d time.Duration) bool { return d == 0 },
-		"5":       func(d time.Duration) bool { return d == 5*time.Second },
-		" 7 ":     func(d time.Duration) bool { return d == 7*time.Second },
-		"0":       func(d time.Duration) bool { return d == 0 },
-		"-4":      func(d time.Duration) bool { return d == 0 },
-		"bientôt": func(d time.Duration) bool { return d == 0 },
-		future:    func(d time.Duration) bool { return d > 25*time.Second && d <= 30*time.Second },
+		"":     func(d time.Duration) bool { return d == 0 },
+		"5":    func(d time.Duration) bool { return d == 5*time.Second },
+		" 7 ":  func(d time.Duration) bool { return d == 7*time.Second },
+		"0":    func(d time.Duration) bool { return d == 0 },
+		"-4":   func(d time.Duration) bool { return d == 0 },
+		"soon": func(d time.Duration) bool { return d == 0 },
+		future: func(d time.Duration) bool { return d > 25*time.Second && d <= 30*time.Second },
 		time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat): func(d time.Duration) bool { return d == 0 },
 	}
 	for in, ok := range cases {
@@ -368,10 +368,10 @@ func TestContextCancelledDuringBackoff(t *testing.T) {
 
 	_, err := m.Chat(ctx, Request{Messages: []Message{{User, "hi"}}})
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("erreur: %v", err)
+		t.Fatalf("error: %v", err)
 	}
 	if len(*got) != 1 {
-		t.Fatalf("%d tentatives après annulation", len(*got))
+		t.Fatalf("%d attempts after cancellation", len(*got))
 	}
 }
 
@@ -385,10 +385,10 @@ func TestContextDeadlineStopsSlowServer(t *testing.T) {
 	start := time.Now()
 	_, err := m.Chat(ctx, Request{Messages: []Message{{User, "hi"}}})
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("erreur: %v", err)
+		t.Fatalf("error: %v", err)
 	}
 	if time.Since(start) > 2*time.Second {
-		t.Fatal("la requête n'a pas respecté l'échéance du contexte")
+		t.Fatal("the request did not respect the context deadline")
 	}
 }
 
@@ -406,42 +406,42 @@ func TestPerAttemptTimeoutIsRetried(t *testing.T) {
 
 	resp, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	if err != nil || resp.Content != "rattrapé" {
-		t.Fatalf("réponse %+v, erreur %v", resp, err)
+		t.Fatalf("response %+v, error %v", resp, err)
 	}
 	if len(*got) != 2 {
-		t.Fatalf("%d tentatives", len(*got))
+		t.Fatalf("%d attempts", len(*got))
 	}
 }
 
 func TestConnectionRefusedIsUnavailable(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
-	srv.Close() // plus personne n'écoute
+	srv.Close() // nobody is listening anymore
 	m := NewMistral(testKey, WithBaseURL(url), WithRetries(1, time.Millisecond))
 	m.sleep = func(ctx context.Context, d time.Duration) error { return nil }
 	if _, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}}); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("erreur: %v", err)
+		t.Fatalf("error: %v", err)
 	}
 }
 
-// La clé d'API ne doit jamais apparaître dans une erreur, qu'elle soit affichée ou journalisée.
+// The API key must never appear in an error, whether displayed or logged.
 func TestAPIKeyNeverAppearsInErrors(t *testing.T) {
 	codes := []int{400, 401, 403, 422, 429, 500, 503}
 	for _, code := range codes {
 		m, _ := fakeAPI(t, status(code, `{"message":"échec"}`))
 		_, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 		if err == nil || strings.Contains(err.Error(), testKey) {
-			t.Errorf("HTTP %d: erreur %v", code, err)
+			t.Errorf("HTTP %d: error %v", code, err)
 		}
 	}
-	// Erreur de transport.
+	// Transport error.
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
 	srv.Close()
 	m := NewMistral(testKey, WithBaseURL(url), WithRetries(0, 0))
 	_, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	if err == nil || strings.Contains(err.Error(), testKey) {
-		t.Errorf("erreur de transport: %v", err)
+		t.Errorf("transport error: %v", err)
 	}
 }
 
@@ -449,7 +449,7 @@ func TestLongErrorBodyIsTruncated(t *testing.T) {
 	m, _ := fakeAPI(t, status(400, strings.Repeat("très long ", 500)))
 	_, err := m.Chat(context.Background(), Request{Messages: []Message{{User, "hi"}}})
 	if err == nil || len(err.Error()) > 600 {
-		t.Fatalf("message d'erreur de %d octets: non borné", len(err.Error()))
+		t.Fatalf("error message of %d bytes: unbounded", len(err.Error()))
 	}
 }
 
@@ -465,11 +465,11 @@ func TestBaseURLTrailingSlash(t *testing.T) {
 		t.Fatal(err)
 	}
 	if path != "/v1/chat/completions" {
-		t.Fatalf("chemin = %q", path)
+		t.Fatalf("path = %q", path)
 	}
 }
 
-// --- Modération ---
+// --- Moderation ---
 
 func TestModerateRequestAndVerdicts(t *testing.T) {
 	m, got := fakeAPI(t, func(_ int, w http.ResponseWriter, _ *http.Request) {
@@ -485,57 +485,57 @@ func TestModerateRequestAndVerdicts(t *testing.T) {
 		t.Fatalf("verdicts: %+v", v)
 	}
 	if len(v[1].Flagged) != 2 || v[1].Flagged[0] != "hate_and_discrimination" || v[1].Flagged[1] != "violence_and_threats" {
-		t.Fatalf("catégories signalées: %v", v[1].Flagged)
+		t.Fatalf("flagged categories: %v", v[1].Flagged)
 	}
 
 	r := (*got)[0]
 	if r.Path != "/v1/moderations" || r.Body["model"] != DefaultModerationModel {
-		t.Fatalf("%s, modèle %v", r.Path, r.Body["model"])
+		t.Fatalf("%s, model %v", r.Path, r.Body["model"])
 	}
 	in := r.Body["input"].([]any)
 	if len(in) != 2 || in[0] != "gentil" || in[1] != "méchant" {
-		t.Fatalf("entrée: %v", in)
+		t.Fatalf("input: %v", in)
 	}
 	if r.Header.Get("Authorization") != "Bearer "+testKey {
-		t.Fatal("clé absente de la requête de modération")
+		t.Fatal("key missing from the moderation request")
 	}
 }
 
 func TestModerateErrors(t *testing.T) {
 	m, _ := fakeAPI(t, func(_ int, w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{"results":[{"categories":{}}]}`) // un verdict pour deux textes
+		_, _ = io.WriteString(w, `{"results":[{"categories":{}}]}`) // one verdict for two texts
 	})
 	if _, err := m.Moderate(context.Background(), []string{"a", "b"}); !errors.Is(err, ErrBadResponse) {
-		t.Fatalf("verdicts manquants: %v", err)
+		t.Fatalf("missing verdicts: %v", err)
 	}
 	m, _ = fakeAPI(t, func(_ int, w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `pas du json`) })
 	if _, err := m.Moderate(context.Background(), []string{"a"}); !errors.Is(err, ErrBadResponse) {
-		t.Fatalf("JSON invalide: %v", err)
+		t.Fatalf("invalid JSON: %v", err)
 	}
 	m, got := fakeAPI(t, status(500, ""))
 	if _, err := m.Moderate(context.Background(), []string{"a"}); !errors.Is(err, ErrUnavailable) || len(*got) != 3 {
-		t.Fatalf("5xx: %v, %d tentatives", err, len(*got))
+		t.Fatalf("5xx: %v, %d attempts", err, len(*got))
 	}
-	// Aucun texte: pas d'appel réseau.
+	// No text: no network call.
 	m, got = fakeAPI(t, status(500, ""))
 	if v, err := m.Moderate(context.Background(), nil); err != nil || v != nil || len(*got) != 0 {
-		t.Fatalf("liste vide: %v %v, %d appels", v, err, len(*got))
+		t.Fatalf("empty list: %v %v, %d calls", v, err, len(*got))
 	}
 }
 
 func TestVerdictViolates(t *testing.T) {
 	v := Verdict{Flagged: []string{"pii", "sexual"}}
 	if !v.Violates(nil) || !v.Violates(map[string]bool{}) {
-		t.Error("liste vide = toutes les catégories")
+		t.Error("empty list = all categories")
 	}
 	if !v.Violates(map[string]bool{"sexual": true}) {
-		t.Error("catégorie bloquée non détectée")
+		t.Error("blocked category not detected")
 	}
 	if v.Violates(map[string]bool{"hate_and_discrimination": true}) {
-		t.Error("catégorie non bloquée jugée violée")
+		t.Error("non-blocked category judged violated")
 	}
 	if (Verdict{}).Violates(nil) {
-		t.Error("aucun signalement ne peut violer")
+		t.Error("no flag can violate")
 	}
 }
 
@@ -551,13 +551,13 @@ func TestFakeRecordsCalls(t *testing.T) {
 	}
 	v, _ := f.Moderate(context.Background(), []string{"a", "b"})
 	if len(v) != 2 {
-		t.Fatalf("verdicts par défaut: %v", v)
+		t.Fatalf("default verdicts: %v", v)
 	}
 	fk := f.(*Fake)
 	if len(fk.ChatCalls()) != 1 || len(fk.ModerationCalls()) != 1 || fk.ModerationCalls()[0][1] != "b" {
-		t.Fatal("appels non enregistrés")
+		t.Fatal("calls not recorded")
 	}
 	if (&Fake{}).ChatCalls() != nil {
-		t.Fatal("Fake vide: aucun appel attendu")
+		t.Fatal("empty Fake: no call expected")
 	}
 }

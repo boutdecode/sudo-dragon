@@ -14,7 +14,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// vendorSpots renvoie le forgeron ou l'armurier du village de départ et deux accès libres.
+// vendorSpots returns the blacksmith or armorer of the starting village and two free access tiles.
 func vendorSpots(t *testing.T) (world.NPC, []spot) {
 	t.Helper()
 	w := world.New(1)
@@ -35,7 +35,7 @@ func vendorSpots(t *testing.T) (world.NPC, []spot) {
 			}
 		}
 	}
-	t.Skip("pas de vendeur d'équipement avec un accès libre près du départ")
+	t.Skip("no equipment vendor with a free access tile near the start")
 	return world.NPC{}, nil
 }
 
@@ -54,11 +54,11 @@ func (p *player) bag(what string, pred func(protocol.Bag) bool) protocol.Bag {
 			return b
 		}
 	}
-	p.t.Fatalf("%s %s : sac attendu non reçu", p.name, what)
+	p.t.Fatalf("%s %s: expected bag not received", p.name, what)
 	return protocol.Bag{}
 }
 
-// untilStat lit les instantanés jusqu'à ce que la statistique demandée prenne la valeur voulue.
+// untilStat reads snapshots until the requested statistic takes the wanted value.
 func (p *player) untilStat(what string, pick func(protocol.Stats) int, want int) {
 	p.t.Helper()
 	for range 300 {
@@ -74,7 +74,7 @@ func (p *player) untilStat(what string, pick func(protocol.Stats) int, want int)
 			return
 		}
 	}
-	p.t.Fatalf("%s %s : valeur %d jamais atteinte", p.name, what, want)
+	p.t.Fatalf("%s %s: value %d never reached", p.name, what, want)
 }
 
 func TestGeneratedShopBuyEquipAndPersistEndToEnd(t *testing.T) {
@@ -94,49 +94,49 @@ func TestGeneratedShopBuyEquipAndPersistEndToEnd(t *testing.T) {
 	}
 
 	p := e.joinChar(t, "aldric", spots[0], store.Character{Level: 5, HP: 30, Gold: 5000})
-	first := p.approach() // le repli s'affiche d'abord
+	first := p.approach() // the fallback is displayed first
 	if first.Specialty == "" || len(buyArgs(first)) < 6 || !strings.HasPrefix(buyArgs(first)[0], "0.") {
-		t.Fatalf("étalage de repli: %+v", first)
+		t.Fatalf("fallback wares: %+v", first)
 	}
-	menu := p.until("étalage généré", func(d protocol.NPCDialog) bool { return d.Specialty == "pièces robustes" })
+	menu := p.until("generated wares", func(d protocol.NPCDialog) bool { return d.Specialty == "pièces robustes" })
 	offers := buyOffers(menu)
 	if len(offers) != 5 || !strings.HasPrefix(offers[0].Arg, "1.") || calls != 1 {
-		t.Fatalf("étalage généré: %d offres, %d appels", len(offers), calls)
+		t.Fatalf("generated wares: %d offers, %d calls", len(offers), calls)
 	}
 	for _, o := range offers {
 		if o.Price <= 1 {
-			t.Errorf("le prix choisi par le modèle (1) n'a pas été relevé au minimum: %+v", o)
+			t.Errorf("the price chosen by the model (1) was not raised to the minimum: %+v", o)
 		}
 	}
 
-	// Un personnage de départ porte déjà l'arme de sa classe: elle est dans le sac avant tout achat.
+	// A starting character already wears their class's weapon: it is in the bag before any purchase.
 	const starter = 1
-	worn := 2 // arme de départ et armure
+	worn := 2 // starting weapon and armor
 	if slot == "weapon" {
-		worn = 1 // l'arme achetée remplace celle de départ
+		worn = 1 // the bought weapon replaces the starting one
 	}
 	p.act(protocol.NPCBuyItem, offers[2].Arg)
 	b := p.bag("achat", func(b protocol.Bag) bool { return len(b.Items) == starter+1 })
 	it := b.Items[starter]
 	if it.Name != "Pièce trois" || it.Slot != slot || it.Tier != 2 {
-		t.Fatalf("objet acheté: %+v", it)
+		t.Fatalf("bought item: %+v", it)
 	}
 	if slot == "weapon" {
-		// Rang 2 : deux dés, famille par défaut (épée courte, d6), qualité plafonnée au palier malgré le million proposé.
+		// Rank 2: two dice, default family (short sword, d6), quality capped at the tier despite the million offered.
 		if it.Dice != "2d6+2" || it.Family != "shortsword" {
-			t.Fatalf("arme achetée: %+v", it)
+			t.Fatalf("bought weapon: %+v", it)
 		}
 	} else if it.Def < 1 || it.Def > 2 || it.Reduction != "2d6" || it.Family != "medium" {
-		t.Fatalf("armure achetée: %+v", it)
+		t.Fatalf("bought armor: %+v", it)
 	}
 	if b.DefBonus != 0 {
-		t.Fatal("bonus avant d'équiper")
+		t.Fatal("bonus before equipping")
 	}
 
 	send(t, p.c, protocol.TGearAction, protocol.GearAction{Action: protocol.GearEquip, ID: it.ID})
-	b = p.bag("équipement", func(b protocol.Bag) bool { return len(b.Items) == starter+1 && b.Items[starter].Worn })
+	b = p.bag("equipment", func(b protocol.Bag) bool { return len(b.Items) == starter+1 && b.Items[starter].Worn })
 	if slot == "weapon" {
-		p.untilStat("dégâts", func(s protocol.Stats) int {
+		p.untilStat("damage", func(s protocol.Stats) int {
 			if s.Dmg == "2d6+2" {
 				return 1
 			}
@@ -144,13 +144,13 @@ func TestGeneratedShopBuyEquipAndPersistEndToEnd(t *testing.T) {
 		}, 1)
 	} else {
 		if b.DefBonus != it.Def || b.Reduction != "2d6" {
-			t.Fatalf("armure portée: bonus %d, réduction %s", b.DefBonus, b.Reduction)
+			t.Fatalf("worn armor: bonus %d, reduction %s", b.DefBonus, b.Reduction)
 		}
-		p.untilStat("défense", func(s protocol.Stats) int { return s.Def }, 10+it.Def)
+		p.untilStat("defense", func(s protocol.Stats) int { return s.Def }, 10+it.Def)
 	}
 
-	// Sac et équipement survivent à la déconnexion et au redémarrage de la session.
-	waitUntil(t, "sac enregistré", func() bool {
+	// Bag and equipment survive the disconnection and the restart of the session.
+	waitUntil(t, "bag saved", func() bool {
 		ch, _ := e.be.LoadCharacter("aldric")
 		return ch != nil && len(ch.Gear.Items) == starter+1 && len(ch.Gear.Worn) == worn
 	})
@@ -159,12 +159,12 @@ func TestGeneratedShopBuyEquipAndPersistEndToEnd(t *testing.T) {
 	p2 := e.joinChar(t, "aldric", spots[0], *ch)
 	b = p2.bag("reconnexion", func(b protocol.Bag) bool { return len(b.Items) == starter+1 })
 	if !b.Items[starter].Worn || b.DefBonus != it.Def {
-		t.Fatalf("après reconnexion: %+v", b)
+		t.Fatalf("after reconnection: %+v", b)
 	}
-	// L'étalage généré est enregistré : un second joueur le voit sans nouvel appel au modèle.
+	// The generated wares are saved: a second player sees them without a new model call.
 	w, ok, _ := e.be.Store.GetWares(context.Background(), npc.Key())
 	if !ok || w.Specialty != "pièces robustes" || len(w.Items) != 5 {
-		t.Fatalf("assortiment enregistré: %+v %v", w, ok)
+		t.Fatalf("saved wares: %+v %v", w, ok)
 	}
 }
 

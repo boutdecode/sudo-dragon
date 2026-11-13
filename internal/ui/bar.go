@@ -14,9 +14,9 @@ const (
 	barEmpty = "░"
 )
 
-// Bar dessine une jauge de largeur width (colonnes) pour cur/max. La couleur
-// passe du vert au rouge. Au moins une case est pleine tant que cur > 0 et
-// elle n'est jamais complète tant qu'il manque des points.
+// Bar draws a gauge width columns wide for cur/max. The colour shifts from
+// green to red. At least one cell is filled while cur > 0, and it is never
+// completely full while points are missing.
 func Bar(cur, maxV, width int) string {
 	if width < 1 {
 		return ""
@@ -31,15 +31,15 @@ func Bar(cur, maxV, width int) string {
 	}
 	style := barFull
 	switch {
-	case cur*4 <= maxV: // 25 % ou moins
+	case cur*4 <= maxV: // 25% or less
 		style = barLow
-	case cur*2 <= maxV: // 50 % ou moins
+	case cur*2 <= maxV: // 50% or less
 		style = barMid
 	}
 	return style.Render(strings.Repeat(barFill, filled)) + barBack.Render(strings.Repeat(barEmpty, width-filled))
 }
 
-// FlatBar est une jauge d'une couleur fixe (XP, charge…).
+// FlatBar is a fixed-colour gauge (XP, load...).
 func FlatBar(cur, maxV, width int, color string) string {
 	if width < 1 {
 		return ""

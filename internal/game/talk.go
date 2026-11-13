@@ -11,8 +11,8 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Talker fait parler les PNJ. Il est implémenté par npcai.Service. Ask ne bloque
-// jamais et n'appelle done que depuis une autre goroutine que l'appelant.
+// Talker makes NPCs speak. It is implemented by npcai.Service. Ask never blocks
+// and only calls done from a goroutine other than the caller's.
 type Talker interface {
 	Available() bool
 	Provider() string
@@ -20,14 +20,14 @@ type Talker interface {
 }
 
 const (
-	// chatIdleTicks: une discussion libre tolère de longues pauses (lecture, saisie).
+	// chatIdleTicks: a free discussion tolerates long pauses (reading, typing).
 	chatIdleTicks = 1800 // 3 minutes
 
-	maxTranscript = 30 // lignes conservées dans la transcription
-	maxHistory    = 12 // échanges confiés au modèle
+	maxTranscript = 30 // lines kept in the transcript
+	maxHistory    = 12 // exchanges handed to the model
 )
 
-// idleLimit est le délai d'inactivité avant que la conversation soit fermée.
+// idleLimit is the inactivity delay before the conversation is closed.
 func (t *talk) idleLimit() uint64 {
 	if t.mode == protocol.NPCModeChat {
 		return chatIdleTicks
@@ -37,7 +37,7 @@ func (t *talk) idleLimit() uint64 {
 
 func (g *Game) talkerReady() bool { return g.Talker != nil && g.Talker.Available() }
 
-// placeName renvoie le nom du lieu d'une région.
+// placeName returns the name of a region's place.
 func (g *Game) placeName(l i18n.Lang, rp world.RegionPos) string {
 	if s := g.World.StructureOfRegion(rp); s != nil {
 		return s.NameIn(l)
@@ -45,8 +45,8 @@ func (g *Game) placeName(l i18n.Lang, rp world.RegionPos) string {
 	return ""
 }
 
-// noticeText est l'avis montré avant la première discussion: ce qui part vers un
-// service tiers, ce qui est retenu et partagé.
+// noticeText is the notice shown before the first discussion: what goes to a
+// third-party service, what is kept and shared.
 func (g *Game) noticeText(l i18n.Lang) string {
 	provider := i18n.T(l, "talk.notice.default_provider")
 	if g.Talker != nil {
@@ -57,7 +57,7 @@ func (g *Game) noticeText(l i18n.Lang) string {
 	return i18n.T(l, "talk.notice", provider)
 }
 
-// chatAct traite les actions propres à la discussion libre.
+// chatAct handles the actions specific to free discussion.
 func (g *Game) chatAct(p *player, action, text string) {
 	t := p.talk
 	switch action {
@@ -81,7 +81,7 @@ func (g *Game) chatAct(p *player, action, text string) {
 			return
 		}
 		p.consent = true
-		g.save(p) // l'accord est durable: on n'attend pas la sauvegarde périodique
+		g.save(p) // the consent is durable: we do not wait for the periodic save
 		g.enterChat(p)
 
 	case protocol.NPCDecline:
@@ -103,8 +103,8 @@ func (g *Game) chatAct(p *player, action, text string) {
 	}
 }
 
-// enterChat passe en discussion libre; à la première entrée, le PNJ prend la
-// parole (et demande au voyageur de se présenter s'il ne le connaît pas).
+// enterChat switches to free discussion; on first entry, the NPC takes the
+// floor (and asks the traveller to introduce themselves if it does not know them).
 func (g *Game) enterChat(p *player) {
 	t := p.talk
 	t.mode = protocol.NPCModeChat
@@ -116,11 +116,11 @@ func (g *Game) enterChat(p *player) {
 	g.sendTalk(p, t.npc.Kind, nil, false)
 }
 
-// say envoie une réplique du joueur au PNJ.
+// say sends a player's line to the NPC.
 func (g *Game) say(p *player, text string) {
 	t := p.talk
 	if t.mode != protocol.NPCModeChat || t.pending {
-		return // une seule réplique en cours à la fois
+		return // only one line in flight at a time
 	}
 	text = textsafe.Clean(text, protocol.MaxSayLen)
 	if text == "" {
@@ -137,7 +137,7 @@ func (g *Game) say(p *player, text string) {
 	g.sendTalk(p, t.npc.Kind, nil, false)
 }
 
-// ask lance la demande au modèle. La réponse revient dans la goroutine de jeu via g.do.
+// ask sends the request to the model. The reply comes back in the game goroutine via g.do.
 func (g *Game) ask(p *player, text string, opening bool) {
 	t := p.talk
 	place, kind := i18n.T(p.lang, "talk.this_place"), world.KindVillage
@@ -161,8 +161,8 @@ func (g *Game) ask(p *player, text string, opening bool) {
 	})
 }
 
-// deliver ajoute la réponse d'un PNJ à la transcription. Une réponse qui arrive
-// après la fin de sa conversation (le joueur est parti, ou en a ouvert une autre) est ignorée.
+// deliver adds an NPC's reply to the transcript. A reply that arrives
+// after its conversation ended (the player left, or opened another) is ignored.
 func (g *Game) deliver(id int, gen uint64, text string, opening bool, rep npcai.Reply) {
 	p := g.players[id]
 	if p == nil || p.talk == nil || p.talk.gen != gen {
@@ -184,9 +184,9 @@ func (g *Game) deliver(id int, gen uint64, text string, opening bool, rep npcai.
 		t.lines = appendLine(t.lines, protocol.NPCLine{Who: "sys", Text: i18n.T(p.lang, "quest.none", t.npc.NameIn(p.lang))})
 	}
 	if rep.Quest != nil && rep.Failure == npcai.OK {
-		g.proposeQuest(p, rep.Quest) // passe en mode quête si la proposition est encore recevable
+		g.proposeQuest(p, rep.Quest) // switches to quest mode if the proposal is still acceptable
 	}
-	if t.mode == protocol.NPCModeChat || t.mode == protocol.NPCModeQuest { // sinon la ligne est gardée pour le retour en discussion
+	if t.mode == protocol.NPCModeChat || t.mode == protocol.NPCModeQuest { // otherwise the line is kept for the return to discussion
 		g.sendTalk(p, t.npc.Kind, nil, false)
 	}
 }

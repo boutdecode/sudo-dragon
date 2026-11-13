@@ -13,34 +13,34 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Gardes des villages et des villes.
+// Guards of villages and towns.
 //
-// Un garde est une entité du serveur, distincte des monstres comme des PNJ postés : il patrouille sur les chemins
-// de son lieu, on peut lui parler (il connaît les habitants et les environs) et il attaque les joueurs que le lieu
-// tient pour hors-la-loi (réputation <= quest.Wanted). Le client le voit comme un monstre de genre "guard" : même
-// dessin, même évitement, mais marcher dessus ouvre la conversation (ou le combat, pour un hors-la-loi).
+// A guard is a server entity, distinct from both monsters and posted NPCs: it patrols the paths
+// of its place, can be talked to (it knows the inhabitants and surroundings) and attacks players that the place
+// considers outlaws (reputation <= quest.Wanted). The client sees it as a "guard" kind of monster: same
+// drawing, same avoidance, but walking onto it opens the conversation (or the fight, for an outlaw).
 //
-// Pour le combat, il prête son « avatar », un monstre qui n'est jamais enregistré dans g.monsters : il n'apparaît
-// pas dans la carte des monstres et ne bouge pas seul.
+// For combat, it lends its "avatar", a monster that is never stored in g.monsters: it does not appear
+// in the monster map and does not move on its own.
 
 const (
-	guardStepEvery  = 5  // ticks entre deux pas de patrouille
-	guardChaseEvery = 3  // ticks entre deux pas de poursuite : plus lent qu'un joueur (MoveCooldown), on peut le distancer
-	guardAggro      = 12 // portée de détection d'un hors-la-loi
-	guardLeash      = 8  // cases au-delà de l'emprise du lieu où un garde peut poursuivre
-	guardRestMax    = 30 // pause maximale à un point de passage
+	guardStepEvery  = 5  // ticks between two patrol steps
+	guardChaseEvery = 3  // ticks between two chase steps: slower than a player (MoveCooldown), so it can be outrun
+	guardAggro      = 12 // detection range for an outlaw
+	guardLeash      = 8  // tiles beyond the place's footprint where a guard can chase
+	guardRestMax    = 30 // maximum pause at a waypoint
 
-	townGuardRespawn = 3000 // ticks (5 min) avant qu'un garde vaincu soit remplacé
+	townGuardRespawn = 3000 // ticks (5 min) before a defeated guard is replaced
 	guardIDBase      = 1 << 28
 
-	guardKillRep = -5 // réputation perdue en tuant un garde
-	stealFailRep = -3 // réputation perdue en se faisant prendre à voler
+	guardKillRep = -5 // reputation lost by killing a guard
+	stealFailRep = -3 // reputation lost by getting caught stealing
 
-	stealCooldown = 1800 // ticks (3 min) avant de pouvoir refaire les poches du même marchand
+	stealCooldown = 1800 // ticks (3 min) before being able to pick the same merchant's pockets again
 	maxStealMemo  = 2048
 )
 
-// guardSpecies est la fiche de combat d'un garde, mise à l'échelle du niveau de la région (scaledForLevel).
+// guardSpecies is a guard's combat sheet, scaled to the region's level (scaledForLevel).
 var guardSpecies = species{
 	Kind: "guard", MoveEvery: guardChaseEvery, Aggro: guardAggro,
 	HP: 60, Size: hero.Medium, DexMod: 1, Hit: 5, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 6, 0),
@@ -48,9 +48,9 @@ var guardSpecies = species{
 
 type guard struct {
 	id     int
-	npc    world.NPC // identité ; npc.Pos est la position courante
+	npc    world.NPC // identity; npc.Pos is the current position
 	place  *world.Structure
-	avatar *monster // prête sa fiche au combat
+	avatar *monster // lends its sheet to combat
 
 	path                  []world.Pos
 	cooldown, rest, stuck int
@@ -61,7 +61,7 @@ type stealKey struct {
 	npc    world.NPCKey
 }
 
-// guardState regroupe tout ce qui concerne les gardes. Sa valeur nulle est utilisable (voir guards()).
+// guardState groups everything concerning guards. Its zero value is usable (see guards()).
 type guardState struct {
 	byKey    map[world.NPCKey]*guard
 	at       map[world.Pos]*guard
@@ -84,7 +84,7 @@ func (g *Game) guards() *guardState {
 	return &g.gd
 }
 
-// guardAt renvoie le garde posté sur la case pos de la carte principale, s'il y en a un.
+// guardAt returns the guard posted on tile pos of the main map, if there is one.
 func (g *Game) guardAt(pos world.Pos) *guard {
 	if g.gd.at == nil {
 		return nil
@@ -92,7 +92,7 @@ func (g *Game) guardAt(pos world.Pos) *guard {
 	return g.gd.at[pos]
 }
 
-// sortedGuards renvoie les gardes par identifiant croissant (ordre déterministe).
+// sortedGuards returns the guards by increasing identifier (deterministic order).
 func (g *Game) sortedGuards() []*guard {
 	gs := make([]*guard, 0, len(g.gd.byKey))
 	for _, gd := range g.gd.byKey {
@@ -102,18 +102,18 @@ func (g *Game) sortedGuards() []*guard {
 	return gs
 }
 
-// wanted indique que le lieu de ce garde tient p pour un hors-la-loi.
+// wanted indicates that this guard's place considers p an outlaw.
 func (gd *guard) wanted(p *player) bool { return quest.IsWanted(p.rep[gd.npc.Region]) }
 
-// nearLeash indique si pos est assez proche du lieu pour qu'un garde s'y aventure.
+// nearLeash says whether pos is close enough to the place for a guard to venture there.
 func (gd *guard) nearLeash(pos world.Pos) bool {
 	s := gd.place
 	return pos.X >= s.Origin.X-guardLeash && pos.X < s.Origin.X+s.W+guardLeash &&
 		pos.Y >= s.Origin.Y-guardLeash && pos.Y < s.Origin.Y+s.H+guardLeash
 }
 
-// activateGuards place les gardes des villages et des villes proches d'un joueur et retire ceux qui sont loin de
-// tous. Appelée en même temps que l'apparition des monstres (spawnEvery).
+// activateGuards places the guards of villages and towns near a player and removes those far from
+// all. Called at the same time as monster spawning (spawnEvery).
 func (g *Game) activateGuards() {
 	st := g.guards()
 	for _, gd := range g.sortedGuards() {
@@ -135,7 +135,7 @@ func (g *Game) activateGuards() {
 	}
 }
 
-// guardWatched indique qu'un joueur est assez près du garde pour que celui-ci reste en place.
+// guardWatched indicates that a player is close enough to the guard for it to stay in place.
 func (g *Game) guardWatched(gd *guard) bool {
 	for _, p := range g.players {
 		if p.zone == 0 && inBox(gd.npc.Pos, p.pos, keepHalfW, keepHalfH) {
@@ -156,7 +156,7 @@ func (g *Game) fillGuard(st *guardState, s *world.Structure, npc world.NPC) {
 		}
 		delete(st.defeated, key)
 	}
-	if g.blocked(npc.Pos) { // quelqu'un se tient sur son poste : on réessaie au prochain passage
+	if g.blocked(npc.Pos) { // someone is standing on its post: retry on the next pass
 		return
 	}
 	st.next++
@@ -169,7 +169,7 @@ func (g *Game) fillGuard(st *guardState, s *world.Structure, npc world.NPC) {
 	st.at[npc.Pos] = gd
 }
 
-// removeGuard retire un garde du monde ; slain le marque comme vaincu (il revient après townGuardRespawn).
+// removeGuard removes a guard from the world; slain marks it as defeated (it returns after townGuardRespawn).
 func (g *Game) removeGuard(gd *guard, slain bool) {
 	st := g.guards()
 	delete(st.byKey, gd.npc.Key())
@@ -179,7 +179,7 @@ func (g *Game) removeGuard(gd *guard, slain bool) {
 	}
 }
 
-// stepGuards fait agir chaque garde : poursuite d'un hors-la-loi à portée, sinon patrouille.
+// stepGuards makes each guard act: chase an outlaw in range, otherwise patrol.
 func (g *Game) stepGuards() {
 	if len(g.gd.byKey) == 0 {
 		return
@@ -187,7 +187,7 @@ func (g *Game) stepGuards() {
 	talking := map[world.NPCKey]bool{}
 	for _, p := range g.players {
 		if p.talk != nil {
-			talking[p.talk.npc.Key()] = true // un garde à qui l'on parle reste là
+			talking[p.talk.npc.Key()] = true // a guard being talked to stays there
 		}
 	}
 	for _, gd := range g.sortedGuards() {
@@ -219,7 +219,7 @@ func (g *Game) stepGuards() {
 	}
 }
 
-// outlawNear renvoie le hors-la-loi libre le plus proche à portée du garde (ex æquo : le plus ancien joueur).
+// outlawNear returns the nearest free outlaw within the guard's range (tie: the oldest player).
 func (g *Game) outlawNear(gd *guard) *player {
 	var best *player
 	bestD := guardAggro + 1
@@ -235,8 +235,8 @@ func (g *Game) outlawNear(gd *guard) *player {
 	return best
 }
 
-// moveGuard avance le garde d'un pas ; faux si la case est prise, infranchissable ou trop loin du lieu.
-// Contrairement aux monstres, un garde circule librement dans les zones sûres.
+// moveGuard moves the guard one step; false if the tile is taken, impassable or too far from the place.
+// Unlike monsters, a guard moves freely in safe zones.
 func (g *Game) moveGuard(gd *guard, dx, dy int) bool {
 	if dx == 0 && dy == 0 {
 		return false
@@ -253,7 +253,7 @@ func (g *Game) moveGuard(gd *guard, dx, dy int) bool {
 	return true
 }
 
-// patrol suit un itinéraire de chemin en chemin, avec des pauses.
+// patrol follows a route from path to path, with pauses.
 func (g *Game) patrol(gd *guard) {
 	if gd.rest > 0 {
 		gd.rest--
@@ -274,12 +274,12 @@ func (g *Game) patrol(gd *guard) {
 		}
 		return
 	}
-	if gd.stuck++; gd.stuck > 6 { // bloqué (un joueur sur le chemin) : on repart ailleurs
+	if gd.stuck++; gd.stuck > 6 { // blocked (a player on the path): head off elsewhere
 		gd.path, gd.stuck, gd.rest = nil, 0, 5
 	}
 }
 
-// roadsOf liste les cases de chemin du lieu (mémorisé).
+// roadsOf lists the path tiles of the place (cached).
 func (g *Game) roadsOf(s *world.Structure) []world.Pos {
 	st := g.guards()
 	if r, ok := st.roads[s.Region]; ok {
@@ -297,8 +297,8 @@ func (g *Game) roadsOf(s *world.Structure) []world.Pos {
 	return roads
 }
 
-// routeFor choisit un point de passage sur les chemins du lieu et renvoie le plus court trajet pour y aller
-// (sans la case de départ), ou rien s'il n'y en a pas.
+// routeFor chooses a waypoint on the place's paths and returns the shortest route to get there
+// (without the starting tile), or nothing if there is none.
 func (g *Game) routeFor(gd *guard) []world.Pos {
 	roads := g.roadsOf(gd.place)
 	if len(roads) < 2 {
@@ -319,7 +319,7 @@ func (g *Game) routeFor(gd *guard) []world.Pos {
 		}
 		for _, d := range dirs8 {
 			if (d[0] != 0 && d[1] != 0) && cur != start {
-				continue // en diagonale seulement au départ : on rejoint le chemin depuis n'importe quelle case
+				continue // diagonal only at the start: the path is joined from any tile
 			}
 			nb := world.Pos{X: cur.X + d[0], Y: cur.Y + d[1]}
 			if _, seen := prev[nb]; seen || !gd.place.RoadAt(nb.X, nb.Y) {
@@ -340,7 +340,7 @@ func (g *Game) routeFor(gd *guard) []world.Pos {
 	return path
 }
 
-// engageGuard lance le combat d'un garde contre un hors-la-loi.
+// engageGuard starts a guard's fight against an outlaw.
 func (g *Game) engageGuard(p *player, gd *guard) {
 	if p.fight != nil || gd.avatar.fight != nil {
 		return
@@ -349,7 +349,7 @@ func (g *Game) engageGuard(p *player, gd *guard) {
 	g.engage(p, []*monster{gd.avatar}, false, intro)
 }
 
-// bumpGuard : le joueur marche sur un garde. Un hors-la-loi se bat, les autres lui parlent.
+// bumpGuard: the player walks onto a guard. An outlaw fights, the others talk to it.
 func (g *Game) bumpGuard(p *player, gd *guard) {
 	if gd.wanted(p) {
 		g.engageGuard(p, gd)
@@ -358,15 +358,15 @@ func (g *Game) bumpGuard(p *player, gd *guard) {
 	g.startTalk(p, gd.npc)
 }
 
-// guardSlain règle la mort d'un garde : il quitte le monde (et reviendra), le lieu ne pardonne pas.
+// guardSlain settles a guard's death: it leaves the world (and will return), the place does not forgive.
 func (g *Game) guardSlain(p *player, gd *guard) []string {
 	g.removeGuard(gd, true)
 	log := []string{i18n.T(p.lang, "guard.slain", g.placeName(p.lang, gd.npc.Region))}
 	return append(log, g.addRep(p, gd.npc.Region, guardKillRep)...)
 }
 
-// appendGuards ajoute à la liste des monstres visibles de p les gardes de sa vue. Ils portent des identifiants
-// hors de la plage des monstres (guardIDBase).
+// appendGuards adds the guards in p's view to p's list of visible monsters. They carry identifiers
+// outside the monsters' range (guardIDBase).
 func (g *Game) appendGuards(ms []protocol.Monster, p *player) []protocol.Monster {
 	if p.zone != 0 {
 		return ms
@@ -382,10 +382,10 @@ func (g *Game) appendGuards(ms []protocol.Monster, p *player) []protocol.Monster
 
 // ------------------------------------------------------------------ dialogue
 
-// whereKinds sont les métiers qu'un garde sait situer.
+// whereKinds are the jobs a guard can locate.
 var whereKinds = []world.NPCKind{world.NPCHealer, world.NPCMerchant, world.NPCSmith, world.NPCArmorer}
 
-// guardOffers est le menu d'un garde : où trouver chaque métier, puis les lieux voisins.
+// guardOffers is a guard's menu: where to find each job, then the neighbouring places.
 func (g *Game) guardOffers(p *player, npc world.NPC) []protocol.NPCOffer {
 	kinds := slices.Clone(whereKinds)
 	leader := world.NPCChief
@@ -401,7 +401,7 @@ func (g *Game) guardOffers(p *player, npc world.NPC) []protocol.NPCOffer {
 	return append(offers, protocol.NPCOffer{Action: protocol.NPCPlaces, Label: i18n.T(p.lang, "guard.offer.places"), Available: true})
 }
 
-// guardAnswer répond à une question du menu d'un garde, sans modèle de langage.
+// guardAnswer answers a question from a guard's menu, without a language model.
 func (g *Game) guardAnswer(p *player, npc world.NPC, action, arg string) []string {
 	if npc.Kind != world.NPCGuard {
 		return notOffered(p.lang)
@@ -431,7 +431,7 @@ func (g *Game) guardAnswer(p *player, npc world.NPC, action, arg string) []strin
 			return []string{i18n.T(l, "guard.where.found", n.NameIn(l), i18n.T(l, "compass."+compass(dx, dy)), steps)}
 		}
 	}
-	// Absent d'ici : le plus proche lieu des environs qui en a un.
+	// Absent from here: the nearest place in the surroundings that has one.
 	for _, s := range g.World.StructuresNear(npc.Pos, landmarkRange*world.RegionSize) {
 		if s.Region == npc.Region {
 			continue
@@ -451,7 +451,7 @@ func (g *Game) guardAnswer(p *player, npc world.NPC, action, arg string) []strin
 	return []string{i18n.T(l, "guard.where.nowhere", label)}
 }
 
-// residentsFor liste, pour le modèle de langage, les habitants du lieu d'un garde (vide pour un autre PNJ).
+// residentsFor lists, for the language model, the inhabitants of a guard's place (empty for another NPC).
 func (g *Game) residentsFor(npc world.NPC, l i18n.Lang) []npcai.Resident {
 	if npc.Kind != world.NPCGuard {
 		return nil
@@ -471,11 +471,11 @@ func (g *Game) residentsFor(npc world.NPC, l i18n.Lang) []npcai.Resident {
 	return out
 }
 
-// ------------------------------------------------------------------ vol
+// ------------------------------------------------------------------ theft
 
-// steal : le joueur fait les poches du marchand. Réussite selon le charisme ; un échec coûte de la réputation
-// dans le lieu. Un même marchand ne se laisse pas voler deux fois de suite. Renvoie le journal et si l'état du
-// joueur a changé (à sauvegarder).
+// steal: the player picks the merchant's pockets. Success depends on charisma; a failure costs reputation
+// in the place. A same merchant cannot be robbed twice in a row. Returns the log and whether the
+// player's state changed (to be saved).
 func (g *Game) steal(p *player, npc world.NPC) ([]string, bool) {
 	st := g.guards()
 	key := stealKey{p.id, npc.Key()}

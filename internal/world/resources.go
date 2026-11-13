@@ -2,14 +2,14 @@ package world
 
 import "github.com/kevin/ascii-adventure/internal/resource"
 
-// Nœuds de ressources (GenV3): arbres, filons et plantes posés sur le terrain naturel. Ils sont une pure fonction
-// de (graine, x, y): serveur et client les calculent pareillement. Un nœud ne recouvre jamais une structure, un
-// point d'intérêt, une route, l'abord du point de départ ni une entrée de donjon.
+// Resource nodes (GenV3): trees, veins and plants placed on natural terrain. They are a pure function
+// of (seed, x, y): server and client compute them the same way. A node never covers a structure, a
+// point of interest, a road, the area around the starting point nor a dungeon entrance.
 
-// resourceSalt distingue le hachage des nœuds de tout autre tirage.
+// resourceSalt distinguishes the node hash from any other draw.
 const resourceSalt = 0x5E50C0DE
 
-// nodeCategory donne, pour un terrain et un tirage u dans [0, 1000), la catégorie du nœud posé (ou false).
+// nodeCategory gives, for a terrain and a draw u in [0, 1000), the category of the node placed (or false).
 func nodeCategory(t Tile, u int) (resource.Category, bool) {
 	switch t {
 	case Forest:
@@ -51,15 +51,15 @@ func nodeCategory(t Tile, u int) (resource.Category, bool) {
 	return 0, false
 }
 
-// nodeHash est le hachage de la case (x, y), propre aux nœuds.
+// nodeHash is the hash of tile (x, y), specific to nodes.
 func (w *World) nodeHash(x, y int) uint64 {
 	h := mix64(uint64(w.Seed) ^ resourceSalt)
 	h = mix64(h + uint64(int64(x)))
 	return mix64(h + uint64(int64(y)))
 }
 
-// nodeAt renvoie la catégorie, la ressource et la tuile du nœud posé sur le terrain brut t en (x, y).
-// Les exclusions (structure, POI, route, spawn, donjon) sont l'affaire de nodeTile.
+// nodeAt returns the category, the resource and the tile of the node placed on raw terrain t at (x, y).
+// The exclusions (structure, POI, road, spawn, dungeon) are nodeTile's business.
 func (w *World) nodeAt(x, y int, t Tile) (resource.Category, resource.Kind, bool) {
 	if w.GenVersion < GenV3 {
 		return 0, "", false
@@ -80,8 +80,8 @@ func (w *World) nodeAt(x, y int, t Tile) (resource.Category, resource.Kind, bool
 	return cat, kind, true
 }
 
-// nodeTile est la tuile de nœud qui remplace le terrain t en (x, y), s'il y en a un. L'appelant a déjà écarté les
-// structures, les POI et les routes.
+// nodeTile is the node tile that replaces terrain t at (x, y), if there is one. The caller has already ruled out the
+// structures, the POIs and the roads.
 func (w *World) nodeTile(x, y int, t Tile) (Tile, bool) {
 	cat, _, ok := w.nodeAt(x, y, t)
 	if !ok {
@@ -102,8 +102,8 @@ func nodeTileOf(c resource.Category) Tile {
 	return TreeNode
 }
 
-// ResourceAt renvoie la ressource récoltable sur la case (x, y): celle d'un nœud visible (TileAt/At donnent
-// TreeNode, OreNode, HerbNode ou FishNode). Faux si la case n'en porte pas.
+// ResourceAt returns the harvestable resource on tile (x, y): that of a visible node (TileAt/At give
+// TreeNode, OreNode, HerbNode or FishNode). False if the tile carries none.
 func (w *World) ResourceAt(x, y int) (resource.Kind, bool) {
 	if w.GenVersion < GenV3 {
 		return "", false
@@ -117,8 +117,8 @@ func (w *World) ResourceAt(x, y int) (resource.Kind, bool) {
 	return kind, ok
 }
 
-// NodeAt décrit le nœud de ressource visible en (x, y): sa ressource et le terrain naturel qu'il recouvre (dont le
-// client reprend le glyphe, seule la couleur dit la ressource). Faux si la case ne porte pas de nœud.
+// NodeAt describes the resource node visible at (x, y): its resource and the natural terrain it covers (whose
+// glyph the client reuses, only the colour tells the resource). False if the tile carries no node.
 func (w *World) NodeAt(x, y int) (resource.Kind, Tile, bool) {
 	switch w.At(x, y) {
 	case TreeNode, OreNode, HerbNode, FishNode:

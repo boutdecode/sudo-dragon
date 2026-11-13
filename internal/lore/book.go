@@ -9,36 +9,36 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Repo est le stockage de la mémoire collective (implémenté par internal/store).
+// Repo is the storage of the collective memory (implemented by internal/store).
 type Repo interface {
-	// UpsertCard écrit la fiche d'un (compte, lieu) en conservant CreatedAt s'il en
-	// existe déjà une, et écarte les fiches les plus anciennes du compte au-delà de
-	// MaxCardsPerAccount lieux.
+	// UpsertCard writes the card of an (account, place), keeping CreatedAt if one
+	// already exists, and discards the account's oldest cards beyond
+	// MaxCardsPerAccount places.
 	UpsertCard(ctx context.Context, c Card) error
-	// GetCard renvoie la fiche d'un compte dans un lieu.
+	// GetCard returns an account's card in a place.
 	GetCard(ctx context.Context, account string, place world.RegionPos) (Card, bool, error)
-	// CardsNear renvoie les fiches dont le lieu est dans le carré de côté 2*radius+1
-	// centré sur at et mises à jour à partir de notBefore, les plus récentes d'abord.
+	// CardsNear returns the cards whose place is in the square of side 2*radius+1
+	// centered on at and updated from notBefore on, most recent first.
 	CardsNear(ctx context.Context, at world.RegionPos, radius int, notBefore time.Time, limit int) ([]Card, error)
-	// UpdateFacts met à jour les faits vérifiés de toutes les fiches d'un compte,
-	// sans toucher à leur date (la rumeur ne doit pas repartir de zéro).
+	// UpdateFacts updates the verified facts of all of an account's cards,
+	// without touching their date (the rumor must not restart from zero).
 	UpdateFacts(ctx context.Context, account string, f Facts) error
-	// AccountExists dit si un pseudo de joueur existe (insensible à la casse).
+	// AccountExists tells whether a player nickname exists (case-insensitive).
 	AccountExists(ctx context.Context, name string) (bool, error)
 	GetMemory(ctx context.Context, npc world.NPCKey, account string) (Memory, bool, error)
 	PutMemory(ctx context.Context, m Memory) error
 }
 
-// Moderator vérifie des textes. Il renvoie nil s'ils sont acceptables, une erreur
-// sinon (texte refusé, ou modération indisponible: on échoue alors « fermé »).
+// Moderator checks texts. It returns nil if they are acceptable, an error
+// otherwise (text rejected, or moderation unavailable: it then fails closed).
 type Moderator func(ctx context.Context, texts []string) error
 
-// Book est la mémoire collective des PNJ.
+// Book is the NPCs' collective memory.
 type Book struct {
 	Repo Repo
-	// Deeds, facultatif, donne accès aux quêtes rendues (voir HeardDeeds).
+	// Deeds, optional, gives access to completed quests (see HeardDeeds).
 	Deeds DeedRepo
-	Now   func() time.Time // injectable en test; time.Now par défaut
+	Now   func() time.Time // injectable in tests; time.Now by default
 }
 
 func (b *Book) now() time.Time {
@@ -48,11 +48,11 @@ func (b *Book) now() time.Time {
 	return time.Now()
 }
 
-// candidateLimit borne le nombre de fiches lues avant filtrage par distance et délai.
+// candidateLimit bounds the number of cards read before filtering by distance and delay.
 const candidateLimit = 200
 
-// Heard renvoie ce que sait un PNJ du lieu at: les rumeurs qui lui sont parvenues et,
-// à part, la fiche de son interlocuteur si elle est parvenue jusqu'ici.
+// Heard returns what an NPC of place at knows: the rumors that have reached it and,
+// separately, its interlocutor's card if it has reached here.
 func (b *Book) Heard(ctx context.Context, at world.RegionPos, speaker string) ([]Heard, error) {
 	now := b.now()
 	cards, err := b.Repo.CardsNear(ctx, at, RumorRadius, now.Add(-Forgetting), candidateLimit)
@@ -62,11 +62,11 @@ func (b *Book) Heard(ctx context.Context, at world.RegionPos, speaker string) ([
 	return Hear(cards, at, speaker, now), nil
 }
 
-// Remember enregistre ce qu'un joueur dit de lui dans un lieu.
+// Remember records what a player says about themselves in a place.
 //
-// Les champs fournis complètent ou remplacent ceux de sa fiche existante (un champ
-// vide ne l'efface pas). Rien n'est écrit si le texte est refusé: vide, lien ou
-// adresse, alias qui usurpe le pseudo d'un autre joueur, ou refus de la modération.
+// The fields provided complete or replace those of their existing card (an empty
+// field does not erase it). Nothing is written if the text is refused: empty, link or
+// address, alias impersonating another player's nickname, or moderation refusal.
 func (b *Book) Remember(ctx context.Context, account string, at world.RegionPos, in Intro, facts Facts, moderate Moderator) (Card, error) {
 	clean, err := in.Clean()
 	if err != nil {
@@ -91,7 +91,7 @@ func (b *Book) Remember(ctx context.Context, account string, at world.RegionPos,
 		merged = mergeIntro(prev.Intro, clean)
 	}
 	if moderate == nil {
-		return Card{}, errors.New("lore: modération absente, écriture refusée")
+		return Card{}, errors.New("lore: moderation missing, write refused")
 	}
 	if err := moderate(ctx, merged.Fields()); err != nil {
 		return Card{}, err
@@ -108,7 +108,7 @@ func (b *Book) Remember(ctx context.Context, account string, at world.RegionPos,
 	return card, nil
 }
 
-// mergeIntro complète old avec les champs non vides de upd.
+// mergeIntro completes old with the non-empty fields of upd.
 func mergeIntro(old, upd Intro) Intro {
 	pick := func(o, n string) string {
 		if n != "" {
@@ -122,12 +122,12 @@ func mergeIntro(old, upd Intro) Intro {
 	}
 }
 
-// RefreshFacts met à jour les faits vérifiés des fiches d'un joueur.
+// RefreshFacts updates the verified facts of a player's cards.
 func (b *Book) RefreshFacts(ctx context.Context, account string, f Facts) error {
 	return b.Repo.UpdateFacts(ctx, account, f)
 }
 
-// Recall renvoie le souvenir privé d'un PNJ sur un joueur ("" s'il n'en a pas).
+// Recall returns an NPC's private memory of a player ("" if it has none).
 func (b *Book) Recall(ctx context.Context, npc world.NPCKey, account string) (string, error) {
 	m, found, err := b.Repo.GetMemory(ctx, npc, account)
 	if err != nil || !found {
@@ -136,7 +136,7 @@ func (b *Book) Recall(ctx context.Context, npc world.NPCKey, account string) (st
 	return m.Summary, nil
 }
 
-// Memorize enregistre le souvenir d'un PNJ sur un joueur. Un souvenir vide après nettoyage est ignoré.
+// Memorize records an NPC's memory of a player. A memory that is empty after cleaning is ignored.
 func (b *Book) Memorize(ctx context.Context, npc world.NPCKey, account, summary string) error {
 	summary = CleanSummary(summary)
 	if summary == "" {

@@ -17,13 +17,13 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Discussion libre avec un PNJ : écran d'avis de confidentialité et écran de
-// conversation. Le dialogue de métier (acheter, vendre, soigner) reste dans model.go.
+// Free conversation with an NPC: privacy notice screen and conversation
+// screen. The trade dialogue (buy, sell, heal) stays in model.go.
 
 const (
-	maxNPCText   = 400 // longueur maximale d'une ligne de transcription reçue
+	maxNPCText   = 400 // maximum length of a received transcript line
 	maxNPCNotice = 1200
-	inputPanelH  = 3 // cadre + une ligne de saisie
+	inputPanelH  = 3 // frame + one input line
 )
 
 func newNPCInput(lang i18n.Lang) textinput.Model {
@@ -34,10 +34,10 @@ func newNPCInput(lang i18n.Lang) textinput.Model {
 	return in
 }
 
-// cleanNPCDialog nettoie les textes d'un dialogue reçu. Le serveur le fait déjà ;
-// le client ne s'y fie pas : un serveur tiers ou compromis pourrait glisser des
-// séquences d'échappement (écran effacé, titre de fenêtre, presse-papiers) ou des
-// marques bidirectionnelles dans ce qu'un PNJ « dit ».
+// cleanNPCDialog cleans the texts of a received dialogue. The server already does it;
+// the client does not rely on it: a third-party or compromised server could slip in
+// escape sequences (cleared screen, window title, clipboard) or
+// bidirectional marks into what an NPC "says".
 func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 	d.Name = textsafe.Clean(d.Name, 60)
 	d.Place = textsafe.Clean(d.Place, 60)
@@ -86,7 +86,7 @@ func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 	return d
 }
 
-// syncNPCInput prépare le champ de saisie quand le mode du dialogue change.
+// syncNPCInput prepares the input field when the dialogue mode changes.
 func (m *Model) syncNPCInput(prevMode string) {
 	if m.npc == nil || m.npc.Mode != protocol.NPCModeChat {
 		m.npcInput.Blur()
@@ -98,8 +98,8 @@ func (m *Model) syncNPCInput(prevMode string) {
 	}
 }
 
-// updateNPCChatKey traite une touche pendant la discussion libre : tout ce qui est
-// imprimable va dans le champ de saisie (aucune touche de menu n'agit ici).
+// updateNPCChatKey handles a key during free conversation: everything
+// printable goes into the input field (no menu key acts here).
 func (m Model) updateNPCChatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -121,8 +121,8 @@ func (m Model) updateNPCChatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updateNPCNoticeKey traite une touche sur l'écran d'avis. Entrée ne fait rien :
-// un accord doit être un geste délibéré, pas une touche frappée par réflexe.
+// updateNPCNoticeKey handles a key on the notice screen. Enter does nothing:
+// an agreement must be a deliberate gesture, not a reflex keystroke.
 func (m Model) updateNPCNoticeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.conn == nil {
 		return m, nil
@@ -136,7 +136,7 @@ func (m Model) updateNPCNoticeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// npcHelp est la barre de raccourcis du dialogue, selon son mode.
+// npcHelp is the dialogue's shortcut bar, depending on its mode.
 func (m Model) npcHelp() string {
 	switch m.npc.Mode {
 	case protocol.NPCModeChat:
@@ -153,8 +153,8 @@ func (m Model) npcHelp() string {
 	return ui.KeyBar([2]string{keys, m.t("key.choose")}, [2]string{"esc", m.t("key.quit")})
 }
 
-// npcTitle est le titre du cadre du PNJ : son nom et son lieu (connus des deux côtés
-// puisqu'ils sont déterministes), à défaut son métier.
+// npcTitle is the NPC frame title: its name and place (known on both sides
+// since they are deterministic), otherwise its job.
 func (m Model) npcTitle() string {
 	d := m.npc
 	switch {
@@ -166,8 +166,8 @@ func (m Model) npcTitle() string {
 	return strings.ToUpper(render.NPCName(m.lang, world.NPCKind(d.Kind)))
 }
 
-// wrap découpe s en lignes de w colonnes au plus, sans jamais dépasser, même pour un
-// mot plus long que la ligne.
+// wrap splits s into lines of at most w columns, never overflowing, even for a
+// word longer than the line.
 func wrap(s string, w int) []string {
 	if w < 1 {
 		return nil
@@ -175,7 +175,7 @@ func wrap(s string, w int) []string {
 	return strings.Split(ansi.Wrap(s, w, ""), "\n")
 }
 
-// npcNoticeView dessine l'avis de confidentialité dans exactement w x h cellules.
+// npcNoticeView draws the privacy notice in exactly w x h cells.
 func (m Model) npcNoticeView(w, h int) string {
 	d := m.npc
 	iw := w - 4
@@ -194,8 +194,8 @@ func (m Model) npcNoticeView(w, h int) string {
 	return ui.Panel(m.t("npc.before_chat"), strings.Join(body, "\n"), w, h)
 }
 
-// transcript met en forme la transcription : lignes colorées par locuteur, retour à la ligne,
-// et une indication quand le PNJ réfléchit. Les dernières lignes qui tiennent dans maxLines.
+// transcript formats the transcript: lines colored by speaker, wrapped,
+// and an indication when the NPC is thinking. The last lines that fit in maxLines.
 func (m Model) transcript(width, maxLines int) []string {
 	d := m.npc
 	kind := world.NPCKind(d.Kind)
@@ -219,8 +219,8 @@ func (m Model) transcript(width, maxLines int) []string {
 			prefix = ""
 			text = dimStyle.Render(l.Text)
 		}
-		// Le préfixe est mesuré sans ses styles ; le retour à la ligne se fait sur le texte brut
-		// pour ne jamais couper une séquence de couleur.
+		// The prefix is measured without its styles; wrapping is done on the raw text
+		// so as never to cut a color sequence.
 		plainPrefix := ansi.Strip(prefix)
 		wrapped := wrap(plainPrefix+ansi.Strip(text), width)
 		for i, wl := range wrapped {
@@ -243,8 +243,8 @@ func (m Model) transcript(width, maxLines int) []string {
 	return out
 }
 
-// npcChatView dessine la discussion libre dans exactement w x h cellules : le portrait
-// et l'état à gauche, la transcription à droite, la saisie dessous.
+// npcChatView draws the free conversation in exactly w x h cells: the portrait
+// and the state on the left, the transcript on the right, the input below.
 func (m Model) npcChatView(w, h int) string {
 	d := m.npc
 	kind := world.NPCKind(d.Kind)

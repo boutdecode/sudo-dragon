@@ -12,12 +12,12 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// npcRig prépare un joueur à côté d'un PNJ du type voulu et capture les dialogues.
+// npcRig sets up a player next to an NPC of the wanted type and captures the dialogues.
 type npcRig struct {
 	g      *Game
 	p      *player
 	npc    world.NPC
-	dx, dy int // direction du joueur vers le PNJ
+	dx, dy int // direction from the player to the NPC
 	msgs   []protocol.NPCDialog
 	rec    *recorder
 	tt     *testing.T
@@ -25,7 +25,7 @@ type npcRig struct {
 
 func (r *npcRig) last() protocol.NPCDialog { return r.msgs[len(r.msgs)-1] }
 
-// findNPC cherche un PNJ du type donné près du départ.
+// findNPC looks for an NPC of the given type near the start.
 func findNPC(t *testing.T, g *Game, kind world.NPCKind) world.NPC {
 	t.Helper()
 	for _, s := range g.World.StructuresNear(g.World.FindSpawn(), 700) {
@@ -35,7 +35,7 @@ func findNPC(t *testing.T, g *Game, kind world.NPCKind) world.NPC {
 			}
 		}
 	}
-	t.Skipf("pas de PNJ %s près du départ", kind)
+	t.Skipf("no %s NPC near the start", kind)
 	return world.NPC{}
 }
 
@@ -44,10 +44,11 @@ func newNPCRig(t *testing.T, kind world.NPCKind) *npcRig {
 	g := newGame()
 	npc := findNPC(t, g, kind)
 	p, rec := joinRec(g, "hero")
+	p.lang = i18n.FR // assertions are on French catalogue text
 	r := &npcRig{g: g, p: p, npc: npc, rec: rec, tt: t}
 	p.sendNPC = func(d protocol.NPCDialog) { r.msgs = append(r.msgs, d) }
 
-	// Une case voisine libre du PNJ, avec la direction qui y mène.
+	// A free tile next to the NPC, with the direction leading to it.
 	for _, d := range [][2]int{{0, 1}, {1, 0}, {-1, 0}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}} {
 		pos := world.Pos{X: npc.Pos.X - d[0], Y: npc.Pos.Y - d[1]}
 		if !g.blocked(pos) {
@@ -56,11 +57,11 @@ func newNPCRig(t *testing.T, kind world.NPCKind) *npcRig {
 			return r
 		}
 	}
-	t.Fatalf("aucune case libre à côté du PNJ en %v", npc.Pos)
+	t.Fatalf("no free tile next to the NPC at %v", npc.Pos)
 	return nil
 }
 
-// talk marche vers le PNJ pour lui parler.
+// talk walks toward the NPC to speak to it.
 func (r *npcRig) talk() {
 	r.g.move(r.p.id, r.dx, r.dy)
 	r.g.step()
@@ -81,13 +82,13 @@ func TestNPCOccupiesItsTile(t *testing.T) {
 	g := newGame()
 	npc := findNPC(t, g, world.NPCHealer)
 	if !g.blocked(npc.Pos) {
-		t.Fatal("la case d'un PNJ doit être bloquée")
+		t.Fatal("an NPC's tile must be blocked")
 	}
-	// Ni un joueur restauré là, ni un monstre, ne peuvent s'y poser.
+	// Neither a player restored there nor a monster can land on it.
 	saved := &Saved{Stats: combat.NewStats(), HP: 10, Pos: npc.Pos}
 	p := g.joinWith("x", func(protocol.Snapshot) {}, saved)
 	if p.pos == npc.Pos {
-		t.Fatal("un joueur a été placé sur un PNJ")
+		t.Fatal("a player was placed on an NPC")
 	}
 }
 
@@ -97,20 +98,20 @@ func TestWalkingIntoNPCOpensDialog(t *testing.T) {
 	r.talk()
 
 	if r.p.talk == nil || r.p.talk.npc != r.npc {
-		t.Fatal("la conversation ne s'est pas ouverte")
+		t.Fatal("the conversation did not open")
 	}
 	if r.p.pos != start {
-		t.Fatalf("le joueur a bougé: %v", r.p.pos)
+		t.Fatalf("the player moved: %v", r.p.pos)
 	}
 	if len(r.msgs) != 1 {
-		t.Fatalf("%d messages, attendu 1", len(r.msgs))
+		t.Fatalf("%d messages, expected 1", len(r.msgs))
 	}
 	d := r.last()
 	if d.Kind != "healer" || d.Over || len(d.Log) != 1 {
-		t.Fatalf("ouverture: %+v", d)
+		t.Fatalf("opening: %+v", d)
 	}
 	if _, ok := r.offer(protocol.NPCHeal); !ok {
-		t.Fatalf("le soigneur ne propose pas de soins: %+v", d.Offers)
+		t.Fatalf("the healer offers no healing: %+v", d.Offers)
 	}
 }
 
@@ -123,7 +124,7 @@ func TestPlayerIsFrozenWhileTalking(t *testing.T) {
 		r.g.step()
 	}
 	if r.p.pos != start || r.p.hasPending {
-		t.Fatalf("le joueur s'est déplacé pendant la conversation: %v", r.p.pos)
+		t.Fatalf("the player moved during the conversation: %v", r.p.pos)
 	}
 }
 
@@ -133,18 +134,18 @@ func TestLeavingEndsTheDialogAndFreesThePlayer(t *testing.T) {
 	r.act(protocol.NPCLeave)
 
 	if r.p.talk != nil {
-		t.Fatal("la conversation est encore ouverte")
+		t.Fatal("the conversation is still open")
 	}
 	d := r.last()
 	if !d.Over || d.Kind != "healer" || len(d.Offers) != 0 {
-		t.Fatalf("message de fin: %+v", d)
+		t.Fatalf("closing message: %+v", d)
 	}
-	// Libre de partir: un pas s'exécute.
+	// Free to leave: a step is executed.
 	before := r.p.pos
 	r.g.move(r.p.id, -r.dx, -r.dy)
 	r.g.step()
 	if r.p.pos == before && !r.g.blocked(world.Pos{X: before.X - r.dx, Y: before.Y - r.dy}) {
-		t.Fatal("le joueur reste figé après la conversation")
+		t.Fatal("the player stays frozen after the conversation")
 	}
 }
 
@@ -154,7 +155,7 @@ func TestActionsWithoutDialogAreIgnored(t *testing.T) {
 	r.p.stats.Gold = 500
 	r.act(protocol.NPCHeal)
 	if r.p.hp != 1 || r.p.stats.Gold != 500 || len(r.msgs) != 0 {
-		t.Fatal("une action hors dialogue a eu un effet")
+		t.Fatal("an out-of-dialogue action had an effect")
 	}
 }
 
@@ -165,7 +166,7 @@ func TestCannotTalkWhileFighting(t *testing.T) {
 	r.g.startFight(r.p, m, true)
 	r.g.startTalk(r.p, r.npc)
 	if r.p.talk != nil {
-		t.Fatal("une conversation s'est ouverte pendant un combat")
+		t.Fatal("a conversation opened during a fight")
 	}
 }
 
@@ -176,11 +177,11 @@ func TestHealerIsFreeAtLevelOne(t *testing.T) {
 	r.p.hp = 3
 	r.talk()
 	if o, _ := r.offer(protocol.NPCHeal); !o.Available || o.Price != 0 {
-		t.Fatalf("offre: %+v, attendue gratuite et disponible", o)
+		t.Fatalf("offer: %+v, expected free and available", o)
 	}
 	r.act(protocol.NPCHeal)
 	if r.p.hp != r.p.stats.MaxHP || r.p.stats.Gold != 0 {
-		t.Fatalf("PV %d/%d, or %d", r.p.hp, r.p.stats.MaxHP, r.p.stats.Gold)
+		t.Fatalf("HP %d/%d, or %d", r.p.hp, r.p.stats.MaxHP, r.p.stats.Gold)
 	}
 	if !strings.Contains(strings.Join(r.last().Log, "|"), "offert") {
 		t.Fatalf("journal: %v", r.last().Log)
@@ -193,14 +194,14 @@ func TestHealerChargesPerLevel(t *testing.T) {
 	r.p.hp = 10
 	price := healPrice(5)
 	if price != 5*healPricePerLevel {
-		t.Fatalf("tarif = %d", price)
+		t.Fatalf("price = %d", price)
 	}
 	r.p.stats.Gold = price + 7
 	r.talk()
 	r.act(protocol.NPCHeal)
 
 	if r.p.hp != r.p.stats.MaxHP || r.p.stats.Gold != 7 {
-		t.Fatalf("PV %d/%d, or %d (attendu 7)", r.p.hp, r.p.stats.MaxHP, r.p.stats.Gold)
+		t.Fatalf("HP %d/%d, or %d (expected 7)", r.p.hp, r.p.stats.MaxHP, r.p.stats.Gold)
 	}
 }
 
@@ -211,11 +212,11 @@ func TestHealerRefusesWhenPoor(t *testing.T) {
 	r.p.stats.Gold = healPrice(4) - 3
 	r.talk()
 	if o, _ := r.offer(protocol.NPCHeal); o.Available {
-		t.Fatal("l'offre devrait être marquée indisponible")
+		t.Fatal("the offer should be marked unavailable")
 	}
 	r.act(protocol.NPCHeal)
 	if r.p.hp != 5 || r.p.stats.Gold != healPrice(4)-3 {
-		t.Fatalf("état modifié malgré le refus: PV %d, or %d", r.p.hp, r.p.stats.Gold)
+		t.Fatalf("state modified despite the refusal: HP %d, gold %d", r.p.hp, r.p.stats.Gold)
 	}
 	if !strings.Contains(strings.Join(r.last().Log, "|"), "Il vous manque 3 or") {
 		t.Fatalf("journal: %v", r.last().Log)
@@ -229,11 +230,11 @@ func TestHealerDoesNotChargeWhenHealthy(t *testing.T) {
 	r.p.stats.Gold = 100
 	r.talk()
 	if o, _ := r.offer(protocol.NPCHeal); o.Available {
-		t.Fatal("soigner un joueur en pleine forme ne devrait pas être proposé")
+		t.Fatal("healing a player at full health should not be offered")
 	}
 	r.act(protocol.NPCHeal)
 	if r.p.stats.Gold != 100 {
-		t.Fatalf("or débité (%d) pour un joueur en pleine forme", r.p.stats.Gold)
+		t.Fatalf("gold debited (%d) for a player at full health", r.p.stats.Gold)
 	}
 }
 
@@ -245,7 +246,7 @@ func TestHealerDoesNotSellPotions(t *testing.T) {
 	r.act(protocol.NPCBuy)
 	r.act(protocol.NPCSell)
 	if r.p.stats.Gold != 200 || r.p.stats.Potions != before {
-		t.Fatalf("le soigneur a commercé: or %d, potions %d", r.p.stats.Gold, r.p.stats.Potions)
+		t.Fatalf("the healer traded: gold %d, potions %d", r.p.stats.Gold, r.p.stats.Potions)
 	}
 	if !strings.Contains(strings.Join(r.last().Log, "|"), "pas ce que je propose") {
 		t.Fatalf("journal: %v", r.last().Log)
@@ -262,10 +263,10 @@ func TestMerchantBuy(t *testing.T) {
 	r.act(protocol.NPCBuy)
 
 	if r.p.stats.Potions != before+1 || r.p.stats.Gold != 5 {
-		t.Fatalf("potions %d (attendu %d), or %d (attendu 5)", r.p.stats.Potions, before+1, r.p.stats.Gold)
+		t.Fatalf("potions %d (expected %d), or %d (expected 5)", r.p.stats.Potions, before+1, r.p.stats.Gold)
 	}
 	if d := r.last(); d.Gold != 5 || d.Potions != before+1 {
-		t.Fatalf("le dialogue n'est pas à jour: %+v", d)
+		t.Fatalf("the dialogue is not up to date: %+v", d)
 	}
 }
 
@@ -273,24 +274,24 @@ func TestMerchantBuyRefusals(t *testing.T) {
 	r := newNPCRig(t, world.NPCMerchant)
 	r.talk()
 
-	r.p.stats.Gold = potionBuyPrice - 1 // trop pauvre
+	r.p.stats.Gold = potionBuyPrice - 1 // too poor
 	before := r.p.stats.Potions
 	r.act(protocol.NPCBuy)
 	if r.p.stats.Potions != before || r.p.stats.Gold != potionBuyPrice-1 {
-		t.Fatal("achat accepté sans l'or nécessaire")
+		t.Fatal("purchase accepted without the necessary gold")
 	}
 	if !strings.Contains(strings.Join(r.last().Log, "|"), "Il vous manque 1 or") {
 		t.Fatalf("journal: %v", r.last().Log)
 	}
 
-	r.p.stats.Gold = 500 // sac plein: l'or n'est PAS débité
+	r.p.stats.Gold = 500 // full bag: the gold is NOT debited
 	r.p.stats.Potions = combat.MaxPotions
 	r.act(protocol.NPCBuy)
 	if r.p.stats.Gold != 500 || r.p.stats.Potions != combat.MaxPotions {
-		t.Fatalf("achat avec un sac plein: or %d, potions %d", r.p.stats.Gold, r.p.stats.Potions)
+		t.Fatalf("purchase with a full bag: gold %d, potions %d", r.p.stats.Gold, r.p.stats.Potions)
 	}
 	if o, _ := r.offer(protocol.NPCBuy); o.Available {
-		t.Fatal("l'achat ne devrait pas être proposé avec un sac plein")
+		t.Fatal("the purchase should not be offered with a full bag")
 	}
 }
 
@@ -304,7 +305,7 @@ func TestMerchantSell(t *testing.T) {
 		t.Fatalf("potions %d, or %d", r.p.stats.Potions, r.p.stats.Gold)
 	}
 	if o, ok := r.offer(protocol.NPCSell); !ok || !o.Gain || o.Price != potionSellPrice {
-		t.Fatalf("offre de vente: %+v", o)
+		t.Fatalf("sale offer: %+v", o)
 	}
 }
 
@@ -316,21 +317,21 @@ func TestMerchantSellRefusals(t *testing.T) {
 	r.p.stats.Gold = 40
 	r.act(protocol.NPCSell)
 	if r.p.stats.Gold != 40 || r.p.stats.Potions != 0 {
-		t.Fatal("vente sans potion acceptée")
+		t.Fatal("sale without a potion accepted")
 	}
 
-	// Bourse pleine: on ne perd pas une potion contre rien.
+	// Full purse: we do not lose a potion for nothing.
 	r.p.stats.Potions = 4
 	r.p.stats.Gold = combat.MaxGold - 2
 	r.act(protocol.NPCSell)
 	if r.p.stats.Potions != 4 || r.p.stats.Gold != combat.MaxGold-2 {
-		t.Fatalf("potion vendue à bourse pleine: potions %d, or %d", r.p.stats.Potions, r.p.stats.Gold)
+		t.Fatalf("potion sold with a full purse: potions %d, gold %d", r.p.stats.Potions, r.p.stats.Gold)
 	}
 }
 
 func TestMerchantBuyThenSellNeverCreatesGold(t *testing.T) {
 	if potionSellPrice >= potionBuyPrice {
-		t.Fatalf("revendre (%d) doit rapporter moins qu'acheter (%d), sinon on fabrique de l'or", potionSellPrice, potionBuyPrice)
+		t.Fatalf("reselling (%d) must yield less than buying (%d), otherwise gold is manufactured", potionSellPrice, potionBuyPrice)
 	}
 	r := newNPCRig(t, world.NPCMerchant)
 	r.p.stats.Gold = 1000
@@ -342,7 +343,7 @@ func TestMerchantBuyThenSellNeverCreatesGold(t *testing.T) {
 		r.act(protocol.NPCSell)
 	}
 	if r.p.stats.Gold > start {
-		t.Fatalf("or créé par des allers-retours: %d -> %d", start, r.p.stats.Gold)
+		t.Fatalf("gold created by round trips: %d -> %d", start, r.p.stats.Gold)
 	}
 }
 
@@ -353,11 +354,11 @@ func TestMerchantDoesNotHeal(t *testing.T) {
 	r.talk()
 	r.act(protocol.NPCHeal)
 	if r.p.hp != 2 || r.p.stats.Gold != 500 {
-		t.Fatalf("le marchand a soigné: PV %d, or %d", r.p.hp, r.p.stats.Gold)
+		t.Fatalf("the merchant healed: HP %d, gold %d", r.p.hp, r.p.stats.Gold)
 	}
 }
 
-// --- Persistance, expiration, boucle réelle ---
+// --- Persistence, expiration, real loop ---
 
 func TestTransactionIsSavedImmediately(t *testing.T) {
 	r := newNPCRig(t, world.NPCMerchant)
@@ -366,18 +367,18 @@ func TestTransactionIsSavedImmediately(t *testing.T) {
 	r.p.stats.Gold = 100
 	r.talk()
 	if len(sv.calls) != 0 {
-		t.Fatal("sauvegarde à l'ouverture d'une conversation")
+		t.Fatal("save on opening a conversation")
 	}
 	r.act(protocol.NPCBuy)
 	got, ok := sv.last("hero")
 	if !ok || got.Stats.Gold != 100-potionBuyPrice {
-		t.Fatalf("sauvegarde après achat: %+v (ok=%v)", got.Stats, ok)
+		t.Fatalf("save after purchase: %+v (ok=%v)", got.Stats, ok)
 	}
 	n := len(sv.calls)
 	r.p.stats.Gold = 0
-	r.act(protocol.NPCBuy) // refusé
+	r.act(protocol.NPCBuy) // refused
 	if len(sv.calls) != n {
-		t.Fatal("une transaction refusée a déclenché une sauvegarde")
+		t.Fatal("a refused transaction triggered a save")
 	}
 }
 
@@ -387,15 +388,15 @@ func TestIdleDialogExpires(t *testing.T) {
 	r.g.tick += fightIdleTicks
 	r.g.expireIdleTalks(r.g.sortedIDs())
 	if r.p.talk == nil {
-		t.Fatal("expirée trop tôt")
+		t.Fatal("expired too early")
 	}
 	r.g.tick++
 	r.g.expireIdleTalks(r.g.sortedIDs())
 	if r.p.talk != nil {
-		t.Fatal("la conversation inactive aurait dû expirer")
+		t.Fatal("the idle conversation should have expired")
 	}
 	if d := r.last(); !d.Over || d.Kind != "healer" {
-		t.Fatalf("message d'expiration: %+v", d)
+		t.Fatalf("expiration message: %+v", d)
 	}
 }
 
@@ -403,11 +404,11 @@ func TestActionResetsIdleTimerForDialogs(t *testing.T) {
 	r := newNPCRig(t, world.NPCMerchant)
 	r.talk()
 	r.g.tick += fightIdleTicks
-	r.act(protocol.NPCSell) // le joueur agit
+	r.act(protocol.NPCSell) // the player acts
 	r.g.tick += fightIdleTicks
 	r.g.expireIdleTalks(r.g.sortedIDs())
 	if r.p.talk == nil {
-		t.Fatal("un joueur actif ne doit pas être expulsé")
+		t.Fatal("an active player must not be kicked out")
 	}
 }
 
@@ -416,24 +417,24 @@ func TestLeavingGameClosesDialogSilently(t *testing.T) {
 	r.talk()
 	r.g.leave(r.p.id)
 	if _, ok := r.g.players[r.p.id]; ok {
-		t.Fatal("joueur toujours présent")
+		t.Fatal("player still present")
 	}
 }
 
 func TestValidNPCActions(t *testing.T) {
 	for _, a := range []string{"buy", "sell", "heal", "leave"} {
 		if !ValidNPCAction(a) {
-			t.Errorf("%q devrait être valide", a)
+			t.Errorf("%q should be valid", a)
 		}
 	}
 	for _, a := range []string{"", "Buy", "pillage", "attack", "buy "} {
 		if ValidNPCAction(a) {
-			t.Errorf("%q ne devrait pas être valide", a)
+			t.Errorf("%q should not be valid", a)
 		}
 	}
 }
 
-// Parcours complet à travers la vraie boucle (goroutine, file de commandes, callbacks).
+// Full walkthrough through the real loop (goroutine, command queue, callbacks).
 func TestDialogThroughRunningGame(t *testing.T) {
 	g := newGame()
 	npc := findNPC(t, g, world.NPCHealer)
@@ -450,7 +451,7 @@ func TestDialogThroughRunningGame(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Place le joueur à côté du PNJ puis lui fait faire un pas vers lui.
+	// Place the player next to the NPC then make them take a step toward it.
 	ready := make(chan [2]int, 1)
 	g.do(func() {
 		p := g.players[id]
@@ -467,7 +468,7 @@ func TestDialogThroughRunningGame(t *testing.T) {
 	})
 	d := <-ready
 	if d == ([2]int{}) {
-		t.Skip("pas de case libre à côté du PNJ")
+		t.Skip("no free tile next to the NPC")
 	}
 	g.Move(id, d[0], d[1])
 
@@ -476,21 +477,21 @@ func TestDialogThroughRunningGame(t *testing.T) {
 		case m := <-msgs:
 			return m
 		case <-time.After(3 * time.Second):
-			t.Fatal("aucun message de dialogue")
+			t.Fatal("no dialogue message")
 			return protocol.NPCDialog{}
 		}
 	}
 	if m := recv(); m.Over || m.Kind != "healer" {
-		t.Fatalf("ouverture: %+v", m)
+		t.Fatalf("opening: %+v", m)
 	}
 	g.TalkAct(id, protocol.NPCHeal, "")
 	if m := recv(); m.HP != m.MaxHP {
-		t.Fatalf("soin non appliqué: %+v", m)
+		t.Fatalf("healing not applied: %+v", m)
 	}
-	g.TalkAct(id, "action-inconnue", "") // ignorée
+	g.TalkAct(id, "action-inconnue", "") // ignored
 	g.TalkAct(id, protocol.NPCLeave, "")
 	if m := recv(); !m.Over {
-		t.Fatalf("fermeture: %+v", m)
+		t.Fatalf("closing: %+v", m)
 	}
 }
 
@@ -500,25 +501,25 @@ func TestVillagerOffersOnlyConversation(t *testing.T) {
 	r.talk()
 	d := r.last()
 	if d.Kind != string(world.NPCVillager) || len(d.Offers) != 1 || d.Offers[0].Action != protocol.NPCTalk {
-		t.Fatalf("un villageois ne propose que « Discuter » : %+v", d)
+		t.Fatalf("a villager only offers Chat: %+v", d)
 	}
-	// Ni commerce ni soin chez lui, et rien n'est débité.
+	// Neither trade nor healing with them, and nothing is debited.
 	r.p.stats.Gold = 100
 	r.act(protocol.NPCBuy)
 	r.act(protocol.NPCHeal)
 	if r.p.stats.Gold != 100 || !strings.Contains(strings.Join(r.last().Log, " "), "pas ce que je propose") {
-		t.Fatalf("gold=%d dernier=%+v", r.p.stats.Gold, r.last())
+		t.Fatalf("gold=%d last=%+v", r.p.stats.Gold, r.last())
 	}
 }
 
 func TestVillagerWithoutAIGivesAStableAmbientLine(t *testing.T) {
-	r := newNPCRig(t, world.NPCVillager) // pas de Talker
+	r := newNPCRig(t, world.NPCVillager) // no Talker
 	r.talk()
 	d := r.last()
 	if len(d.Offers) != 0 || len(d.Log) != 1 || d.Log[0] != ambientLine(i18n.FR, r.npc) || d.Log[0] == "" {
-		t.Fatalf("phrase d'ambiance attendue sans menu vide ni IA : %+v", d)
+		t.Fatalf("ambient sentence expected with no empty menu or AI : %+v", d)
 	}
 	if ambientLine(i18n.FR, r.npc) != ambientLine(i18n.FR, r.npc) {
-		t.Fatal("la phrase doit être stable pour un même PNJ")
+		t.Fatal("the sentence must be stable for a given NPC")
 	}
 }

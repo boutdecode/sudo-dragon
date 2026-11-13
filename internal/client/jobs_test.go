@@ -18,11 +18,11 @@ func TestBagShowsEveryJobEvenWhenEmpty(t *testing.T) {
 	out := strings.Join(m.resourceLines(), "\n")
 	for _, want := range []string{"3/8", "0/5"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("%q absent de la liste des matières:\n%s", want, out)
+			t.Errorf("%q missing from the materials list:\n%s", want, out)
 		}
 	}
 	if n := strings.Count(out, "/5"); n != 3 {
-		t.Errorf("%d métiers vides affichés, attendu 3", n)
+		t.Errorf("%d empty jobs displayed, expected 3", n)
 	}
 }
 
@@ -31,6 +31,6 @@ func TestApplyBagClampsJobs(t *testing.T) {
 	m.applyBag(protocol.Bag{Jobs: []protocol.JobInfo{{Job: "wood", Level: -4, Chance: 900, Used: -1, Cap: 1 << 30}}})
 	j := m.bag.Jobs[0]
 	if j.Level != 1 || j.Chance != 100 || j.Used != 0 || j.Cap != 9999 {
-		t.Errorf("métier non borné: %+v", j)
+		t.Errorf("unbounded job: %+v", j)
 	}
 }

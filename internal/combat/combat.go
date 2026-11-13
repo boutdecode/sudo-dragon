@@ -1,6 +1,6 @@
-// Package combat contient les règles du combat tour par tour et la
-// progression d'un personnage. Il ne dépend d'aucun autre paquet du jeu et
-// reçoit son aléa en paramètre, ce qui le rend entièrement déterministe en test.
+// Package combat contains the rules of turn-based combat and the
+// progression of a character. It depends on no other game package and
+// receives its randomness as a parameter, which makes it fully deterministic in tests.
 package combat
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
-// Action est le choix d'un joueur pour un tour.
+// Action is a player's choice for a turn.
 type Action int
 
 const (
@@ -23,7 +23,7 @@ const (
 	Flee
 )
 
-// ParseAction convertit le nom d'une action reçu du réseau.
+// ParseAction converts the name of an action received from the network.
 func ParseAction(s string) (Action, bool) {
 	switch s {
 	case "attack":
@@ -36,7 +36,7 @@ func ParseAction(s string) (Action, bool) {
 	return 0, false
 }
 
-// Result est l'issue d'un combat.
+// Result is the outcome of a battle.
 type Result int
 
 const (
@@ -46,7 +46,7 @@ const (
 	Fled
 )
 
-// String renvoie l'identifiant d'issue utilisé dans le protocole.
+// String returns the outcome identifier used in the protocol.
 func (r Result) String() string {
 	switch r {
 	case Won:
@@ -59,82 +59,82 @@ func (r Result) String() string {
 	return ""
 }
 
-// Réglages d'équilibrage.
+// Balancing settings.
 const (
-	HealAmount   = 15  // PV rendus par une potion
-	MaxPotions   = 9   // plafond de l'inventaire
-	FleeChance   = 0.5 // chance de réussir une fuite
-	critRoll     = 20  // le 20 naturel touche toujours et double les dés
-	fumbleRoll   = 1   // le 1 naturel rate toujours
-	minimumDamge = 1   // un coup qui touche inflige au moins ceci, réduction comprise
+	HealAmount   = 15  // HP restored by a potion
+	MaxPotions   = 9   // inventory cap
+	FleeChance   = 0.5 // chance of a successful flee
+	critRoll     = 20  // a natural 20 always hits and doubles the dice
+	fumbleRoll   = 1   // a natural 1 always misses
+	minimumDamge = 1   // a hit deals at least this much, reduction included
 )
 
-// Fighter est un combattant. Toucher: d20 + Hit doit dépasser la DEF de l'adversaire. Dégâts: Dmg (dés et
-// qualité de l'arme) + DmgMod, moins les dés de Reduction de l'adversaire.
+// Fighter is a combatant. To hit: d20 + Hit must exceed the opponent's DEF. Damage: Dmg (dice and
+// weapon quality) + DmgMod, minus the opponent's Reduction dice.
 type Fighter struct {
 	HP, MaxHP int
-	Init      int       // modificateur du jet d'initiative (AGI pour un joueur)
-	Def       int       // DEF totale (taille, agilité, équipement)
-	Hit       int       // bonus au jet de toucher
-	Dmg       dice.Dice // dés de dégâts
-	DmgMod    int       // modificateur de caractéristique ajouté aux dégâts
-	Reduction dice.Dice // dés retirés aux dégâts reçus (armure)
+	Init      int       // initiative roll modifier (AGI for a player)
+	Def       int       // total DEF (size, agility, equipment)
+	Hit       int       // bonus to the hit roll
+	Dmg       dice.Dice // damage dice
+	DmgMod    int       // ability modifier added to damage
+	Reduction dice.Dice // dice subtracted from damage taken (armour)
 
-	// Style de l'arme (vide: mêlée) et mana (seuls les joueurs en ont).
+	// Weapon style (empty: melee) and mana (only players have any).
 	Kind          hero.Kind
 	Mana, MaxMana int
 
-	// Sans mana, une arme magique sert de gourdin: toucher et modificateur de FOR du porteur.
+	// Without mana, a magic weapon is used as a club: the wielder's hit and STR modifier.
 	MeleeHit, MeleeMod int
 }
 
-// Foe est un monstre engagé dans un combat. Un monstre abattu reste dans la liste avec HP == 0, pour que les
-// indices restent stables.
+// Foe is a monster engaged in a battle. A slain monster stays in the list with HP == 0, so that
+// indices remain stable.
 type Foe struct {
 	Fighter
-	Name string // pour les messages, ex. "Rat 2" (déjà dans la langue du joueur)
-	Kind string // espèce
-	XP   int    // sert à désigner le plus fort
+	Name string // for messages, e.g. "Rat 2" (already in the player's language)
+	Kind string // species
+	XP   int    // used to designate the strongest
 }
 
-// Alive dit si le monstre est encore debout.
+// Alive reports whether the monster is still standing.
 func (f Foe) Alive() bool { return f.HP > 0 }
 
-// Strike est une attaque résolue, pour les effets visuels du client.
+// Strike is a resolved attack, for the client's visual effects.
 type Strike struct {
-	ByPlayer bool // le joueur frappe (sinon un monstre)
-	Foe      int  // indice du monstre concerné (cible ou attaquant)
-	Dmg      int  // dégâts infligés (0 si raté)
+	ByPlayer bool // the player strikes (otherwise a monster)
+	Foe      int  // index of the monster concerned (target or attacker)
+	Dmg      int  // damage dealt (0 if missed)
 	Hit      bool
 	Crit     bool
 }
 
-// Battle est un combat entre un joueur et un ou plusieurs monstres.
+// Battle is a fight between a player and one or more monsters.
 type Battle struct {
 	Player  Fighter
 	Foes    []Foe
-	Lang    i18n.Lang // langue du journal; le zéro vaut le français
+	Lang    i18n.Lang // language of the log; the zero value is English
 	Potions int
 	Round   int
 	Result  Result
 
-	// Events liste les attaques du dernier appel à Start ou Act.
+	// Events lists the attacks of the last call to Start or Act.
 	Events []Strike
 
 	rng *rand.Rand
 }
 
-// New prépare un duel contre un seul monstre. rng ne doit pas être nil.
+// New prepares a duel against a single monster. rng must not be nil.
 func New(player Fighter, potions int, monster Fighter, monsterName string, rng *rand.Rand) *Battle {
 	return NewGroup(player, potions, []Foe{{Fighter: monster, Name: monsterName}}, rng)
 }
 
-// NewGroup prépare un combat contre plusieurs monstres.
+// NewGroup prepares a battle against several monsters.
 func NewGroup(player Fighter, potions int, foes []Foe, rng *rand.Rand) *Battle {
 	return &Battle{Player: player, Foes: foes, Potions: potions, rng: rng}
 }
 
-// FirstAlive renvoie l'indice du premier monstre vivant (-1 s'il n'en reste aucun).
+// FirstAlive returns the index of the first living monster (-1 if none remain).
 func (b *Battle) FirstAlive() int {
 	for i, f := range b.Foes {
 		if f.Alive() {
@@ -144,8 +144,8 @@ func (b *Battle) FirstAlive() int {
 	return -1
 }
 
-// Strongest renvoie l'indice du monstre vivant le plus fort: le plus d'XP, puis le plus de PV max, puis le premier
-// (-1 s'il n'en reste aucun).
+// Strongest returns the index of the strongest living monster: most XP, then most max HP, then the first
+// (-1 if none remain).
 func (b *Battle) Strongest() int {
 	best := -1
 	for i, f := range b.Foes {
@@ -161,18 +161,18 @@ func (b *Battle) Strongest() int {
 
 func (b *Battle) t(key string, args ...any) string { return i18n.T(b.Lang, key, args...) }
 
-// blow est le résultat d'une attaque.
+// blow is the result of an attack.
 type blow struct {
-	roll      int // d20 naturel
+	roll      int // natural d20
 	total     int // d20 + bonus
 	hit, crit bool
-	damage    int // dégâts infligés (0 si raté)
-	reduced   int // part retirée par l'armure
+	damage    int // damage dealt (0 if missed)
+	reduced   int // part removed by armour
 	targetDef int
 	rollText  string
 }
 
-// strike résout une attaque de att contre une cible de DEF def et de réduction red.
+// strike resolves an attack by att against a target of DEF def and reduction red.
 func (b *Battle) strike(att Fighter, def int, red dice.Dice) blow {
 	r := b.rng.IntN(20) + 1
 	bl := blow{roll: r, total: r + att.Hit, targetDef: def}
@@ -194,7 +194,7 @@ func (b *Battle) strike(att Fighter, def int, red dice.Dice) blow {
 	return bl
 }
 
-// with ajoute au message la part retirée par l'armure.
+// with adds to the message the part removed by armour.
 func (b *Battle) reducedNote(bl blow) string {
 	if bl.reduced <= 0 {
 		return ""
@@ -202,9 +202,9 @@ func (b *Battle) reducedNote(bl blow) string {
 	return " " + b.t("combat.reduced", bl.reduced)
 }
 
-// Act résout un tour complet: l'action du joueur (target désigne le monstre visé; s'il est invalide ou abattu, le
-// premier vivant) puis la riposte de chaque monstre vivant. Renvoie les lignes de journal du tour. Utiliser une potion
-// sans en avoir ne consomme pas le tour. Sans effet si le combat est terminé.
+// Act resolves a full turn: the player's action (target designates the targeted monster; if invalid or slain, the
+// first living one) then the retaliation of each living monster. It returns the log lines of the turn. Using a potion
+// without having one does not consume the turn. No effect if the battle is over.
 func (b *Battle) Act(a Action, target int) []string {
 	if b.Result != Ongoing {
 		return nil
@@ -221,7 +221,7 @@ func (b *Battle) Act(a Action, target int) []string {
 		kind := b.Player.Kind.OrMelee()
 		att, clubbed := b.Player, false
 		if kind == hero.Magic {
-			if att.Mana < hero.SpellCost { // sans mana: coup de l'arme tenue comme un gourdin
+			if att.Mana < hero.SpellCost { // no mana: strike with the weapon held as a club
 				att.Hit, att.Dmg, att.DmgMod, clubbed = att.MeleeHit, BareHands, att.MeleeMod, true
 			} else {
 				b.Player.Mana -= hero.SpellCost
@@ -275,7 +275,7 @@ func (b *Battle) Act(a Action, target int) []string {
 		return log
 	}
 
-	// Riposte de chaque monstre vivant.
+	// Retaliation of each living monster.
 	for i, foe := range b.Foes {
 		if !foe.Alive() {
 			continue
@@ -289,8 +289,8 @@ func (b *Battle) Act(a Action, target int) []string {
 	return log
 }
 
-// foeStrikes résout l'attaque d'un monstre contre le joueur. Renvoie le journal complété et si le joueur est mort
-// (le combat est alors perdu).
+// foeStrikes resolves a monster's attack on the player. It returns the completed log and whether the player died
+// (the battle is then lost).
 func (b *Battle) foeStrikes(i int, log []string) ([]string, bool) {
 	foe := b.Foes[i]
 	bl := b.strike(foe.Fighter, b.Player.Def, b.Player.Reduction)
@@ -313,9 +313,9 @@ func (b *Battle) foeStrikes(i int, log []string) ([]string, bool) {
 	return log, false
 }
 
-// Start tire l'initiative (d20 + modificateur) du joueur et de chaque monstre. Les monstres qui devancent le joueur
-// (strictement: à égalité, le joueur commence) frappent avant son premier tour, du plus rapide au plus lent. À
-// appeler une fois, au début du combat. Renvoie les lignes de journal.
+// Start rolls initiative (d20 + modifier) for the player and each monster. Monsters that beat the player
+// (strictly: on a tie, the player goes first) strike before his first turn, from fastest to slowest. To be
+// called once, at the start of the battle. It returns the log lines.
 func (b *Battle) Start() []string {
 	type roll struct{ idx, total int }
 	b.Events = b.Events[:0]
@@ -345,7 +345,7 @@ func (b *Battle) Start() []string {
 	return log
 }
 
-// Abandon termine le combat comme une fuite (inactivité du joueur).
+// Abandon ends the battle as a flee (player inactivity).
 func (b *Battle) Abandon() {
 	if b.Result == Ongoing {
 		b.Result = Fled

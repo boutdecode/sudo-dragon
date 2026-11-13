@@ -2,19 +2,19 @@ package world
 
 import "github.com/kevin/ascii-adventure/internal/i18n"
 
-// Caravanes : un marchand ambulant fait l'aller-retour sur certaines routes entre deux lieux (voir game/caravan.go
-// pour son déplacement). Son existence et son identité sont tirées de la seed, comme celles des PNJ postés.
+// Caravans: a travelling merchant goes back and forth on some roads between two places (see game/caravan.go
+// for its movement). Its existence and identity are drawn from the seed, like those of the posted NPCs.
 
 const (
-	// CaravanIndexBase est le rang du marchand ambulant dans la numérotation des PNJ de sa région (Index). Il est au-delà
-	// des PNJ postés (moins de 100) et des gardes (GuardIndexBase et suivants).
+	// CaravanIndexBase is the rank of the travelling merchant in the numbering of the NPCs of its region (Index). It is
+	// beyond the posted NPCs (fewer than 100) and the guards (GuardIndexBase onwards).
 	CaravanIndexBase = 200
 
-	caravanSalt   = 9_000_000 // flux d'identité : au-delà de tous les sels des points d'intérêt et des cases à creuser
-	caravanChance = 0.5       // part des routes qui portent une caravane
+	caravanSalt   = 9_000_000 // identity stream: beyond all the salts of the points of interest and of the dig spots
+	caravanChance = 0.5       // share of the roads that carry a caravan
 )
 
-// HasCaravan dit si la route r porte une caravane, et renvoie sa graine (qui règle son décalage dans le temps).
+// HasCaravan tells whether road r carries a caravan, and returns its seed (which sets its offset in time).
 func (w *World) HasCaravan(r RoadRoute) (seed uint64, ok bool) {
 	rng := identityRNG(w.Seed, r.A, caravanSalt+uint64(r.Orient))
 	if rng.Float64() >= caravanChance {
@@ -23,8 +23,8 @@ func (w *World) HasCaravan(r RoadRoute) (seed uint64, ok bool) {
 	return rng.Uint64(), true
 }
 
-// CaravanMerchant fabrique le marchand de la caravane de la route r, à la case pos : forgeron ou armurier selon la
-// graine, avec une identité propre. Region et Index (CaravanIndexBase + Orient) forment sa clé.
+// CaravanMerchant builds the merchant of the caravan on road r, at tile pos: blacksmith or armourer depending on the
+// seed, with its own identity. Region and Index (CaravanIndexBase + Orient) form its key.
 func (w *World) CaravanMerchant(r RoadRoute, pos Pos) NPC {
 	seed, _ := w.HasCaravan(r)
 	kind := NPCSmith

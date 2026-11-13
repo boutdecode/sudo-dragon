@@ -10,12 +10,12 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// maxStoredQuests borne ce qu'on garde par compte : les quêtes en cours puis les plus
-// récentes rendues. Les quêtes abandonnées ou expirées ne sont pas conservées.
+// maxStoredQuests bounds what is kept per account: ongoing quests, then the most
+// recent handed-in ones. Abandoned or expired quests are not kept.
 const maxStoredQuests = 60
 
-// saveQuests remplace les quêtes et la réputation d'un compte (dans la transaction de
-// sauvegarde du personnage).
+// saveQuests replaces an account's quests and reputation (inside the
+// character save transaction).
 func saveQuests(tx *sql.Tx, account string, c Character) error {
 	if _, err := tx.Exec(`DELETE FROM quests WHERE account = ?`, account); err != nil {
 		return err
@@ -63,7 +63,7 @@ func saveQuests(tx *sql.Tx, account string, c Character) error {
 	return nil
 }
 
-// loadQuests lit les quêtes (anciennes d'abord) et la réputation d'un compte.
+// loadQuests reads an account's quests (oldest first) and reputation.
 func (s *Store) loadQuests(account string) ([]quest.Quest, map[world.RegionPos]int, error) {
 	rows, err := s.db.Query(`SELECT id, giver_rx, giver_ry, giver_idx, title, story, kind, species, count,
 			target_rx, target_ry, progress, gold, xp, potions, note, tier, state, created_at, done_at
@@ -109,12 +109,12 @@ func (s *Store) loadQuests(account string) ([]quest.Quest, map[world.RegionPos]i
 		rep[rp] = pts
 	}
 	if len(rep) == 0 {
-		rep = nil // même valeur que pour un personnage neuf : comparable
+		rep = nil // same value as for a new character: comparable
 	}
 	return out, rep, rrows.Err()
 }
 
-// DeedsNear implémente lore.DeedRepo.
+// DeedsNear implements lore.DeedRepo.
 func (s *Store) DeedsNear(ctx context.Context, at world.RegionPos, radius int, notBefore time.Time, limit int) ([]lore.Deed, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT account, giver_rx, giver_ry, title, done_at FROM quests
 		WHERE state = 'done' AND giver_rx BETWEEN ? AND ? AND giver_ry BETWEEN ? AND ? AND done_at >= ?
@@ -137,8 +137,8 @@ func (s *Store) DeedsNear(ctx context.Context, at world.RegionPos, radius int, n
 	return out, rows.Err()
 }
 
-// ListDeeds renvoie les quêtes rendues (d'un compte, ou de tous si account est vide),
-// les plus récentes d'abord. Sert à l'opérateur.
+// ListDeeds returns the handed-in quests (of one account, or of all if account is empty),
+// most recent first. Used by the operator.
 func (s *Store) ListDeeds(ctx context.Context, account string, limit int) ([]lore.Deed, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT account, giver_rx, giver_ry, title, done_at FROM quests
 		WHERE state = 'done' AND (? = '' OR account = ?) ORDER BY done_at DESC LIMIT ?`, account, account, limit)

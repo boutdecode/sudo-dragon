@@ -1,10 +1,10 @@
-// Package ui regroupe le thème « sudo Dragon » et les petits composants
-// d'interface (panneaux, jauges, barre de raccourcis) partagés par le client.
+// Package ui groups the "sudo Dragon" theme and the small interface components
+// (panels, gauges, shortcut bar) shared by the client.
 package ui
 
 import "charm.land/lipgloss/v2"
 
-// Palette de la maquette: fond sombre violacé, accent ambre.
+// Palette from the mockup: dark purplish background, amber accent.
 const (
 	ColAccent = "#f0b04a"
 	ColText   = "#d9d3c4"
@@ -22,7 +22,7 @@ const (
 
 func fg(hex string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)) }
 
-// Styles de l'interface.
+// Interface styles.
 var (
 	Title  = fg(ColAccent).Bold(true)
 	Dim    = fg(ColMuted)
@@ -36,8 +36,8 @@ var (
 	Global = fg("#ff9f43").Bold(true)
 	Emote  = fg("#b497f0").Italic(true)
 	Whisp  = fg("#f472b6").Italic(true)
-	// Select met une ligne en surbrillance ambre (entrée de menu choisie).
+	// Select highlights a line in amber (chosen menu entry).
 	Select = lipgloss.NewStyle().Background(lipgloss.Color(ColAccent)).Foreground(lipgloss.Color(ColInk)).Bold(true)
-	// Key dessine une touche dans la barre de raccourcis.
+	// Key draws a key in the shortcut bar.
 	Key = lipgloss.NewStyle().Background(lipgloss.Color(ColKeyBg)).Foreground(lipgloss.Color(ColAccent)).Bold(true).Padding(0, 1)
 )

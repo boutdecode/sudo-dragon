@@ -11,16 +11,16 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Où suis-je ? Le monde est calculé des deux côtés depuis la seed : la contrée et le lieu se
-// déduisent de la position, sans aucun message du serveur.
+// Where am I? The world is computed on both sides from the seed: the region and the place are
+// deduced from the position, without any message from the server.
 
-// placeLabel donne « village Tourelle » (genre puis nom) dans la langue du joueur.
+// placeLabel gives "village Tourelle" (kind then name) in the player's language.
 func (m Model) placeLabel(s *world.Structure) string {
 	return m.t("place.kind."+s.Kind.String()) + " " + s.NameIn(m.lang)
 }
 
-// mapTitle compose le titre du panneau de carte : « contrée · lieu · terrain (x, y) ». Les éléments
-// les moins utiles sautent d'abord quand la place manque (terrain, puis contrée), sans jamais dépasser w.
+// mapTitle builds the map panel title: "region · place · terrain (x, y)". The least useful elements
+// are dropped first when space is short (terrain, then region), never exceeding w.
 func (m Model) mapTitle(x, y, w int) string {
 	coords := fmt.Sprintf("(%d, %d)", x, y)
 	level := m.t("region.level", world.LevelAt(x, y))
@@ -55,7 +55,7 @@ func (m Model) mapTitle(x, y, w int) string {
 	return ansi.Truncate(coords, w, "")
 }
 
-// locationTitle est le titre du panneau de carte: celui du monde, ou celui du donjon.
+// locationTitle is the map panel title: the world's, or the dungeon's.
 func (m Model) locationTitle(x, y, w int) string {
 	if m.dmap != nil {
 		return m.dungeonTitle(x, y, w)
@@ -63,8 +63,8 @@ func (m Model) locationTitle(x, y, w int) string {
 	return m.mapTitle(x, y, w)
 }
 
-// trackLocation annonce dans le journal un changement de contrée ou de lieu. La première position
-// reçue est mémorisée sans bruit.
+// trackLocation announces in the log a change of region or place. The first position
+// received is remembered silently.
 func (m *Model) trackLocation() {
 	if m.world == nil {
 		return

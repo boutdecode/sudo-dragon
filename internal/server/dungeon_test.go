@@ -12,7 +12,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// nearestDungeon renvoie le donjon du monde de test le plus proche de l'origine.
+// nearestDungeon returns the dungeon of the test world closest to the origin.
 func nearestDungeon(t *testing.T) *world.Dungeon {
 	t.Helper()
 	var best *world.Dungeon
@@ -22,7 +22,7 @@ func nearestDungeon(t *testing.T) *world.Dungeon {
 		}
 	}
 	if best == nil {
-		t.Fatal("aucun donjon près de l'origine")
+		t.Fatal("no dungeon near the origin")
 	}
 	return best
 }
@@ -30,7 +30,7 @@ func nearestDungeon(t *testing.T) *world.Dungeon {
 func TestWalkingOntoAnEntranceSendsZoneThenDungeonSnapshots(t *testing.T) {
 	url, be, srv := startServer(t, 10*time.Millisecond)
 	if !srv.Game.Dungeons {
-		t.Fatal("les donjons devraient être activés sur le serveur")
+		t.Fatal("dungeons should be enabled on the server")
 	}
 	d := nearestDungeon(t)
 	register(t, url, "alice")
@@ -39,7 +39,7 @@ func TestWalkingOntoAnEntranceSendsZoneThenDungeonSnapshots(t *testing.T) {
 
 	c, w := signInEventually(t, url, "alice")
 	if w.X != d.Entrance.X-1 || w.Y != d.Entrance.Y {
-		t.Skipf("point de départ déplacé en (%d,%d)", w.X, w.Y)
+		t.Skipf("spawn point moved to (%d,%d)", w.X, w.Y)
 	}
 	readSnapshot(t, c)
 	send(t, c, protocol.TMove, protocol.Move{DX: 1})
@@ -49,35 +49,35 @@ func TestWalkingOntoAnEntranceSendsZoneThenDungeonSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	if z.Dungeon != d.ID || z.Name != d.NameIn(i18n.FR) || z.Seed != d.Seed || z.Tier != d.Tier {
-		t.Fatalf("zone %+v, attendu le donjon %s", z, d.ID)
+		t.Fatalf("zone %+v, expected dungeon %s", z, d.ID)
 	}
-	// Le premier instantané après la zone est local au plan, à côté de l'arrivée.
+	// The first snapshot after the zone is local to the layout, next to the arrival point.
 	dm := world.NewDungeonMap(&world.Dungeon{Seed: z.Seed, Tier: z.Tier})
 	snap := readSnapshot(t, c)
 	if snap.Self.X < 0 || snap.Self.X >= dm.W || snap.Self.Y < 0 || snap.Self.Y >= dm.H ||
 		!dm.TileAt(snap.Self.X, snap.Self.Y).Walkable() {
-		t.Fatalf("position %+v hors du plan du donjon", snap.Self)
+		t.Fatalf("position %+v outside the dungeon layout", snap.Self)
 	}
 	for _, m := range snap.Monsters {
 		if m.X < 0 || m.X >= dm.W || m.Y < 0 || m.Y >= dm.H {
-			t.Errorf("monstre de la surface %+v dans un instantané de donjon", m)
+			t.Errorf("surface monster %+v in a dungeon snapshot", m)
 		}
 	}
 
-	// Déconnecté sous terre, on reprend devant l'entrée.
+	// Disconnected underground, the player resumes in front of the entrance.
 	c.Close(websocket.StatusNormalClosure, "")
-	waitUntil(t, "sortie du donjon", func() bool {
+	waitUntil(t, "dungeon exit", func() bool {
 		ch, _ := be.LoadCharacter("alice")
 		return ch != nil && ch.X == d.Entrance.X && ch.Y == d.Entrance.Y
 	})
 	_, w2 := signInEventually(t, url, "alice")
 	if abs(w2.X-d.Entrance.X) > 1 || abs(w2.Y-d.Entrance.Y) > 1 {
-		t.Errorf("reconnexion en (%d,%d), attendu près de %v", w2.X, w2.Y, d.Entrance)
+		t.Errorf("reconnection at (%d,%d), expected near %v", w2.X, w2.Y, d.Entrance)
 	}
 }
 
-// recvUntil lit des messages jusqu'à en recevoir un du type voulu (au plus 5 s), quel que soit le nombre
-// d'instantanés qui s'intercalent.
+// recvUntil reads messages until one of the wanted type is received (at most 5 s), whatever the number
+// of snapshots interleaved.
 func recvUntil(t *testing.T, c *websocket.Conn, typ string) protocol.Envelope {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -86,7 +86,7 @@ func recvUntil(t *testing.T, c *websocket.Conn, typ string) protocol.Envelope {
 			return env
 		}
 	}
-	t.Fatalf("message %q non reçu", typ)
+	t.Fatalf("message %q not received", typ)
 	return protocol.Envelope{}
 }
 
@@ -103,9 +103,9 @@ func TestDiscoveredDungeonsAreSentAtLoginAndSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(list.List) != 0 {
-		t.Fatalf("liste non vide pour un nouveau personnage: %+v", list)
+		t.Fatalf("non-empty list for a new character: %+v", list)
 	}
-	// Il suffit de s'approcher à trois cases: le serveur annonce la découverte.
+	// Getting within three tiles is enough: the server announces the discovery.
 	for i := 0; i < 7; i++ {
 		send(t, c, protocol.TMove, protocol.Move{DX: 1})
 		time.Sleep(250 * time.Millisecond)
@@ -115,12 +115,12 @@ func TestDiscoveredDungeonsAreSentAtLoginAndSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if found.New != d.ID || len(found.List) != 1 || found.List[0].X != d.Entrance.X || found.List[0].Tier != d.Tier {
-		t.Fatalf("découverte: %+v (départ %v)", found, w)
+		t.Fatalf("discovery: %+v (start %v)", found, w)
 	}
 
-	// Reconnecté, il retrouve sa liste, sans nouveauté à annoncer.
+	// Once reconnected, it finds its list again, with nothing new to announce.
 	c.Close(websocket.StatusNormalClosure, "")
-	waitUntil(t, "découverte enregistrée", func() bool {
+	waitUntil(t, "discovery saved", func() bool {
 		ch, _ := be.LoadCharacter("alice")
 		return ch != nil && len(ch.Discoveries) == 1
 	})
@@ -130,6 +130,6 @@ func TestDiscoveredDungeonsAreSentAtLoginAndSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(again.List) != 1 || again.List[0].ID != d.ID || again.New != "" {
-		t.Errorf("liste à la reconnexion: %+v", again)
+		t.Errorf("list at reconnection: %+v", again)
 	}
 }

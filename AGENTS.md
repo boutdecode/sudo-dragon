@@ -1,9 +1,13 @@
-# Instructions pour les agents
+# Instructions for agents
 
-## Tenir FEATURES.md à jour
+## Keep FEATURES.md up to date
 
-[FEATURES.md](FEATURES.md) liste toutes les fonctionnalités du jeu. Toute modification qui ajoute, change ou retire une fonctionnalité (règle de jeu, commande, touche, monstre, objet, PNJ, option du serveur ou du client, langue, etc.) doit mettre à jour ce fichier **dans le même commit**.
+[FEATURES.md](FEATURES.md) lists all the features of the game. Any change that adds, changes or removes a feature (game rule, command, key, monster, item, NPC, server or client option, language, etc.) must update this file **in the same commit**.
 
-- Ajoutez les nouveautés dans la section concernée, en gardant le style existant (français, tableaux, gras pour les termes de jeu).
-- Corrigez ou supprimez les passages devenus faux, sans laisser de fonctionnalité retirée.
-- Ne décrivez comme livré que ce qui est effectivement dans le code.
+- Add new things to the relevant section, keeping the existing style (English, tables, bold for game terms).
+- Fix or remove passages that have become wrong, without leaving a removed feature behind.
+- Only describe as shipped what is actually in the code.
+
+## Keep the READMEs in sync
+
+[README.md](README.md) (English, the reference) and [README.fr.md](README.fr.md) (French) must be updated together: same sections, same tables.

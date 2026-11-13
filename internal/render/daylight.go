@@ -10,28 +10,28 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// NightLevels est le nombre de niveaux d'obscurité: 0 = plein jour,
-// NightLevels-1 = pleine nuit. Les styles assombris sont pré-calculés par
-// niveau, ce qui garde le regroupement des cellules en séquences de même style.
+// NightLevels is the number of darkness levels: 0 = full day,
+// NightLevels-1 = full night. The darkened styles are precomputed per
+// level, which keeps the grouping of cells into runs of the same style.
 const NightLevels = 6
 
-// nightMax est la part de la couleur de nuit mélangée à pleine nuit: assez
-// sombre pour qu'on sente la nuit, assez clair pour rester jouable.
+// nightMax is the share of the night colour mixed in at full night: dark
+// enough to feel the night, light enough to stay playable.
 const nightMax = 0.62
 
-// nightTint est la couleur vers laquelle le terrain s'assombrit (un bleu nuit).
+// nightTint is the colour the terrain darkens towards (a midnight blue).
 var nightTint = [3]float64{0x0b, 0x10, 0x26}
 
-// GameHour donne l'heure de jeu fractionnaire (0 <= h < 24) pour un tick.
+// GameHour gives the fractional game hour (0 <= h < 24) for a tick.
 func GameHour(tick uint64) float64 {
 	const day = 24 * protocol.TicksPerGameHour
 	t := (tick + protocol.StartGameHour*protocol.TicksPerGameHour) % day
 	return float64(t) / protocol.TicksPerGameHour
 }
 
-// Daylight donne la luminosité du jour: 1 en plein jour, 0 en pleine nuit.
-// Nuit de 21 h à 5 h, aube de 5 h à 8 h, jour de 8 h à 19 h, crépuscule de
-// 19 h à 21 h.
+// Daylight gives the brightness of the day: 1 in full day, 0 in full night.
+// Night from 9 pm to 5 am, dawn from 5 to 8 am, day from 8 am to 7 pm, dusk from
+// 7 to 9 pm.
 func Daylight(tick uint64) float64 {
 	h := GameHour(tick)
 	switch {
@@ -46,12 +46,12 @@ func Daylight(tick uint64) float64 {
 	}
 }
 
-// NightLevel quantifie Daylight: 0 = plein jour ... NightLevels-1 = pleine nuit.
+// NightLevel quantises Daylight: 0 = full day ... NightLevels-1 = full night.
 func NightLevel(tick uint64) int {
 	return int((1-Daylight(tick))*float64(NightLevels-1) + 0.5)
 }
 
-// nightStyles[n] est la copie assombrie au niveau n de la table styles.
+// nightStyles[n] is the copy of the styles table darkened to level n.
 var nightStyles [NightLevels][]lipgloss.Style
 
 func buildNightStyles() {
@@ -65,7 +65,7 @@ func buildNightStyles() {
 	}
 }
 
-// dimHex mélange c avec la couleur de nuit à hauteur de k (0..1).
+// dimHex mixes c with the night colour up to k (0..1).
 func dimHex(c color.Color, k float64) string {
 	if c == nil {
 		return "#808080"
@@ -75,11 +75,11 @@ func dimHex(c color.Color, k float64) string {
 	return fmt.Sprintf("#%02x%02x%02x", mix(r, nightTint[0]), mix(g, nightTint[1]), mix(b, nightTint[2]))
 }
 
-// lit dit si une tuile reste à pleine luminosité la nuit (elle éclaire).
+// lit reports whether a tile stays at full brightness at night (it gives light).
 func lit(t world.Tile) bool { return t == world.Campfire }
 
-// styleAt renvoie le style d'un index éventuellement codé avec un niveau de
-// nuit (index + n*len(styles)).
+// styleAt returns the style of an index possibly encoded with a night level
+// (index + n*len(styles)).
 func styleAt(st int) lipgloss.Style {
 	if n := st / len(styles); n > 0 {
 		return nightStyles[n][st%len(styles)]

@@ -10,7 +10,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// nodeGame renvoie un jeu en monde v3 et la position d'un nœud de ressource de la catégorie voulue.
+// nodeGame returns a game in world v3 and the position of a resource node of the wanted category.
 func nodeGame(t *testing.T, tile world.Tile) (*Game, world.Pos) {
 	t.Helper()
 	g := New(world.NewVersion(1, world.GenV3))
@@ -23,11 +23,11 @@ func nodeGame(t *testing.T, tile world.Tile) (*Game, world.Pos) {
 			}
 		}
 	}
-	t.Fatalf("aucun nœud %d trouvé", tile)
+	t.Fatalf("no node %d found", tile)
 	return nil, world.Pos{}
 }
 
-// forceRoll règle l'aléa du jeu pour que le prochain jet de récolte réussisse (ou échoue) au niveau donné.
+// forceRoll sets the game's randomness so that the next gathering roll succeeds (or fails) at the given level.
 func forceRoll(g *Game, level int, success bool) {
 	for seed := uint64(0); ; seed++ {
 		if (rand.New(rand.NewPCG(seed, 1)).IntN(100) < resource.Chance(level)) == success {
@@ -54,29 +54,29 @@ func TestGatherSuccessGivesOneUnitAndXP(t *testing.T) {
 	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if total(p) != 1 {
-		t.Fatalf("%d unités, attendu 1 (%v)", total(p), p.resources)
+		t.Fatalf("%d units, expected 1 (%v)", total(p), p.resources)
 	}
 	kind, _ := g.World.ResourceAt(at.X, at.Y)
 	info, _ := resource.Lookup(kind)
 	if p.skills[resource.Wood] != resource.GainXP(info.Tier) {
-		t.Errorf("XP %d, attendu %d", p.skills[resource.Wood], resource.GainXP(info.Tier))
+		t.Errorf("XP %d, expected %d", p.skills[resource.Wood], resource.GainXP(info.Tier))
 	}
 	if len(bag.Resources) != 1 || len(bag.Jobs) != int(resource.NumCategories) {
-		t.Fatalf("sac envoyé %+v", bag)
+		t.Fatalf("bag sent %+v", bag)
 	}
 	if _, spent := g.spent[at]; !spent {
-		t.Fatal("le nœud n'est pas épuisé")
+		t.Fatal("the node is not depleted")
 	}
-	// Épuisé: pas de seconde récolte; puis il repousse.
+	// Depleted: no second gathering; then it grows back.
 	p.gatherUntil = 0
 	g.gather(p.id)
 	if total(p) != 1 {
-		t.Fatal("un nœud épuisé a donné des matières")
+		t.Fatal("a depleted node gave materials")
 	}
 	g.tick += nodeRespawn
 	g.expireNodes()
 	if len(g.spent) != 0 {
-		t.Fatalf("nœud non repoussé: %v", g.spent)
+		t.Fatalf("node not regrown: %v", g.spent)
 	}
 }
 
@@ -87,10 +87,10 @@ func TestGatherFailureSpendsNodeWithoutXP(t *testing.T) {
 	forceRoll(g, 1, false)
 	g.gather(p.id)
 	if total(p) != 0 || p.skills[resource.Wood] != 0 {
-		t.Fatalf("échec récompensé: %v %v", p.resources, p.skills)
+		t.Fatalf("failure rewarded: %v %v", p.resources, p.skills)
 	}
 	if _, spent := g.spent[at]; !spent {
-		t.Fatal("un échec doit épuiser le nœud")
+		t.Fatal("a failure must deplete the node")
 	}
 }
 
@@ -102,10 +102,10 @@ func TestGatherLevelUp(t *testing.T) {
 	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if resource.LevelOf(p.skills[resource.Wood]) != 2 {
-		t.Fatalf("niveau %d, attendu 2", resource.LevelOf(p.skills[resource.Wood]))
+		t.Fatalf("level %d, expected 2", resource.LevelOf(p.skills[resource.Wood]))
 	}
 	if n := notices(p); !strings.Contains(n, "2") {
-		t.Errorf("pas d'annonce de niveau: %q", n)
+		t.Errorf("no level announcement: %q", n)
 	}
 }
 
@@ -116,11 +116,11 @@ func TestGatherFromNeighbourTile(t *testing.T) {
 	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if len(p.resources) != 1 {
-		t.Fatalf("rien récolté depuis la case voisine: %v", p.resources)
+		t.Fatalf("nothing gathered from the neighbouring tile: %v", p.resources)
 	}
 	for k := range p.resources {
 		if info, _ := resource.Lookup(k); info.Cat != resource.Ore {
-			t.Errorf("%s n'est pas un minerai", k)
+			t.Errorf("%s is not an ore", k)
 		}
 	}
 }
@@ -130,14 +130,14 @@ func TestGatherNothingAndCooldown(t *testing.T) {
 	p, _ := joinRec(g, "a")
 	g.gather(p.id)
 	if len(p.resources) != 0 || len(g.spent) != 0 {
-		t.Fatal("récolte sans nœud")
+		t.Fatal("gathering without a node")
 	}
 	if g.tick >= p.gatherUntil {
-		t.Fatal("pas de délai après une tentative")
+		t.Fatal("no delay after an attempt")
 	}
 }
 
-// Le sac d'une catégorie plein refuse la récolte sans toucher au nœud; le niveau du métier l'agrandit.
+// A full category bag refuses gathering without touching the node; the job's level enlarges it.
 func TestGatherBagCapacityFollowsLevel(t *testing.T) {
 	g, at := nodeGame(t, world.HerbNode)
 	p, _ := joinRec(g, "a")
@@ -146,18 +146,18 @@ func TestGatherBagCapacityFollowsLevel(t *testing.T) {
 	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if total(p) != resource.Capacity(1) {
-		t.Fatalf("le sac plein a grossi: %d", total(p))
+		t.Fatalf("the full bag grew: %d", total(p))
 	}
 	if _, spent := g.spent[at]; spent {
-		t.Fatal("un sac plein ne doit pas épuiser le nœud")
+		t.Fatal("a full bag must not deplete the node")
 	}
-	// Un autre métier n'est pas concerné; et le niveau suivant agrandit le sac.
+	// Another job is not affected; and the next level enlarges the bag.
 	p.skills = map[resource.Category]int{resource.Herb: resource.XPToNext(1)}
 	p.gatherUntil = 0
 	forceRoll(g, 2, true)
 	g.gather(p.id)
 	if total(p) != resource.Capacity(1)+1 {
-		t.Fatalf("sac %d après la montée de niveau, attendu %d", total(p), resource.Capacity(1)+1)
+		t.Fatalf("bag %d after the level up, expected %d", total(p), resource.Capacity(1)+1)
 	}
 }
 
@@ -169,11 +169,11 @@ func TestSyncNodesSendsSpentList(t *testing.T) {
 	p.sendNodesMsg = func(n protocol.Nodes) { got = append(got, n) }
 	g.syncNodes(p)
 	if len(got) != 0 {
-		t.Fatal("message inutile sans nœud épuisé")
+		t.Fatal("useless message without a depleted node")
 	}
 	g.gather(p.id)
 	g.syncNodes(p)
-	g.syncNodes(p) // inchangé: pas de répétition
+	g.syncNodes(p) // unchanged: no repetition
 	if len(got) != 1 || len(got[0].Spent) != 1 || got[0].Spent[0] != [2]int{at.X, at.Y} {
 		t.Fatalf("messages %v", got)
 	}
@@ -183,13 +183,13 @@ func TestResourcesSaveLoad(t *testing.T) {
 	in := map[resource.Kind]int{"iron": 3, "sage": 120}
 	out := loadResources(saveResources(in))
 	if out["iron"] != 3 || out["sage"] != maxResourceQty || len(out) != 2 {
-		t.Fatalf("relu %v", out)
+		t.Fatalf("reloaded %v", out)
 	}
 	if got := loadResources(map[string]int{"unobtainium": 5, "oak": -1}); len(got) != 0 {
-		t.Fatalf("ressources invalides conservées: %v", got)
+		t.Fatalf("invalid resources kept: %v", got)
 	}
 	if saveResources(nil) != nil {
-		t.Fatal("sac vide: attendu nil")
+		t.Fatal("empty bag: nil expected")
 	}
 }
 
@@ -197,10 +197,10 @@ func TestSkillsSaveLoad(t *testing.T) {
 	in := map[resource.Category]int{resource.Wood: 120, resource.Fish: 5}
 	out := loadSkills(saveSkills(in))
 	if out[resource.Wood] != 120 || out[resource.Fish] != 5 || len(out) != 2 {
-		t.Fatalf("relu %v", out)
+		t.Fatalf("reloaded %v", out)
 	}
-	if saveSkills(nil) != nil || len(loadSkills(map[string]int{"inconnu": 9})) != 0 {
-		t.Fatal("entrées vides ou inconnues mal traitées")
+	if saveSkills(nil) != nil || len(loadSkills(map[string]int{"unknown": 9})) != 0 {
+		t.Fatal("empty or unknown entries mishandled")
 	}
 }
 
@@ -210,10 +210,10 @@ func TestJobInfosReportBagAndChance(t *testing.T) {
 	p.resources = map[resource.Kind]int{"oak": 2, "pine": 1}
 	jobs := jobInfos(p)
 	if len(jobs) != int(resource.NumCategories) {
-		t.Fatalf("%d métiers", len(jobs))
+		t.Fatalf("%d jobs", len(jobs))
 	}
 	if jobs[resource.Wood].Used != 3 || jobs[resource.Wood].Cap != resource.Capacity(1) || jobs[resource.Wood].Chance != resource.Chance(1) {
-		t.Errorf("bûcheron %+v", jobs[resource.Wood])
+		t.Errorf("woodcutter %+v", jobs[resource.Wood])
 	}
 }
 
@@ -224,24 +224,24 @@ func TestFishingSpotInRiver(t *testing.T) {
 	forceRoll(g, 1, true)
 	g.gather(p.id)
 	if len(p.resources) != 1 {
-		t.Fatalf("rien pêché: %v", p.resources)
+		t.Fatalf("nothing fished: %v", p.resources)
 	}
 	for k := range p.resources {
 		if info, _ := resource.Lookup(k); info.Cat != resource.Fish {
-			t.Errorf("%s n'est pas un poisson", k)
+			t.Errorf("%s is not a fish", k)
 		}
 	}
 	if _, spent := g.spent[at]; !spent {
-		t.Fatal("le banc n'est pas épuisé")
+		t.Fatal("the shoal is not depleted")
 	}
 	p.gatherUntil = 0
 	g.gather(p.id)
 	if total(p) != 1 {
-		t.Fatal("un banc épuisé a encore donné")
+		t.Fatal("a depleted shoal gave again")
 	}
 }
 
-// Une rivière sans banc ne donne rien: on ne pêche pas à l'infini sur toutes les cases.
+// A river without a shoal gives nothing: one cannot fish endlessly on every tile.
 func TestNoFishingOnPlainRiver(t *testing.T) {
 	g := New(world.NewVersion(1, world.GenV3))
 	for r := 20; r < 400; r++ {
@@ -251,11 +251,11 @@ func TestNoFishingOnPlainRiver(t *testing.T) {
 				place(g, p, world.Pos{X: x, Y: r})
 				g.gather(p.id)
 				if len(p.resources) != 0 {
-					t.Fatalf("pêche sans banc: %v", p.resources)
+					t.Fatalf("fishing without a shoal: %v", p.resources)
 				}
 				return
 			}
 		}
 	}
-	t.Skip("aucune rivière trouvée")
+	t.Skip("no river found")
 }

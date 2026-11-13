@@ -2,7 +2,7 @@ package world
 
 import "math/rand/v2"
 
-// rect est un rectangle de tuiles en coordonnées locales à la structure.
+// rect is a rectangle of tiles in coordinates local to the structure.
 type rect struct{ x, y, w, h int }
 
 func (r rect) grow(n int) rect { return rect{r.x - n, r.y - n, r.w + 2*n, r.h + 2*n} }
@@ -15,18 +15,18 @@ func (r rect) contains(x, y int) bool {
 	return x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h
 }
 
-// building est un bâtiment avec sa porte; front est la case extérieure devant
-// la porte, inside la case intérieure derrière elle.
+// building is a building with its door; front is the outside tile in front of
+// the door, inside the inside tile behind it.
 type building struct {
 	r                   rect
 	door, front, inside Pos
 }
 
-// interior renvoie le rectangle intérieur (sans les murs).
+// interior returns the interior rectangle (without the walls).
 func (b building) interior() rect { return rect{b.r.x + 1, b.r.y + 1, b.r.w - 2, b.r.h - 2} }
 
-// canvas est la grille sur laquelle on dessine une structure. NPC et
-// emplacements sont en coordonnées locales; generate les convertit.
+// canvas is the grid on which a structure is drawn. NPC and
+// slot positions are in local coordinates; generate converts them.
 type canvas struct {
 	w, h  int
 	t     []Tile
@@ -61,13 +61,13 @@ func (c *canvas) fill(r rect, t Tile) {
 	}
 }
 
-// walledBox dessine un bâtiment: anneau de murs et sol intérieur.
+// walledBox draws a building: ring of walls and interior floor.
 func (c *canvas) walledBox(r rect) {
 	c.fill(r, Wall)
 	c.fill(rect{r.x + 1, r.y + 1, r.w - 2, r.h - 2}, Floor)
 }
 
-// anyRoad indique si une tuile de r est déjà un chemin.
+// anyRoad tells whether a tile of r is already a road.
 func (c *canvas) anyRoad(r rect) bool {
 	for y := r.y; y < r.y+r.h; y++ {
 		for x := r.x; x < r.x+r.w; x++ {
@@ -79,7 +79,7 @@ func (c *canvas) anyRoad(r rect) bool {
 	return false
 }
 
-// nearestRoad renvoie le chemin le plus proche de (x, y) en distance de Manhattan.
+// nearestRoad returns the road closest to (x, y) in Manhattan distance.
 func (c *canvas) nearestRoad(x, y int) (Pos, bool) {
 	best, bestD := Pos{}, -1
 	for ty := 0; ty < c.h; ty++ {
@@ -103,9 +103,9 @@ func (c *canvas) ground(x, y int, avoid rect) bool {
 	return t == Plain || t == Road
 }
 
-// connect trace un chemin de from jusqu'au chemin existant le plus proche, sans
-// traverser avoid. Essaie d'abord deux tracés en L (plus nets), puis une
-// recherche en largeur. Renvoie false si aucun chemin n'existe.
+// connect draws a path from from to the nearest existing road, without
+// crossing avoid. It first tries two L-shaped routes (neater), then a
+// breadth-first search. Returns false if no path exists.
 func (c *canvas) connect(from Pos, avoid rect) bool {
 	target, ok := c.nearestRoad(from.X, from.Y)
 	if !ok {
@@ -159,7 +159,7 @@ func sign(v int) int {
 	return 0
 }
 
-// connectBFS cherche le plus court chemin de from à un chemin existant.
+// connectBFS looks for the shortest path from from to an existing road.
 func (c *canvas) connectBFS(from Pos, avoid rect) bool {
 	prev := make(map[Pos]Pos)
 	prev[from] = from
@@ -186,12 +186,12 @@ func (c *canvas) connectBFS(from Pos, avoid rect) bool {
 	return false
 }
 
-// doorFacing choisit la porte de r sur le côté tourné vers (tx, ty).
+// doorFacing chooses the door of r on the side facing (tx, ty).
 func (c *canvas) doorFacing(r rect, tx, ty int) building {
 	cx, cy := r.x+r.w/2, r.y+r.h/2
 	dx, dy := tx-cx, ty-cy
 	b := building{r: r}
-	if abs(dx)*r.h >= abs(dy)*r.w { // côté est ou ouest
+	if abs(dx)*r.h >= abs(dy)*r.w { // east or west side
 		y := r.y + 1 + c.rng.IntN(r.h-2)
 		if dx >= 0 {
 			x := r.x + r.w - 1
@@ -213,9 +213,9 @@ func (c *canvas) doorFacing(r rect, tx, ty int) building {
 	return b
 }
 
-// placeBuildings pose jusqu'à count bâtiments dans bounds, chacun relié par un
-// chemin à un chemin existant. Les bâtiments restent à deux cases les uns des
-// autres et ne recouvrent aucun chemin existant.
+// placeBuildings places up to count buildings within bounds, each linked by a
+// road to an existing road. The buildings stay two tiles apart from each
+// other and cover no existing road.
 func (c *canvas) placeBuildings(count, minW, maxW, minH, maxH int, bounds rect) []building {
 	var placed []building
 	for attempt := 0; attempt < count*80 && len(placed) < count; attempt++ {
@@ -251,8 +251,8 @@ func (c *canvas) placeBuildings(count, minW, maxW, minH, maxH int, bounds rect) 
 	return placed
 }
 
-// npcSpot renvoie la case intérieure la plus éloignée de la porte: un PNJ qui
-// s'y tient ne gêne jamais l'entrée.
+// npcSpot returns the interior tile farthest from the door: an NPC
+// standing there never blocks the entrance.
 func (b building) npcSpot() Pos {
 	in := b.interior()
 	best, bestD := Pos{}, -1
@@ -266,7 +266,7 @@ func (b building) npcSpot() Pos {
 	return best
 }
 
-// closestTo trie par distance au point donné (indices dans bs).
+// closestTo sorts by distance to the given point (indices into bs).
 func closestTo(bs []building, x, y int) []int {
 	idx := make([]int, len(bs))
 	for i := range idx {
@@ -276,7 +276,7 @@ func closestTo(bs []building, x, y int) []int {
 		b := bs[i].r
 		return abs(b.x+b.w/2-x) + abs(b.y+b.h/2-y)
 	}
-	for i := 1; i < len(idx); i++ { // tri par insertion: les listes sont courtes
+	for i := 1; i < len(idx); i++ { // insertion sort: the lists are short
 		for j := i; j > 0 && dist(idx[j]) < dist(idx[j-1]); j-- {
 			idx[j], idx[j-1] = idx[j-1], idx[j]
 		}
@@ -284,7 +284,7 @@ func closestTo(bs []building, x, y int) []int {
 	return idx
 }
 
-// layoutVillage: une place centrale, 5 à 9 maisons reliées par des chemins, un soigneur.
+// layoutVillage: a central square, 5 to 9 houses linked by roads, a healer.
 func layoutVillage(w, h int, rng *rand.Rand, vendor NPCKind) *canvas {
 	c := newCanvas(w, h, rng)
 	square := rect{w/2 - 3, h/2 - 2, 6, 4}
@@ -298,20 +298,20 @@ func layoutVillage(w, h int, rng *rand.Rand, vendor NPCKind) *canvas {
 	order := closestTo(houses, w/2, h/2)
 	c.npcs = append(c.npcs, NPC{Kind: NPCHealer, Pos: houses[order[0]].npcSpot()})
 
-	// Villageois, ajoutés après le soigneur (les indices des PNJ existants ne bougent pas) :
-	// un sur la place, deux au fond des maisons voisines. Aucun tirage aléatoire.
+	// Villagers, added after the healer (existing NPC indices do not move):
+	// one on the square, two at the back of neighbouring houses. No random draw.
 	plaza := []Pos{{w/2 - 2, h/2 - 1}, {w/2 + 1, h / 2}, {w/2 - 2, h / 2}, {w/2 + 1, h/2 - 1}}
 	c.addNPCs(NPCVillager, 3, 1, plaza, houses, order[1:])
-	// Le chef, en dernier (les indices des PNJ précédents ne bougent pas) : au fond d'une maison libre.
+	// The chief, last (the indices of the previous NPCs do not move): at the back of a free house.
 	c.addNPCs(NPCChief, 1, 0, plaza, houses, order[1:])
-	// Puis le vendeur d'équipement du village (forgeron ou armurier), lui aussi en dernier.
+	// Then the village's equipment seller (blacksmith or armourer), also last.
 	c.addNPCs(vendor, 1, 0, plaza, houses, order[1:])
 	return c
 }
 
-// addNPCs pose count PNJ du type kind : outdoor sur les premières cases de place, puis
-// au fond des bâtiments order (indices dans bs) et, si les bâtiments manquent, sur les
-// cases de place restantes. Choix entièrement déterministe, sans le flux aléatoire du plan.
+// addNPCs places count NPCs of type kind: outdoor on the first square tiles, then
+// at the back of the buildings order (indices into bs) and, if buildings run out, on the
+// remaining square tiles. Entirely deterministic, without the plan's random stream.
 func (c *canvas) addNPCs(kind NPCKind, count, outdoor int, plaza []Pos, bs []building, order []int) {
 	var spots []Pos
 	spots = append(spots, plaza[:min(outdoor, len(plaza))]...)
@@ -336,9 +336,9 @@ func (c *canvas) addNPCs(kind NPCKind, count, outdoor int, plaza []Pos, bs []bui
 	}
 }
 
-// layoutTown: muraille à quatre portes, deux avenues en croix, place du marché,
-// une vingtaine de bâtiments (on en demande plus qu'il n'en tient: les chemins
-// déjà tracés écartent des emplacements) dont une boutique et un temple.
+// layoutTown: wall with four gates, two crossing avenues, market square,
+// about twenty buildings (more are requested than fit: the roads
+// already drawn rule out some spots) including a shop and a temple.
 func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	c := newCanvas(w, h, rng)
 	const inset = 2
@@ -346,7 +346,7 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	c.fill(wall, Wall)
 	c.fill(wall.grow(-1), Plain)
 
-	// Avenues sur toute l'emprise, qui traversent la muraille par quatre portes de trois cases.
+	// Avenues across the whole footprint, crossing the wall through four three-tile gates.
 	midX, midY := w/2, h/2
 	for i := -1; i <= 1; i++ {
 		for x := 0; x < w; x++ {
@@ -366,7 +366,7 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 
 	bs := c.placeBuildings(24+rng.IntN(11), 5, 9, 4, 7, rect{inset + 3, inset + 3, w - 2*inset - 6, h - 2*inset - 6})
 
-	// Boutique et temple: parmi les bâtiments proches du centre, les deux plus spacieux.
+	// Shop and temple: among the buildings near the centre, the two most spacious.
 	order := closestTo(bs, midX, midY)
 	if len(order) > 8 {
 		order = order[:8]
@@ -381,36 +381,36 @@ func layoutTown(w, h int, rng *rand.Rand) *canvas {
 	for i := 0; i < len(order) && i < len(kinds); i++ {
 		c.npcs = append(c.npcs, NPC{Kind: kinds[i], Pos: bs[order[i]].npcSpot()})
 	}
-	// Villageois : deux sur la place du marché (hors des avenues), trois dans les bâtiments suivants.
+	// Villagers: two on the market square (off the avenues), three in the next buildings.
 	plaza := []Pos{{midX - 4, midY - 2}, {midX + 3, midY + 2}, {midX - 4, midY + 2}, {midX + 3, midY - 2}}
 	var rest []int
 	if len(order) > len(kinds) {
 		rest = order[len(kinds):]
 	}
 	c.addNPCs(NPCVillager, 5, 2, plaza, bs, rest)
-	// Le maire, en dernier : au fond d'un bâtiment libre.
+	// The mayor, last: at the back of a free building.
 	c.addNPCs(NPCMayor, 1, 0, plaza, bs, rest)
-	// Puis forgeron et armurier.
+	// Then blacksmith and armourer.
 	c.addNPCs(NPCSmith, 1, 0, plaza, bs, rest)
 	c.addNPCs(NPCArmorer, 1, 0, plaza, bs, rest)
 	return c
 }
 
-// layoutFortress: enceinte épaisse à tours d'angle et une porte, cour, deux
-// casernes et un donjon cloisonné dont la salle centrale abrite le seigneur.
-// Le plan est ensuite retourné au hasard (horizontalement, verticalement).
+// layoutFortress: thick enclosure with corner towers and one gate, courtyard, two
+// barracks and a partitioned keep whose central hall shelters the lord.
+// The plan is then flipped at random (horizontally, vertically).
 func layoutFortress(w, h int, rng *rand.Rand) *canvas {
 	c := newCanvas(w, h, rng)
 
-	// Enceinte, cour et tours d'angle.
+	// Enclosure, courtyard and corner towers.
 	c.fill(rect{2, 2, 44, 36}, Wall)
 	c.fill(rect{4, 4, 40, 32}, Floor)
 	for _, t := range []rect{{2, 2, 6, 6}, {40, 2, 6, 6}, {2, 32, 6, 6}, {40, 32, 6, 6}} {
 		c.fill(t, Wall)
 	}
-	c.fill(rect{23, 36, 3, 2}, Door) // porte sud
+	c.fill(rect{23, 36, 3, 2}, Door) // south gate
 
-	// Donjon: trois salles (cellule, salle centrale, cellule) et une porte sud.
+	// Keep: three rooms (cell, central hall, cell) and a south gate.
 	c.walledBox(rect{16, 6, 16, 12})
 	for y := 7; y <= 16; y++ {
 		c.set(21, y, Wall)
@@ -420,13 +420,13 @@ func layoutFortress(w, h int, rng *rand.Rand) *canvas {
 	c.set(26, 12, Door)
 	c.fill(rect{23, 17, 2, 1}, Door)
 
-	// Casernes ouvertes sur la cour.
+	// Barracks opening onto the courtyard.
 	c.walledBox(rect{5, 20, 12, 7})
 	c.set(16, 23, Door)
 	c.walledBox(rect{31, 20, 12, 7})
 	c.set(31, 23, Door)
 
-	// Garnison: 2 élites dans la salle centrale, 2 soldats par zone (portail, cour, casernes) et le seigneur.
+	// Garrison: 2 elites in the central hall, 2 soldiers per zone (gate, courtyard, barracks) and the lord.
 	c.slots = []Slot{
 		{Pos{24, 10}, RoleBoss},
 		{Pos{22, 13}, RoleElite}, {Pos{25, 13}, RoleElite},
@@ -439,7 +439,7 @@ func layoutFortress(w, h int, rng *rand.Rand) *canvas {
 	return c
 }
 
-// mirror retourne le plan (tuiles, PNJ et emplacements).
+// mirror flips the plan (tiles, NPCs and slots).
 func (c *canvas) mirror(flipX, flipY bool) {
 	if !flipX && !flipY {
 		return

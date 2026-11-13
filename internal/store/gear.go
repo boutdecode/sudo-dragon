@@ -12,7 +12,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// saveGear remplace le sac d'un compte (dans la transaction de sauvegarde du personnage).
+// saveGear replaces an account's bag (inside the character save transaction).
 func saveGear(tx *sql.Tx, account string, inv gear.Inventory) error {
 	if _, err := tx.Exec(`DELETE FROM items WHERE account = ?`, account); err != nil {
 		return err
@@ -40,7 +40,7 @@ func saveGear(tx *sql.Tx, account string, inv gear.Inventory) error {
 	return nil
 }
 
-// loadGear relit le sac d'un compte ; les valeurs lues sont revalidées par gear.SanitizeInventory.
+// loadGear reads back an account's bag; the values read are revalidated by gear.SanitizeInventory.
 func (s *Store) loadGear(account string) (gear.Inventory, error) {
 	rows, err := s.db.Query(`SELECT id, slot, name, descr, tier, atk, def, price, origin_rx, origin_ry, origin_idx, worn, kind, family, quality
 		FROM items WHERE account = ? ORDER BY id`, account)
@@ -73,9 +73,9 @@ func (s *Store) loadGear(account string) (gear.Inventory, error) {
 	return gear.SanitizeInventory(inv), nil
 }
 
-// ---------------------------------------------------------------- assortiments des vendeurs
+// ---------------------------------------------------------------- vendor wares
 
-// GetWares renvoie l'assortiment enregistré d'un vendeur.
+// GetWares returns a vendor's stored wares.
 func (s *Store) GetWares(ctx context.Context, npc world.NPCKey) (gear.Wares, bool, error) {
 	var w gear.Wares
 	var raw string
@@ -90,13 +90,13 @@ func (s *Store) GetWares(ctx context.Context, npc world.NPCKey) (gear.Wares, boo
 		return gear.Wares{}, false, err
 	}
 	if err := json.Unmarshal([]byte(raw), &w.Items); err != nil {
-		return gear.Wares{}, false, fmt.Errorf("assortiment illisible: %w", err)
+		return gear.Wares{}, false, fmt.Errorf("unreadable wares: %w", err)
 	}
 	w.NPC, w.CreatedAt = npc, time.Unix(created, 0)
 	return w, true, nil
 }
 
-// PutWares enregistre (ou remplace) l'assortiment d'un vendeur.
+// PutWares stores (or replaces) a vendor's wares.
 func (s *Store) PutWares(ctx context.Context, w gear.Wares) error {
 	raw, err := json.Marshal(w.Items)
 	if err != nil {
@@ -110,7 +110,7 @@ func (s *Store) PutWares(ctx context.Context, w gear.Wares) error {
 	return err
 }
 
-// DeleteWares efface l'assortiment d'un vendeur (il sera régénéré à la prochaine visite).
+// DeleteWares deletes a vendor's wares (they will be regenerated on the next visit).
 func (s *Store) DeleteWares(ctx context.Context, npc world.NPCKey) (bool, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM npc_wares WHERE region_x = ? AND region_y = ? AND npc_index = ?`,
 		npc.Region.X, npc.Region.Y, npc.Index)
@@ -121,7 +121,7 @@ func (s *Store) DeleteWares(ctx context.Context, npc world.NPCKey) (bool, error)
 	return n > 0, nil
 }
 
-// ListWares renvoie les assortiments enregistrés (pour l'opérateur).
+// ListWares returns the stored wares (for the operator).
 func (s *Store) ListWares(ctx context.Context) ([]gear.Wares, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT region_x, region_y, npc_index FROM npc_wares ORDER BY region_x, region_y, npc_index`)
 	if err != nil {

@@ -2,7 +2,7 @@ package world
 
 import "testing"
 
-// linkedPairs renvoie les couples de régions voisines reliées par une route.
+// linkedPairs returns the pairs of neighbouring regions linked by a road.
 func linkedPairs(w *World, n int) []roadKey {
 	var out []roadKey
 	for ry := -n; ry < n; ry++ {
@@ -28,43 +28,43 @@ func TestRoadsExistAndAreDeterministic(t *testing.T) {
 	a, b := newTestWorld(1), newTestWorld(1)
 	pairs := linkedPairs(a, 3)
 	if len(pairs) == 0 {
-		t.Fatal("aucune route générée entre les régions voisines")
+		t.Fatal("no road generated between the neighbouring regions")
 	}
 	for _, k := range pairs {
 		la, lb := a.roadFor(k), b.roadFor(k)
 		if lb == nil || len(la.tiles) != len(lb.tiles) {
-			t.Fatalf("%v: tracé non déterministe", k)
+			t.Fatalf("%v: route not deterministic", k)
 		}
 		for p := range la.tiles {
 			if _, ok := lb.tiles[p]; !ok {
-				t.Fatalf("%v: tuile %v absente du second tracé", k, p)
+				t.Fatalf("%v: tile %v missing from the second route", k, p)
 			}
 		}
 	}
-	t.Logf("%d liens sur 6x6 régions", len(pairs))
+	t.Logf("%d links over 6x6 regions", len(pairs))
 }
 
-// Une route ne touche jamais l'emprise d'une structure, et la tuile vue par At
-// (chunks) est celle de TileAt.
+// A road never touches the footprint of a structure, and the tile seen by At
+// (chunks) is that of TileAt.
 func TestRoadsStayOutsideStructuresAndAreWalkable(t *testing.T) {
 	w := newTestWorld(1)
 	for _, k := range linkedPairs(w, 3) {
 		l := w.roadFor(k)
 		for p := range l.tiles {
 			if s := w.StructureAt(p.X, p.Y); s != nil {
-				t.Fatalf("%v: la route %v entre dans %s", k, p, s.Name)
+				t.Fatalf("%v: road %v enters %s", k, p, s.Name)
 			}
 			if got := w.TileAt(p.X, p.Y); got != Road {
-				t.Fatalf("%v: tuile %v = %d, attendu Road", k, p, got)
+				t.Fatalf("%v: tile %v = %d, want Road", k, p, got)
 			}
 			if got := w.At(p.X, p.Y); got != Road {
-				t.Fatalf("%v: At(%v) = %d, attendu Road", k, p, got)
+				t.Fatalf("%v: At(%v) = %d, want Road", k, p, got)
 			}
 		}
 	}
 }
 
-// Deux lieux reliés sont joignables à pied par les tuiles praticables.
+// Two linked places are reachable on foot through walkable tiles.
 func TestRoadsConnectTheirPlaces(t *testing.T) {
 	w := newTestWorld(1)
 	checked := 0
@@ -87,7 +87,7 @@ func TestRoadsConnectTheirPlaces(t *testing.T) {
 				if seen[q] || !w.TileAt(q.X, q.Y).Walkable() {
 					continue
 				}
-				// Reste sur la route ou dans les deux emprises.
+				// Stays on the road or within the two footprints.
 				if sa.Contains(q.X, q.Y) || sb.Contains(q.X, q.Y) || w.TileAt(q.X, q.Y) == Road {
 					seen[q] = true
 					queue = append(queue, q)
@@ -95,12 +95,12 @@ func TestRoadsConnectTheirPlaces(t *testing.T) {
 			}
 		}
 		if !seen[to] {
-			t.Fatalf("%v: %v et %v ne sont pas reliés par la route", k, from, to)
+			t.Fatalf("%v: %v and %v are not linked by the road", k, from, to)
 		}
 		checked++
 	}
 	if checked == 0 {
-		t.Fatal("aucun lien vérifié")
+		t.Fatal("no link checked")
 	}
 }
 
@@ -108,34 +108,34 @@ func TestRoadRoutesAreOrderedContinuousAndOnRoads(t *testing.T) {
 	w := newTestWorld(1)
 	routes := w.RoadRoutesNear(0, 0, 4*RegionSize)
 	if len(routes) == 0 {
-		t.Fatal("aucune route près de l'origine")
+		t.Fatal("no road near the origin")
 	}
 	for _, r := range routes {
 		if len(r.Path) < 2 {
-			t.Errorf("%s: tracé de %d cases", r.ID, len(r.Path))
+			t.Errorf("%s: route of %d tiles", r.ID, len(r.Path))
 			continue
 		}
 		for i, p := range r.Path {
 			if w.TileAt(p.X, p.Y) != Road {
-				t.Errorf("%s: la case %v n'est pas une route", r.ID, p)
+				t.Errorf("%s: tile %v is not a road", r.ID, p)
 			}
 			if i > 0 {
 				if prev := r.Path[i-1]; max(abs(p.X-prev.X), abs(p.Y-prev.Y)) > 1 {
-					t.Errorf("%s: saut de %v à %v", r.ID, prev, p)
+					t.Errorf("%s: jump from %v to %v", r.ID, prev, p)
 				}
 			}
 		}
 		if r.A == r.B {
-			t.Errorf("%s: mêmes régions", r.ID)
+			t.Errorf("%s: same regions", r.ID)
 		}
 		seed, ok := w.HasCaravan(r)
 		if again, ok2 := w.HasCaravan(r); ok != ok2 || seed != again {
-			t.Errorf("%s: existence de la caravane instable", r.ID)
+			t.Errorf("%s: caravan existence unstable", r.ID)
 		}
 		if ok {
 			npc := w.CaravanMerchant(r, r.Path[0])
 			if npc.Index < CaravanIndexBase || npc.Region != r.A || npc.Name == "" || (npc.Kind != NPCSmith && npc.Kind != NPCArmorer) {
-				t.Errorf("%s: marchand incohérent %+v", r.ID, npc)
+				t.Errorf("%s: inconsistent merchant %+v", r.ID, npc)
 			}
 		}
 	}

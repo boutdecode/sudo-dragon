@@ -8,14 +8,14 @@ import (
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
 
-// Limitation du débit de chat: rafale de 5 messages, puis 1 message par seconde.
+// Chat rate limiting: burst of 5 messages, then 1 message per second.
 const (
 	chatBurst  = 5.0
-	chatRefill = 1.0 // jetons par seconde
+	chatRefill = 1.0 // tokens per second
 )
 
-// allowChat applique le seau à jetons. Appelée uniquement depuis la goroutine
-// de lecture de la session, donc sans verrou.
+// allowChat applies the token bucket. Called only from the session's
+// read goroutine, hence lock-free.
 func (sess *session) allowChat() bool {
 	now := time.Now()
 	if sess.lastChat.IsZero() {
@@ -31,7 +31,7 @@ func (sess *session) allowChat() bool {
 	return true
 }
 
-// sendErr envoie une erreur rédigée dans la langue du joueur (key: voir i18n).
+// sendErr sends an error written in the player's language (key: see i18n).
 func (sess *session) sendErr(key string, args ...any) {
 	sess.sendMsg(protocol.TError, protocol.Error{Msg: i18n.T(sess.lang, key, args...)})
 }
@@ -40,7 +40,7 @@ func (sess *session) sendSystem(key string, args ...any) {
 	sess.sendMsg(protocol.TChat, protocol.Chat{Channel: protocol.ChanSystem, Text: i18n.T(sess.lang, key, args...)})
 }
 
-// handleChat interprète un texte de chat (déjà nettoyé et tronqué).
+// handleChat interprets a chat text (already cleaned and truncated).
 func (sess *session) handleChat(text string) {
 	if !sess.allowChat() {
 		sess.sendErr("srv.err.chat_rate")
@@ -90,12 +90,12 @@ func (sess *session) handleChat(text string) {
 	}
 }
 
-// sayNearby diffuse aux joueurs de la zone de vision (émetteur inclus).
+// sayNearby broadcasts to the players in the view area (sender included).
 func (sess *session) sayNearby(channel, text string) {
 	s := sess.srv
 	ids, err := s.Game.Nearby(sess.id)
 	if err != nil || len(ids) == 0 {
-		ids = []int{sess.id} // jeu arrêté ou joueur déjà parti: au moins l'écho
+		ids = []int{sess.id} // game stopped or player already gone: at least the echo
 	}
 	data, encErr := protocol.Encode(protocol.TChat, protocol.Chat{Channel: channel, From: sess.name, Text: text})
 	if encErr != nil {
@@ -110,7 +110,7 @@ func (sess *session) sayNearby(channel, text string) {
 	}
 }
 
-// whisper envoie un message privé au destinataire et en renvoie l'écho à l'émetteur.
+// whisper sends a private message to the recipient and echoes it back to the sender.
 func (sess *session) whisper(targetName, text string) {
 	s := sess.srv
 	var target *session
@@ -135,15 +135,15 @@ func (sess *session) whisper(targetName, text string) {
 	}
 }
 
-// Limitation des répliques aux PNJ: rafale de 3, puis une toutes les 2 secondes. Le
-// service de conversation applique ses propres limites par joueur; celle-ci protège
-// seulement la boucle de jeu d'un client qui inonderait la connexion.
+// Rate limiting of lines to NPCs: burst of 3, then one every 2 seconds. The
+// conversation service applies its own per-player limits; this one only protects
+// the game loop from a client that would flood the connection.
 const (
 	sayBurst  = 3.0
-	sayRefill = 0.5 // jetons par seconde
+	sayRefill = 0.5 // tokens per second
 )
 
-// allowSay applique le seau à jetons des répliques aux PNJ (goroutine de lecture seulement).
+// allowSay applies the token bucket of lines to NPCs (read goroutine only).
 func (sess *session) allowSay() bool {
 	now := time.Now()
 	if sess.lastSay.IsZero() {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestFindPathAroundWall(t *testing.T) {
-	// Mur vertical en x=2 sauf une ouverture en y=5.
+	// Vertical wall at x=2 except an opening at y=5.
 	free := func(p world.Pos) bool {
 		if p.X < -3 || p.X > 8 || p.Y < -3 || p.Y > 8 {
 			return false
@@ -16,15 +16,15 @@ func TestFindPathAroundWall(t *testing.T) {
 	}
 	path := findPath(world.Pos{X: 0, Y: 0}, world.Pos{X: 4, Y: 0}, free, 1000)
 	if path == nil {
-		t.Fatal("chemin attendu")
+		t.Fatal("path expected")
 	}
 	if path[len(path)-1] != (world.Pos{X: 4, Y: 0}) {
-		t.Fatalf("mauvaise arrivée: %v", path)
+		t.Fatalf("wrong arrival: %v", path)
 	}
 	prev := world.Pos{}
 	for _, p := range path {
 		if !free(p) || chebyshev(prev, p) != 1 {
-			t.Fatalf("pas invalide %v -> %v", prev, p)
+			t.Fatalf("invalid step %v -> %v", prev, p)
 		}
 		prev = p
 	}
@@ -33,10 +33,10 @@ func TestFindPathAroundWall(t *testing.T) {
 func TestFindPathUnreachable(t *testing.T) {
 	free := func(p world.Pos) bool { return p.X != 3 || p.Y == 99 }
 	if findPath(world.Pos{}, world.Pos{X: 5}, free, 500) != nil {
-		t.Fatal("aucun chemin attendu (plafond de nœuds)")
+		t.Fatal("no path expected (node limit)")
 	}
 	if findPath(world.Pos{}, world.Pos{X: 3}, free, 500) != nil {
-		t.Fatal("cible occupée: aucun chemin")
+		t.Fatal("occupied target: no path")
 	}
 }
 
@@ -61,8 +61,8 @@ func TestParseGoto(t *testing.T) {
 	}
 }
 
-// Une route parallèle à la ligne droite vaut un petit détour; une route trop
-// éloignée n'en vaut pas.
+// A road parallel to the straight line is worth a small detour; a road too
+// far away is not.
 func TestFindPathCostPrefersRoad(t *testing.T) {
 	free := func(p world.Pos) bool { return p.X >= -1 && p.X <= 40 && p.Y >= -10 && p.Y <= 10 }
 	road := func(y int) func(world.Pos) int {
@@ -82,20 +82,20 @@ func TestFindPathCostPrefersRoad(t *testing.T) {
 		}
 	}
 	if onRoad < 20 {
-		t.Fatalf("la route proche devrait être suivie (%d cases sur la route)", onRoad)
+		t.Fatalf("the nearby road should be followed (%d tiles on the road)", onRoad)
 	}
 	far := findPathCost(from, to, free, road(9), roadStepCost, 60000)
 	if len(far) != 30 {
-		t.Fatalf("une route trop éloignée ne doit pas causer de détour (len=%d)", len(far))
+		t.Fatalf("a road too far away must not cause a detour (len=%d)", len(far))
 	}
 }
 
-// Une longue marche sans aucune route doit quand même aboutir.
+// A long walk without any road must still succeed.
 func TestFindWalkPathLongOffRoad(t *testing.T) {
 	m := Model{world: world.New(1)}
 	free := func(p world.Pos) bool { return p.X >= -5 && p.X <= 400 && p.Y >= -5 && p.Y <= 400 }
 	if m.findWalkPath(world.Pos{}, world.Pos{X: 300, Y: 300}, free) == nil {
-		t.Fatal("marche hors route de 300 cases introuvable")
+		t.Fatal("300-tile off-road walk not found")
 	}
 }
 
@@ -125,23 +125,23 @@ func TestChatHistory(t *testing.T) {
 	m := playingModel(t, 100, 30)
 	m.pushHistory("/goto Puits")
 	m.pushHistory("bonjour")
-	m.pushHistory("bonjour") // doublon consécutif ignoré
+	m.pushHistory("bonjour") // consecutive duplicate ignored
 	m.chatInput.SetValue("brouillon")
 	m.recallHistory(-1)
 	if v := m.chatInput.Value(); v != "bonjour" {
-		t.Fatalf("haut: %q", v)
+		t.Fatalf("up: %q", v)
 	}
 	m.recallHistory(-1)
 	if v := m.chatInput.Value(); v != "/goto Puits" {
-		t.Fatalf("haut x2: %q", v)
+		t.Fatalf("up x2: %q", v)
 	}
-	m.recallHistory(-1) // au plus ancien: inchangé
+	m.recallHistory(-1) // at the oldest: unchanged
 	if v := m.chatInput.Value(); v != "/goto Puits" {
-		t.Fatalf("butée haute: %q", v)
+		t.Fatalf("upper limit: %q", v)
 	}
 	m.recallHistory(+1)
 	m.recallHistory(+1)
 	if v := m.chatInput.Value(); v != "brouillon" {
-		t.Fatalf("retour au brouillon: %q", v)
+		t.Fatalf("back to the draft: %q", v)
 	}
 }

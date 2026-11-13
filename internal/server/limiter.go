@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-// Bornes de mémoire du limiteur.
+// Memory bounds of the limiter.
 const (
-	sweepAbove  = 1_000   // en dessous de ce nombre de clés, aucun nettoyage global
-	defaultKeys = 100_000 // plafond dur de clés suivies
+	sweepAbove  = 1_000   // below this number of keys, no global cleanup
+	defaultKeys = 100_000 // hard cap on tracked keys
 )
 
-// limiter compte des événements par clé sur une fenêtre glissante.
+// limiter counts events per key over a sliding window.
 type limiter struct {
 	max     int
 	window  time.Duration
@@ -22,14 +22,14 @@ type limiter struct {
 	mu        sync.Mutex
 	hits      map[string][]time.Time
 	lastSweep time.Time
-	now       func() time.Time // injectable en test
+	now       func() time.Time // injectable in tests
 }
 
 func newLimiter(max int, window time.Duration) *limiter {
 	return &limiter{max: max, window: window, maxKeys: defaultKeys, hits: make(map[string][]time.Time), now: time.Now}
 }
 
-// recent renvoie les événements encore dans la fenêtre (verrou tenu).
+// recent returns the events still within the window (lock held).
 func (l *limiter) recent(key string) []time.Time {
 	cutoff := l.now().Add(-l.window)
 	hits := l.hits[key]
@@ -46,21 +46,21 @@ func (l *limiter) recent(key string) []time.Time {
 	return hits
 }
 
-// blocked indique si la clé a atteint son quota.
+// blocked tells whether the key has reached its quota.
 func (l *limiter) blocked(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return len(l.recent(key)) >= l.max
 }
 
-// add enregistre un événement pour la clé.
+// add records an event for the key.
 //
-// Le nettoyage global parcourt toutes les clés: il n'a lieu qu'au plus une
-// fois par quart de fenêtre, sinon un balayage d'adresses rendrait chaque
-// ajout linéaire (la protection deviendrait elle-même un moyen de saturer le
-// serveur). Si le plafond de clés est atteint malgré le nettoyage, les
-// nouvelles clés ne sont plus suivies: on préfère laisser passer un inconnu
-// que d'épuiser la mémoire.
+// The global cleanup walks all keys: it only happens at most once
+// per quarter window, otherwise an address sweep would make every
+// add linear (the protection would itself become a way to overload the
+// server). If the key cap is reached despite the cleanup, new
+// keys are no longer tracked: better to let an unknown through
+// than to exhaust memory.
 func (l *limiter) add(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -78,9 +78,9 @@ func (l *limiter) add(key string) {
 	l.hits[key] = append(l.recent(key), now)
 }
 
-// clientIP extrait l'adresse de l'appelant. Derrière un proxy inverse, toutes
-// les connexions partagent l'adresse du proxy: les quotas s'appliquent alors
-// à l'ensemble des joueurs.
+// clientIP extracts the caller's address. Behind a reverse proxy, all
+// connections share the proxy's address: quotas then apply
+// to all players together.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

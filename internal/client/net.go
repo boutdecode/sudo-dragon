@@ -1,4 +1,4 @@
-// Package client contient le client TUI (Bubble Tea) et sa connexion réseau.
+// Package client contains the TUI client (Bubble Tea) and its network connection.
 package client
 
 import (
@@ -14,22 +14,22 @@ import (
 )
 
 const (
-	dialTimeout  = 15 * time.Second // inclut l'attente d'un créneau de hachage côté serveur
+	dialTimeout  = 15 * time.Second // includes waiting for a hashing slot on the server side
 	writeTimeout = 5 * time.Second
 	readLimit    = 1 << 20
 	outBuffer    = 64
 )
 
-// Event est un message reçu du serveur, ou la fin de la connexion (Err != nil).
+// Event is a message received from the server, or the end of the connection (Err != nil).
 type Event struct {
 	Env protocol.Envelope
 	Err error
 }
 
-// Conn est une connexion établie et authentifiée auprès du serveur.
+// Conn is a connection established and authenticated with the server.
 type Conn struct {
-	// In reçoit les messages du serveur. Après un Event avec Err != nil,
-	// plus rien n'est envoyé.
+	// In receives the server's messages. After an Event with Err != nil,
+	// nothing more is sent.
 	In chan Event
 
 	ws     *websocket.Conn
@@ -37,26 +37,26 @@ type Conn struct {
 	cancel context.CancelFunc
 }
 
-// Dial se connecte à url, s'authentifie (ou crée le compte si register) et
-// attend le welcome. Le mot de passe voyage en clair dans la trame: préférer
-// une adresse wss://.
+// Dial connects to url, authenticates (or creates the account if register) and
+// waits for the welcome. The password travels in clear text in the frame: prefer
+// a wss:// address.
 func Dial(ctx context.Context, url, name, password string, register bool) (*Conn, protocol.Welcome, error) {
-	return DialLang(ctx, url, name, password, register, i18n.FR)
+	return DialLang(ctx, url, name, password, register, i18n.EN)
 }
 
-// DialLang est Dial pour un client qui parle la langue lang: le serveur y rédige
-// ses messages (erreurs, journal de combat, dialogues des PNJ).
+// DialLang is Dial for a client that speaks language lang: the server writes
+// its messages (errors, combat log, NPC dialogues) in it.
 //
-// Si le compte doit créer son personnage, DialLang valide le premier tirage en guerrier (bots, outils
-// et tests) ; l'interface passe par DialCreate pour laisser le joueur choisir.
+// If the account must create its character, DialLang validates the first roll as a warrior (bots, tools
+// and tests); the UI goes through DialCreate to let the player choose.
 func DialLang(ctx context.Context, url, name, password string, register bool, lang i18n.Lang) (*Conn, protocol.Welcome, error) {
 	c, w, _, err := dial(ctx, url, name, password, register, lang, true)
 	return c, w, err
 }
 
-// DialCreate est DialLang pour l'interface : quand le personnage reste à créer, la connexion est
-// renvoyée avec le tirage proposé (create non nil) et sans welcome ; les actions de création partent
-// par Send (protocol.TCreateAction) et TWelcome arrive ensuite dans In.
+// DialCreate is DialLang for the UI: when the character is still to be created, the connection is
+// returned with the proposed roll (create non-nil) and without a welcome; creation actions go
+// through Send (protocol.TCreateAction) and TWelcome then arrives in In.
 func DialCreate(ctx context.Context, url, name, password string, register bool, lang i18n.Lang) (c *Conn, w protocol.Welcome, create *protocol.Create, err error) {
 	return dial(ctx, url, name, password, register, lang, false)
 }
@@ -183,8 +183,8 @@ func (c *Conn) writeLoop(ctx context.Context) {
 	}
 }
 
-// Send met un message en file d'envoi sans bloquer. Renvoie false si la file
-// est pleine (le message est alors abandonné).
+// Send queues a message for sending without blocking. It returns false if the queue
+// is full (the message is then dropped).
 func (c *Conn) Send(typ string, payload any) bool {
 	data, err := protocol.Encode(typ, payload)
 	if err != nil {
@@ -198,8 +198,8 @@ func (c *Conn) Send(typ string, payload any) bool {
 	}
 }
 
-// Close ferme la connexion proprement (trame de fermeture), sans attendre le
-// serveur plus d'une demi-seconde: on quitte le jeu, pas question de bloquer.
+// Close closes the connection cleanly (close frame), waiting for the
+// server no more than half a second: we are leaving the game, blocking is not an option.
 func (c *Conn) Close() {
 	c.cancel()
 	done := make(chan struct{})

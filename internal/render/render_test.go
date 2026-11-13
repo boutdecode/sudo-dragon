@@ -20,11 +20,11 @@ func TestViewportDimensions(t *testing.T) {
 	for _, d := range [][2]int{{81, 41}, {10, 5}, {1, 1}, {40, 12}} {
 		lines := plain(Viewport(w, 3, -7, d[0], d[1], nil, nil, 0))
 		if len(lines) != d[1] {
-			t.Fatalf("%v: %d lignes, attendu %d", d, len(lines), d[1])
+			t.Fatalf("%v: %d lines, expected %d", d, len(lines), d[1])
 		}
 		for i, l := range lines {
 			if got := ansi.StringWidth(l); got != d[0] {
-				t.Fatalf("%v ligne %d: largeur %d, attendu %d", d, i, got, d[0])
+				t.Fatalf("%v line %d: width %d, expected %d", d, i, got, d[0])
 			}
 		}
 	}
@@ -41,13 +41,13 @@ func TestViewportEntities(t *testing.T) {
 
 	// Centre = (cols/2, rows/2)
 	if lines[rows/2][cols/2] != '@' {
-		t.Fatalf("joueur local absent du centre: %q", lines[rows/2])
+		t.Fatalf("local player missing from the centre: %q", lines[rows/2])
 	}
 	if lines[rows/2-2][cols/2+3] != '@' {
-		t.Fatalf("voisin mal placé:\n%s", strings.Join(lines, "\n"))
+		t.Fatalf("neighbour misplaced:\n%s", strings.Join(lines, "\n"))
 	}
 	if n := strings.Count(strings.Join(lines, ""), "@"); n != 2 {
-		t.Fatalf("%d '@' dessinés, attendu 2 (l'entité lointaine ne doit pas apparaître)", n)
+		t.Fatalf("%d '@' drawn, expected 2 (the distant entity must not appear)", n)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestViewportDeterministic(t *testing.T) {
 	a := Viewport(world.New(5), 0, 0, 60, 20, nil, nil, 0)
 	b := Viewport(world.New(5), 0, 0, 60, 20, nil, nil, 0)
 	if a != b {
-		t.Fatal("rendu non déterministe")
+		t.Fatal("non-deterministic rendering")
 	}
 }
 
@@ -63,39 +63,39 @@ func TestGlyphsAreASCII(t *testing.T) {
 	for tile, vs := range variants {
 		for _, r := range vs {
 			if r > 127 {
-				t.Errorf("glyphe non ASCII %q pour %v", r, tile)
+				t.Errorf("non-ASCII glyph %q for %v", r, tile)
 			}
 		}
 	}
-	// Chaque tuile du monde doit avoir un style et des variantes.
+	// Every world tile must have a style and variants.
 	for tile := world.DeepWater; tile < world.NumTiles; tile++ {
 		if len(variants[tile]) == 0 {
-			t.Errorf("pas de glyphes pour la tuile %d", tile)
+			t.Errorf("no glyphs for tile %d", tile)
 		}
 		if TerrainName(i18n.FR, tile) == "?" {
-			t.Errorf("pas de nom pour la tuile %d", tile)
+			t.Errorf("no name for tile %d", tile)
 		}
 	}
 }
 
-// Chaque espèce que le serveur peut créer doit avoir une apparence côté client.
+// Every species the server can create must have a look on the client side.
 func TestEverySpeciesHasALook(t *testing.T) {
 	for _, kind := range game.SpeciesKinds() {
 		l, ok := monsterLooks[kind]
 		if !ok {
-			t.Errorf("espèce %q sans apparence", kind)
+			t.Errorf("species %q without a look", kind)
 			continue
 		}
 		if l.glyph > 127 || l.glyph == '@' || l.glyph == ' ' {
-			t.Errorf("%s: glyphe %q invalide", kind, l.glyph)
+			t.Errorf("%s: invalid glyph %q", kind, l.glyph)
 		}
 		if _, ok := monsterStyle[kind]; !ok {
-			t.Errorf("%s: pas de style", kind)
+			t.Errorf("%s: no style", kind)
 		}
 	}
 	for kind := range monsterLooks {
-		if !slices.Contains(game.SpeciesKinds(), kind) && kind != "guard" && kind != "caravan" { // ni le garde ni la caravane ne sont des espèces de biome
-			t.Errorf("apparence pour l'espèce inexistante %q", kind)
+		if !slices.Contains(game.SpeciesKinds(), kind) && kind != "guard" && kind != "caravan" { // neither the guard nor the caravan are biome species
+			t.Errorf("look for the nonexistent species %q", kind)
 		}
 	}
 }
@@ -107,14 +107,14 @@ func TestViewportDrawsMonsters(t *testing.T) {
 	mons := []protocol.Monster{
 		{ID: 1, Kind: "wolf", X: cx + 4, Y: cy - 1},
 		{ID: 2, Kind: "dragon-inconnu", X: cx - 5, Y: cy + 2},
-		{ID: 3, Kind: "rat", X: cx + 500, Y: cy}, // hors cadre
+		{ID: 3, Kind: "rat", X: cx + 500, Y: cy}, // off-screen
 	}
 	lines := plain(Viewport(w, cx, cy, cols, rows, nil, mons, 0))
 	if got := lines[rows/2-1][cols/2+4]; got != 'w' {
-		t.Errorf("loup attendu en (+4,-1), trouvé %q", got)
+		t.Errorf("wolf expected at (+4,-1), found %q", got)
 	}
 	if got := lines[rows/2+2][cols/2-5]; got != '?' {
-		t.Errorf("espèce inconnue attendue sous la forme '?', trouvé %q", got)
+		t.Errorf("unknown species expected as '?', found %q", got)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestViewportIgnoresOffscreenMonsters(t *testing.T) {
 	with := Viewport(w, 100, 100, 21, 11, nil, offscreen, 0)
 	without := Viewport(w, 100, 100, 21, 11, nil, nil, 0)
 	if with != without {
-		t.Fatal("des monstres hors cadre ont modifié le rendu")
+		t.Fatal("off-screen monsters changed the rendering")
 	}
 }
 
@@ -134,12 +134,12 @@ func TestPlayerDrawnOverMonster(t *testing.T) {
 	mons := []protocol.Monster{{ID: 1, Kind: "wolf", X: 50, Y: 50}}
 	lines := plain(Viewport(w, 50, 50, 11, 5, []protocol.Entity{self}, mons, 1))
 	if lines[2][5] != '@' {
-		t.Fatalf("le joueur doit primer sur le monstre, trouvé %q", lines[2][5])
+		t.Fatalf("the player must take precedence over the monster, found %q", lines[2][5])
 	}
 }
 
-// Un glyphe de terrain identique à celui d'un monstre ou d'un joueur prêterait
-// à confusion (seule la couleur les distinguerait).
+// A terrain glyph identical to that of a monster or a player would be
+// confusing (only the colour would tell them apart).
 func TestTerrainGlyphsDoNotCollideWithEntities(t *testing.T) {
 	reserved := map[rune]string{'@': "joueur"}
 	for kind, l := range monsterLooks {
@@ -151,7 +151,7 @@ func TestTerrainGlyphsDoNotCollideWithEntities(t *testing.T) {
 	for tile, vs := range variants {
 		for _, r := range vs {
 			if who, clash := reserved[r]; clash {
-				t.Errorf("le terrain %d utilise %q, déjà pris par %s", tile, r, who)
+				t.Errorf("terrain %d uses %q, already taken by %s", tile, r, who)
 			}
 		}
 	}
@@ -160,7 +160,7 @@ func TestTerrainGlyphsDoNotCollideWithEntities(t *testing.T) {
 func TestMonsterNamesMatchServer(t *testing.T) {
 	for _, kind := range game.SpeciesKinds() {
 		if got, want := MonsterName(i18n.FR, kind), game.SpeciesName(i18n.FR, kind); got != want {
-			t.Errorf("%s: nom client %q, nom serveur %q", kind, got, want)
+			t.Errorf("%s: client name %q, server name %q", kind, got, want)
 		}
 	}
 }
@@ -175,33 +175,33 @@ func TestFightingEntitiesAreHighlighted(t *testing.T) {
 	hot := Viewport(w, 10, 10, 15, 7, []protocol.Entity{self}, []protocol.Monster{mon}, 1)
 
 	if calm == hot {
-		t.Fatal("les combattants ne se distinguent pas visuellement")
+		t.Fatal("fighters are not visually distinguishable")
 	}
-	// Seule la couleur change, jamais les caractères.
+	// Only the colour changes, never the characters.
 	if strings.Join(plain(calm), "\n") != strings.Join(plain(hot), "\n") {
-		t.Fatal("le marquage de combat a modifié les caractères")
+		t.Fatal("the combat marking changed the characters")
 	}
 }
 
-// Les indices de style des joueurs ne doivent jamais recouvrir ceux des tuiles:
-// sinon un mur s'afficherait avec le style du joueur.
+// Player style indices must never overlap those of tiles:
+// otherwise a wall would be displayed with the player's style.
 func TestStyleIndicesDoNotCollideWithTiles(t *testing.T) {
 	for _, idx := range []int{styleSelf, styleOther, styleFight} {
 		if idx < int(world.NumTiles) {
-			t.Errorf("l'indice de style %d recouvre une tuile (NumTiles=%d)", idx, world.NumTiles)
+			t.Errorf("style index %d overlaps a tile (NumTiles=%d)", idx, world.NumTiles)
 		}
 	}
 	if styleSelf == styleOther || styleOther == styleFight || styleSelf == styleFight {
-		t.Error("deux styles de joueurs partagent le même indice")
+		t.Error("two player styles share the same index")
 	}
 	seen := map[int]string{}
 	record := func(i int, what string) {
 		if prev, dup := seen[i]; dup {
-			t.Errorf("l'indice %d est partagé par %s et %s", i, prev, what)
+			t.Errorf("index %d is shared by %s and %s", i, prev, what)
 		}
 		seen[i] = what
 		if i >= len(styles) {
-			t.Errorf("%s: indice %d hors de la table de styles (%d)", what, i, len(styles))
+			t.Errorf("%s: index %d outside the styles table (%d)", what, i, len(styles))
 		}
 	}
 	for tile := world.DeepWater; tile < world.NumTiles; tile++ {
@@ -221,10 +221,10 @@ func TestStyleIndicesDoNotCollideWithTiles(t *testing.T) {
 func TestEveryTileHasStyleGlyphAndName(t *testing.T) {
 	for tile := world.DeepWater; tile < world.NumTiles; tile++ {
 		if len(variants[tile]) == 0 {
-			t.Errorf("tuile %d: pas de glyphes", tile)
+			t.Errorf("tile %d: no glyphs", tile)
 		}
 		if TerrainName(i18n.FR, tile) == "?" {
-			t.Errorf("tuile %d: pas de nom", tile)
+			t.Errorf("tile %d: no name", tile)
 		}
 	}
 }
@@ -239,33 +239,33 @@ func TestStructuresAreDrawnWithWallsDoorsAndNPCs(t *testing.T) {
 		}
 	}
 	if village == nil {
-		t.Skip("pas de village près du départ")
+		t.Skip("no village near the start")
 	}
 	c := village.Center()
 	lines := plain(Viewport(w, c.X, c.Y, village.W, village.H, nil, nil, 0))
 	all := strings.Join(lines, "")
 	for _, want := range []string{"#", "+", ":", "_", "H"} {
 		if !strings.Contains(all, want) {
-			t.Errorf("le village dessiné ne contient pas %q:\n%s", want, strings.Join(lines, "\n"))
+			t.Errorf("the drawn village does not contain %q:\n%s", want, strings.Join(lines, "\n"))
 		}
 	}
-	// Le soigneur est dessiné exactement à sa place.
+	// The healer is drawn exactly in place.
 	n := village.NPCs[0]
 	row, col := n.Pos.Y-(c.Y-village.H/2), n.Pos.X-(c.X-village.W/2)
 	if got := lines[row][col]; got != 'H' {
-		t.Errorf("le soigneur devrait être en (%d,%d) ligne %d colonne %d, trouvé %q", n.Pos.X, n.Pos.Y, row, col, got)
+		t.Errorf("the healer should be at (%d,%d) row %d column %d, found %q", n.Pos.X, n.Pos.Y, row, col, got)
 	}
 }
 
 func TestNPCNamesAndGlyphs(t *testing.T) {
 	if NPCName(i18n.FR, world.NPCMerchant) != "Marchand" || NPCName(i18n.FR, world.NPCHealer) != "Soigneur" {
-		t.Error("noms de PNJ inattendus")
+		t.Error("unexpected NPC names")
 	}
 	if NPCGlyph(world.NPCMerchant) == NPCGlyph(world.NPCHealer) {
-		t.Error("deux PNJ partagent le même glyphe")
+		t.Error("two NPCs share the same glyph")
 	}
 	if NPCGlyph("inconnu") != 'N' {
-		t.Error("PNJ inconnu: glyphe de secours attendu")
+		t.Error("unknown NPC: fallback glyph expected")
 	}
 }
 
@@ -279,17 +279,17 @@ func TestPlayerAndMonsterDrawnOverNPC(t *testing.T) {
 		}
 	}
 	if npc.Kind == "" {
-		t.Skip("pas de PNJ près du départ")
+		t.Skip("no NPC near the start")
 	}
 	me := protocol.Entity{ID: 1, X: npc.Pos.X, Y: npc.Pos.Y}
 	lines := plain(Viewport(w, npc.Pos.X, npc.Pos.Y, 11, 5, []protocol.Entity{me}, nil, 1))
 	if lines[2][5] != '@' {
-		t.Fatalf("le joueur doit être dessiné au-dessus du PNJ, trouvé %q", lines[2][5])
+		t.Fatalf("the player must be drawn above the NPC, found %q", lines[2][5])
 	}
 	mon := protocol.Monster{ID: 1, Kind: "rat", X: npc.Pos.X, Y: npc.Pos.Y}
 	lines = plain(Viewport(w, npc.Pos.X, npc.Pos.Y, 11, 5, nil, []protocol.Monster{mon}, 0))
 	if lines[2][5] != 'r' {
-		t.Fatalf("le monstre doit être dessiné au-dessus du PNJ, trouvé %q", lines[2][5])
+		t.Fatalf("the monster must be drawn above the NPC, found %q", lines[2][5])
 	}
 }
 
@@ -305,28 +305,28 @@ func TestReadyQuestGiverShowsQuestionMark(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Skip("pas de donneur près du départ")
+		t.Skip("no giver near the start")
 	}
 	draw := func(ready map[world.NPCKey]bool) string {
 		return ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, ready, nil))
 	}
 	center := func(s string) rune { return []rune(strings.Split(s, "\n")[2])[4] }
 	if got := center(draw(nil)); got != '!' {
-		t.Fatalf("donneur sans quête prête : %q", got)
+		t.Fatalf("giver without a ready quest: %q", got)
 	}
 	if got := center(draw(map[world.NPCKey]bool{giver.Key(): true})); got != '?' {
-		t.Fatalf("donneur avec quête prête : %q", got)
+		t.Fatalf("giver with a ready quest: %q", got)
 	}
 	idle := func(k world.NPCKey) bool { return k == giver.Key() }
 	if got := center(ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, nil, idle))); got == '!' || got == '?' {
-		t.Fatalf("donneur sans travail : %q", got)
+		t.Fatalf("giver with no work: %q", got)
 	}
 	if got := center(ansi.Strip(ViewportReady(w, giver.Pos.X, giver.Pos.Y, 9, 5, nil, nil, 0, map[world.NPCKey]bool{giver.Key(): true}, idle))); got != '?' {
-		t.Fatalf("la quête prête prime sur l'absence de travail : %q", got)
+		t.Fatalf("the ready quest takes precedence over having no work: %q", got)
 	}
 	other := map[world.NPCKey]bool{{Region: giver.Region, Index: giver.Index + 50}: true}
 	if got := center(draw(other)); got != '!' {
-		t.Fatalf("une autre quête prête change ce PNJ : %q", got)
+		t.Fatalf("another ready quest changes this NPC: %q", got)
 	}
 }
 
@@ -340,7 +340,7 @@ func TestDungeonWallsOutlineRoomsAndTheRestOfTheRockIsDim(t *testing.T) {
 			raw := m.TileAt(x, y)
 			if raw.Walkable() {
 				if got != raw {
-					t.Fatalf("(%d,%d): une case praticable est devenue %v", x, y, got)
+					t.Fatalf("(%d,%d): a walkable cell became %v", x, y, got)
 				}
 				continue
 			}
@@ -352,9 +352,9 @@ func TestDungeonWallsOutlineRoomsAndTheRestOfTheRockIsDim(t *testing.T) {
 			}
 			switch {
 			case near && got != world.Wall:
-				t.Fatalf("(%d,%d): la roche au contact d'une salle devrait être un mur, pas %v", x, y, got)
+				t.Fatalf("(%d,%d): rock touching a room should be a wall, not %v", x, y, got)
 			case !near && got != world.Rock:
-				t.Fatalf("(%d,%d): la roche profonde devrait rester en sourdine, pas %v", x, y, got)
+				t.Fatalf("(%d,%d): deep rock should stay muted, not %v", x, y, got)
 			}
 			if near {
 				walls++
@@ -364,24 +364,24 @@ func TestDungeonWallsOutlineRoomsAndTheRestOfTheRockIsDim(t *testing.T) {
 		}
 	}
 	if walls == 0 || rock == 0 {
-		t.Errorf("%d murs, %d roche: les deux devraient exister", walls, rock)
+		t.Errorf("%d walls, %d rock: both should exist", walls, rock)
 	}
-	// Une case jamais vue reste de la roche, même au contact d'une salle: le brouillard ne dévoile pas le contour.
+	// A never-seen cell stays rock, even touching a room: the fog does not reveal the outline.
 	hidden := DungeonTerrain(m, func(int, int) bool { return false }, nil)
 	for y := 0; y < m.H; y++ {
 		for x := 0; x < m.W; x++ {
 			if hidden.At(x, y) != world.Wall && hidden.At(x, y) != world.Rock {
-				t.Fatalf("(%d,%d): %v visible dans le brouillard", x, y, hidden.At(x, y))
+				t.Fatalf("(%d,%d): %v visible in the fog", x, y, hidden.At(x, y))
 			}
 			if hidden.At(x, y) != world.Wall {
 				continue
 			}
-			t.Fatalf("(%d,%d): un mur apparaît dans une zone jamais vue", x, y)
+			t.Fatalf("(%d,%d): a wall appears in a never-seen area", x, y)
 		}
 	}
 }
 
-// Chaque climat habille tous les terrains, en ASCII, sans glyphe réservé à une entité.
+// Every climate dresses all terrains, in ASCII, with no glyph reserved for an entity.
 func TestClimatesAreCompleteAndDoNotCollide(t *testing.T) {
 	reserved := map[rune]bool{'@': true}
 	for _, l := range monsterLooks {
@@ -395,34 +395,34 @@ func TestClimatesAreCompleteAndDoNotCollide(t *testing.T) {
 		for tile := world.Tile(0); tile < world.NumTiles; tile++ {
 			st := styleFor(c, tile)
 			if st < 0 || st >= len(styles) {
-				t.Fatalf("climat %s, tuile %d: style %d hors table", c.Key(), tile, st)
+				t.Fatalf("climate %s, tile %d: style %d outside the table", c.Key(), tile, st)
 			}
 			if c != world.Temperate && st < int(world.NumTiles) {
-				t.Errorf("climat %s, tuile %d: style de base réutilisé", c.Key(), tile)
+				t.Errorf("climate %s, tile %d: base style reused", c.Key(), tile)
 			}
 			if seen[st] && c != world.Temperate {
-				t.Errorf("style %d partagé entre deux climats", st)
+				t.Errorf("style %d shared between two climates", st)
 			}
 			seen[st] = true
 		}
 		for tile, vs := range climateVariants[c] {
 			for _, r := range vs {
 				if r > 126 || r < 32 || reserved[r] {
-					t.Errorf("climat %s, tuile %d: glyphe %q interdit", c.Key(), tile, r)
+					t.Errorf("climate %s, tile %d: forbidden glyph %q", c.Key(), tile, r)
 				}
 			}
 		}
 	}
 }
 
-// Une forêt tropicale n'a pas la même couleur qu'une forêt aride ; le tempéré garde le rendu d'origine.
+// A tropical forest does not have the same colour as an arid one; temperate keeps the original rendering.
 func TestClimateChangesColoursNotTheMap(t *testing.T) {
 	tropical, arid := styleFor(world.Tropical, world.Forest), styleFor(world.Arid, world.Forest)
 	if styles[tropical].Render("T") == styles[arid].Render("T") {
-		t.Error("deux climats rendent la forêt pareil")
+		t.Error("two climates render the forest the same")
 	}
 	if styleFor(world.Temperate, world.Forest) != int(world.Forest) {
-		t.Error("le tempéré doit garder le style d'origine")
+		t.Error("temperate must keep the original style")
 	}
 	if TileHex(world.Temperate, world.Forest) != "" || TileHex(world.Arid, world.Plain) == "" {
 		t.Error("TileHex")
@@ -430,7 +430,7 @@ func TestClimateChangesColoursNotTheMap(t *testing.T) {
 	w := world.New(7)
 	out := Viewport(w, 0, 0, 40, 10, nil, nil, 0)
 	if len(plain(out)) != 10 {
-		t.Fatalf("%d lignes", len(plain(out)))
+		t.Fatalf("%d lines", len(plain(out)))
 	}
 }
 
@@ -447,14 +447,14 @@ func TestWithSpentShowsBareTerrain(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Skip("aucun arbre près de l'origine")
+		t.Skip("no tree near the origin")
 	}
 	spent := map[[2]int]bool{{node.X, node.Y}: true}
 	tt := WithSpent(w, spent, w.Terrain)
 	if got, want := tt.At(node.X, node.Y), w.Terrain(node.X, node.Y); got != want {
-		t.Errorf("nœud épuisé: %d, attendu le terrain nu %d", got, want)
+		t.Errorf("depleted node: %d, expected bare terrain %d", got, want)
 	}
 	if WithSpent(w, nil, w.Terrain) != Terrain(w) {
-		t.Error("sans nœud épuisé, le terrain doit rester tel quel")
+		t.Error("without a depleted node, the terrain must stay as is")
 	}
 }

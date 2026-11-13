@@ -45,19 +45,19 @@ func TestStockPromptHasNoPlayerTextAndLists(t *testing.T) {
 	sys := msgs[0].Content
 	for _, want := range []string{"forgeron du village de Valdurne", "weapon", "1 à 3", `"specialty"`, "Forêts d'Aube"} {
 		if !strings.Contains(sys, want) {
-			t.Errorf("prompt d'étalage sans %q", want)
+			t.Errorf("stock prompt lacks %q", want)
 		}
 	}
 	for _, fam := range []string{"weapon: dagger", "shortsword", "greatsword", "crossbow", `"family"`, `"quality"`} {
 		if !strings.Contains(sys, fam) {
-			t.Errorf("prompt d'étalage sans %q", fam)
+			t.Errorf("stock prompt lacks %q", fam)
 		}
 	}
 	if strings.Contains(sys, `"atk"`) {
-		t.Error("le prompt ne doit plus demander d'attaque chiffrée")
+		t.Error("the prompt must no longer ask for a numeric attack")
 	}
 	if strings.Contains(sys, "DONNÉES") {
-		t.Error("aucune donnée de joueur ne doit entrer dans la demande d'étalage")
+		t.Error("no player data must enter the stock request")
 	}
 }
 
@@ -68,8 +68,8 @@ func TestStockIsValidatedModeratedStoredAndGeneratedOnce(t *testing.T) {
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		calls++
 		return stockJSON(item("Dague", 1), item("Épée courte", 2), item("Épée longue", 3), item("Rapière", 2), item("Épée du roi", 5),
-			map[string]any{"slot": "armor", "name": "Cotte", "tier": 1, "def": 1}, // pas vendu ici
-			item("Dague", 1), // doublon
+			map[string]any{"slot": "armor", "name": "Cotte", "tier": 1, "def": 1}, // not sold here
+			item("Dague", 1), // duplicate
 		), nil
 	}
 	rep := r.stock(smithReq())
@@ -78,16 +78,16 @@ func TestStockIsValidatedModeratedStoredAndGeneratedOnce(t *testing.T) {
 	}
 	for i, it := range rep.Wares.Items {
 		if it.ID != int64(i+1) || it.Slot != gear.Weapon || it.Tier > 3 || it.Family != "longsword" || it.Damage().IsZero() {
-			t.Errorf("objet %d: %+v", i, it)
+			t.Errorf("item %d: %+v", i, it)
 		}
 		if _, hi := gear.Bounds(gear.Weapon, it.Tier); it.Quality > hi {
-			t.Errorf("qualité %d au-delà du plafond", it.Quality)
+			t.Errorf("quality %d above the cap", it.Quality)
 		}
 	}
-	// Enregistré : un second appel relit la base sans interroger le modèle.
+	// Saved: a second call rereads the database without querying the model.
 	rep2 := r.stock(smithReq())
 	if !rep2.FromStore || len(rep2.Wares.Items) != 5 || calls != 1 {
-		t.Fatalf("FromStore=%v, %d objets, %d appels", rep2.FromStore, len(rep2.Wares.Items), calls)
+		t.Fatalf("FromStore=%v, %d items, %d calls", rep2.FromStore, len(rep2.Wares.Items), calls)
 	}
 	if st := r.svc.Stats(); st.StockGenerated != 1 {
 		t.Fatalf("%+v", st)
@@ -96,13 +96,13 @@ func TestStockIsValidatedModeratedStoredAndGeneratedOnce(t *testing.T) {
 
 func TestBadStockIsRejected(t *testing.T) {
 	cases := map[string]llm.Response{
-		"trop peu d'objets": stockJSON(item("Dague", 1), item("Épée", 2)),
-		"pas de JSON":       {Content: "voici mon étalage : des épées !", Usage: llm.Usage{Total: 10}},
-		"sans spécialité": func() llm.Response {
+		"too few items": stockJSON(item("Dague", 1), item("Épée", 2)),
+		"no JSON":       {Content: "voici mon étalage : des épées !", Usage: llm.Usage{Total: 10}},
+		"no specialty": func() llm.Response {
 			b, _ := json.Marshal(map[string]any{"items": []any{item("A", 1), item("B", 1), item("C", 2), item("D", 2)}})
 			return llm.Response{Content: string(b)}
 		}(),
-		"lien dans la spécialité": func() llm.Response {
+		"link in the specialty": func() llm.Response {
 			b, _ := json.Marshal(map[string]any{"specialty": "voir www.exemple.com", "items": []any{item("A", 1), item("B", 1), item("C", 2), item("D", 2)}})
 			return llm.Response{Content: string(b)}
 		}(),
@@ -112,10 +112,10 @@ func TestBadStockIsRejected(t *testing.T) {
 		r.svc.wares = r.be.Store
 		r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return resp, nil }
 		if rep := r.stock(smithReq()); rep.Failure == OK {
-			t.Errorf("%s : étalage accepté", name)
+			t.Errorf("%s: stock accepted", name)
 		}
 		if _, ok, _ := r.be.Store.GetWares(context.Background(), smithReq().NPC.Key()); ok {
-			t.Errorf("%s : étalage rejeté mais enregistré", name)
+			t.Errorf("%s: stock rejected but saved", name)
 		}
 	}
 }
@@ -132,11 +132,11 @@ func TestStockFailsClosedOnModeration(t *testing.T) {
 		return out, nil
 	}
 	if rep := r.stock(smithReq()); rep.Failure != Blocked {
-		t.Fatalf("texte signalé accepté: %+v", rep)
+		t.Fatalf("flagged text accepted: %+v", rep)
 	}
 	r.fake.ModerateFunc = func(context.Context, []string) ([]llm.Verdict, error) { return nil, llm.ErrUnavailable }
 	if rep := r.stock(smithReq()); rep.Failure == OK {
-		t.Fatal("modération en panne : étalage affiché sans contrôle")
+		t.Fatal("moderation down: stock shown unchecked")
 	}
 }
 
@@ -145,7 +145,7 @@ func TestStockWithTheModelDown(t *testing.T) {
 	r.svc.wares = r.be.Store
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return llm.Response{}, llm.ErrUnavailable }
 	if rep := r.stock(smithReq()); rep.Failure == OK {
-		t.Fatal("étalage sans modèle")
+		t.Fatal("stock without a model")
 	}
 }
 
@@ -156,14 +156,14 @@ func TestParseStockIsTolerant(t *testing.T) {
 	}
 	for _, bad := range []string{"", "rien", `{"items":[]}`, `{"items":"non"}`} {
 		if _, _, ok := parseStock(bad); ok {
-			t.Errorf("%q accepté", bad)
+			t.Errorf("%q accepted", bad)
 		}
 	}
 }
 
 func TestStockPromptAsksForWeaponStyleAndParsesIt(t *testing.T) {
 	if sys := BuildStockMessages(smithReq())[0].Content; !strings.Contains(sys, "family") {
-		t.Error("le prompt d'étalage doit demander le style des armes")
+		t.Error("the stock prompt must ask for the weapons' style")
 	}
 	_, props, ok := parseStock(`{"specialty":"arcs","items":[{"slot":"weapon","name":"Arc","tier":1,"family":"crossbow","price":30,"kind":"ranged"}]}`)
 	if !ok || len(props) != 1 || props[0].Family != "crossbow" {
@@ -180,15 +180,15 @@ func TestStaleStockIsRegeneratedButStillServedWhenTheModelIsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Modèle en panne: l'ancien étalage sert.
+	// Model down: the old stock is served.
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		return llm.Response{}, context.DeadlineExceeded
 	}
 	if rep := r.stock(smithReq()); rep.Failure != OK || rep.Wares.Specialty != "anciennes lames" {
-		t.Fatalf("repli sur l'ancien étalage attendu: %+v", rep)
+		t.Fatalf("fallback to the old stock expected: %+v", rep)
 	}
 
-	// Modèle disponible: nouvel étalage, enregistré à la version courante.
+	// Model available: new stock, saved at the current version.
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		return stockJSON(item("Dague", 1), item("Épée courte", 2), item("Épée longue", 3), item("Rapière", 2)), nil
 	}

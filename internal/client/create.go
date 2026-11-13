@@ -13,17 +13,17 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// Écran de création du personnage : le serveur a lancé les dés (3d6), le joueur peut
-// relancer trois fois en tout une caractéristique de son choix, puis choisit sa base et valide.
+// Character creation screen: the server rolled the dice (3d6), the player may
+// reroll, three times in total, an ability of their choice, then picks their class and confirms.
 
-// createState est l'écran en cours.
+// createState is the current screen.
 type createState struct {
 	data  protocol.Create
-	sel   int // caractéristique choisie (pour la relance)
-	class int // classe choisie
+	sel   int // chosen ability (for the reroll)
+	class int // chosen class
 }
 
-// cleanCreate ramène un tirage reçu dans des bornes sûres : six valeurs, classes connues.
+// cleanCreate brings a received roll back within safe bounds: six values, known classes.
 func cleanCreate(c protocol.Create) protocol.Create {
 	sc := make([]int, hero.NumAbilities)
 	for i := range sc {
@@ -51,7 +51,7 @@ func cleanCreate(c protocol.Create) protocol.Create {
 
 func newCreateState(c protocol.Create) *createState { return &createState{data: cleanCreate(c)} }
 
-// scores renvoie le tirage courant sous la forme du paquet hero.
+// scores returns the current roll as a hero packet.
 func (c *createState) scores() hero.Scores {
 	var s hero.Scores
 	copy(s[:], c.data.Scores)
@@ -65,7 +65,7 @@ func (c *createState) classID() hero.Class {
 	return hero.Class(c.data.Classes[c.class].ID)
 }
 
-// updateCreateKey traite une touche de l'écran de création.
+// updateCreateKey handles a key on the creation screen.
 func (m Model) updateCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	c := m.create
 	if c == nil || m.conn == nil {
@@ -97,7 +97,7 @@ func (m Model) updateCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// updateCreateEvent traite un message du serveur pendant la création.
+// updateCreateEvent handles a server message during creation.
 func (m Model) updateCreateEvent(ev Event) (tea.Model, tea.Cmd) {
 	if ev.Err != nil {
 		if m.conn != nil {
@@ -133,7 +133,7 @@ func (m Model) updateCreateEvent(ev Event) (tea.Model, tea.Cmd) {
 	return m, waitEvent(m.conn)
 }
 
-// abilityLine décrit une caractéristique : « FOR  Force  14 (+2)  effet ».
+// abilityLine describes an ability: "STR  Strength  14 (+2)  effect".
 func (m Model) abilityLine(a hero.Ability, v, w int) string {
 	mod := hero.Mod(v)
 	k := a.Key()
@@ -141,7 +141,7 @@ func (m Model) abilityLine(a hero.Ability, v, w int) string {
 	return ui.Fit(left+"  "+dimStyle.Render(m.t("hero.ability."+k+".desc")), w)
 }
 
-// viewCreate dessine l'écran de création.
+// viewCreate draws the creation screen.
 func (m Model) viewCreate() string {
 	c := m.create
 	if c == nil {

@@ -1,4 +1,4 @@
-// worldview affiche une zone du monde en ASCII (outil de debug).
+// worldview prints an area of the world in ASCII (debug tool).
 package main
 
 import (
@@ -10,8 +10,8 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// printTerritories dessine une carte grossière des contrées : une lettre par contrée, w × h cellules
-// de step tuiles de côté centrées sur (cx, cy), puis la légende.
+// printTerritories draws a coarse map of the territories: one letter per territory, w × h cells
+// of step tiles per side centered on (cx, cy), then the legend.
 func printTerritories(wd *world.World, cx, cy, w, h, step int) {
 	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	ids := map[world.TerritoryID]rune{}
@@ -34,24 +34,24 @@ func printTerritories(wd *world.World, cx, cy, w, h, step int) {
 		sb.WriteByte('\n')
 	}
 	fmt.Print(sb.String())
-	fmt.Printf("une cellule = %d tuiles\n", step)
+	fmt.Printf("one cell = %d tiles\n", step)
 	for _, t := range order {
-		fmt.Printf("  %c  %s  (germe %d,%d)\n", ids[t.ID], t.NameIn(i18n.FR), t.Site.X, t.Site.Y)
+		fmt.Printf("  %c  %s  (seed %d,%d)\n", ids[t.ID], t.NameIn(i18n.FR), t.Site.X, t.Site.Y)
 	}
 }
 
 func main() {
-	seed := flag.Int64("seed", 1, "seed du monde")
-	cx := flag.Int("x", 0, "centre X (tuiles)")
-	cy := flag.Int("y", 0, "centre Y (tuiles)")
-	w := flag.Int("w", 100, "largeur")
-	h := flag.Int("h", 40, "hauteur")
-	sites := flag.Bool("sites", false, "liste les structures de la zone et marque PNJ (M marchand, H soigneur) et garnisons (S soldat, K élite, B seigneur)")
-	territories := flag.Bool("territories", false, "dessine les contrées (une lettre chacune, une cellule = -step tuiles) au lieu du terrain, puis les nomme")
-	step := flag.Int("step", 40, "avec -territories : tuiles par cellule")
-	zoom := flag.Int("zoom", 1, "avec -raw : tuiles par cellule (vue d'ensemble du terrain)")
-	raw := flag.Bool("raw", false, "terrain brut seul (sans structures ni routes), échantillonné tous les -zoom tuiles")
-	gen := flag.Int("gen", world.GenLatest, "version du générateur de terrain")
+	seed := flag.Int64("seed", 1, "world seed")
+	cx := flag.Int("x", 0, "center X (tiles)")
+	cy := flag.Int("y", 0, "center Y (tiles)")
+	w := flag.Int("w", 100, "width")
+	h := flag.Int("h", 40, "height")
+	sites := flag.Bool("sites", false, "list the structures of the area and mark NPCs (M merchant, H healer) and garrisons (S soldier, K elite, B lord)")
+	territories := flag.Bool("territories", false, "draw the territories (one letter each, one cell = -step tiles) instead of the terrain, then name them")
+	step := flag.Int("step", 40, "with -territories: tiles per cell")
+	zoom := flag.Int("zoom", 1, "with -raw: tiles per cell (terrain overview)")
+	raw := flag.Bool("raw", false, "raw terrain only (no structures or roads), sampled every -zoom tiles")
+	gen := flag.Int("gen", world.GenLatest, "terrain generator version")
 	flag.Parse()
 
 	wd := world.NewVersion(*seed, *gen)
@@ -116,7 +116,7 @@ func main() {
 		fmt.Println("structures:")
 		for _, s := range wd.StructuresNear(world.Pos{X: *cx, Y: *cy}, max(*w, *h)) {
 			c := s.Center()
-			fmt.Printf("  %-9s %-18s centre (%d,%d)  emprise %dx%d en (%d,%d)  PNJ: %d  garnison: %d  contrée: %s\n",
+			fmt.Printf("  %-9s %-18s center (%d,%d)  footprint %dx%d at (%d,%d)  NPCs: %d  garrison: %d  territory: %s\n",
 				s.Kind, s.Name, c.X, c.Y, s.W, s.H, s.Origin.X, s.Origin.Y, len(s.NPCs), len(s.Slots), wd.TerritoryAt(c.X, c.Y).NameIn(i18n.FR))
 			for _, n := range s.NPCs {
 				fmt.Printf("      %-9s %-16s %s; %s; %s\n", n.Kind, n.Name, n.Persona.Temperament, n.Persona.Quirk, n.Persona.Speech)

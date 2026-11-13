@@ -51,17 +51,17 @@ func TestMapTitleShowsTerritoryAndPlace(t *testing.T) {
 	region := m.world.TerritoryAt(pos.X, pos.Y).NameIn(i18n.FR)
 	for _, want := range []string{region, "village " + s.Name} {
 		if !strings.Contains(view, want) {
-			t.Errorf("titre de la carte sans %q:\n%s", want, strings.Join(strings.Split(view, "\n")[:3], "\n"))
+			t.Errorf("map title without %q:\n%s", want, strings.Join(strings.Split(view, "\n")[:3], "\n"))
 		}
 	}
-	// En pleine nature : la contrée seulement, pas de lieu.
+	// In the wild: the region only, no place.
 	far := moveTo(t, m, pos.X+3000, pos.Y+3000)
 	title := far.mapTitle(pos.X+3000, pos.Y+3000, 100)
 	if strings.Contains(title, "village") || strings.Contains(title, "ville") || strings.Contains(title, "forteresse") {
-		t.Errorf("lieu affiché en pleine nature : %q", title)
+		t.Errorf("place shown in the wild: %q", title)
 	}
 	if !strings.Contains(title, far.world.TerritoryAt(pos.X+3000, pos.Y+3000).NameIn(i18n.FR)) {
-		t.Errorf("contrée absente : %q", title)
+		t.Errorf("region missing: %q", title)
 	}
 }
 
@@ -70,14 +70,14 @@ func TestMapTitleAlwaysFits(t *testing.T) {
 	m := moveTo(t, playingModel(t, 140, 36), pos.X, pos.Y)
 	for w := 5; w <= 120; w++ {
 		if got := ansi.StringWidth(m.mapTitle(pos.X, pos.Y, w)); got > w {
-			t.Fatalf("largeur %d : titre de %d colonnes", w, got)
+			t.Fatalf("width %d: title of %d columns", w, got)
 		}
 	}
 	for _, sz := range [][2]int{{60, 20}, {80, 24}, {120, 36}} {
 		mm := moveTo(t, playingModel(t, sz[0], sz[1]), pos.X, pos.Y)
 		for i, l := range strings.Split(ansi.Strip(mm.View().Content), "\n") {
 			if ansi.StringWidth(l) > sz[0] {
-				t.Errorf("%v ligne %d trop large", sz, i)
+				t.Errorf("%v line %d too wide", sz, i)
 			}
 		}
 	}
@@ -85,23 +85,23 @@ func TestMapTitleAlwaysFits(t *testing.T) {
 
 func TestArrivalMessagesAreAnnouncedOnceAndInTheRightLanguage(t *testing.T) {
 	pos, s := villagePos(t)
-	m := playingModel(t, 140, 36) // premier instantané en (5, 5) : silencieux
+	m := playingModel(t, 140, 36) // first snapshot at (5, 5): silent
 	if got := lastSystemLines(m, 5); len(got) != 0 {
-		t.Fatalf("annonce sur la première position : %v", got)
+		t.Fatalf("announcement on the first position: %v", got)
 	}
 	m = moveTo(t, m, pos.X, pos.Y)
 	got := lastSystemLines(m, 5)
 	if len(got) == 0 || !strings.Contains(strings.Join(got, " "), s.Name) {
-		t.Fatalf("arrivée au lieu non annoncée : %v", got)
+		t.Fatalf("arrival at the place not announced: %v", got)
 	}
 	n := len(m.chat)
-	m = moveTo(t, m, pos.X+1, pos.Y) // même lieu : rien de plus
+	m = moveTo(t, m, pos.X+1, pos.Y) // same place: nothing more
 	if len(m.chat) != n {
-		t.Fatalf("annonce répétée dans le même lieu : %v", lastSystemLines(m, 3))
+		t.Fatalf("announcement repeated in the same place: %v", lastSystemLines(m, 3))
 	}
-	m = moveTo(t, m, pos.X+4000, pos.Y) // nouvelle contrée
+	m = moveTo(t, m, pos.X+4000, pos.Y) // new region
 	if got := lastSystemLines(m, 2); !strings.Contains(strings.Join(got, " "), "Vous entrez") || !strings.Contains(strings.Join(got, " "), "climat") {
-		t.Fatalf("changement de contrée non annoncé : %v", got)
+		t.Fatalf("region change not announced: %v", got)
 	}
 
 	en := NewLang("ws://x/ws", "bob", i18n.EN)
@@ -111,6 +111,6 @@ func TestArrivalMessagesAreAnnouncedOnceAndInTheRightLanguage(t *testing.T) {
 	em := moveTo(t, tm.(Model), 5, 5)
 	em = moveTo(t, em, pos.X, pos.Y)
 	if got := strings.Join(lastSystemLines(em, 3), " "); !strings.Contains(got, "You arrive at the") {
-		t.Fatalf("annonce anglaise : %q", got)
+		t.Fatalf("English announcement: %q", got)
 	}
 }

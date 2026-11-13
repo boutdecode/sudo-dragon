@@ -13,28 +13,28 @@ import (
 )
 
 const (
-	disengageCooldown = 20  // ticks (2 s) pendant lesquels un monstre n'engage pas après une fuite ou une défaite
-	fleeGrace         = 50  // ticks (5 s) pendant lesquels aucun monstre n'engage un joueur qui vient de fuir
-	fightIdleTicks    = 600 // un joueur inactif depuis 60 s est considéré comme ayant fui
+	disengageCooldown = 20  // ticks (2 s) during which a monster does not engage after a flight or a defeat
+	fleeGrace         = 50  // ticks (5 s) during which no monster engages a player who has just fled
+	fightIdleTicks    = 600 // a player inactive for 60 s is considered to have fled
 	lootPotionChance  = 0.30
-	lootGearChance    = 0.05 // objet d'équipement lâché par un monstre de surface ordinaire
-	lootGearGarrison  = 0.15 // idem pour un monstre de garnison (les boss en laissent toujours un)
-	regenEvery        = 30   // ticks entre deux PV rendus hors combat (3 s)
-	safeRegenEvery    = 10   // ticks entre deux PV rendus dans une zone sûre (1 s)
+	lootGearChance    = 0.05 // equipment item dropped by an ordinary surface monster
+	lootGearGarrison  = 0.15 // same for a garrison monster (bosses always drop one)
+	regenEvery        = 30   // ticks between two HP restored out of combat (3 s)
+	safeRegenEvery    = 10   // ticks between two HP restored in a safe zone (1 s)
 )
 
-// fight relie un joueur et un ou plusieurs monstres engagés. Pendant le combat, tous restent sur leur case,
-// immobiles et hors d'atteinte des autres.
+// fight links a player and one or more engaged monsters. During the fight, all stay on their tile,
+// immobile and out of reach of the others.
 type fight struct {
 	p       *player
-	ms      []*monster // aligné sur b.Foes
-	slain   []bool     // monstres déjà récompensés et retirés du monde
+	ms      []*monster // aligned with b.Foes
+	slain   []bool     // monsters already rewarded and removed from the world
 	b       *combat.Battle
-	lastAct uint64 // tick de la dernière action du joueur
+	lastAct uint64 // tick of the player's last action
 }
 
-// Act applique l'action de combat d'un joueur ("attack", "item", "flee") sur le monstre target (indice dans le
-// combat; invalide: le premier vivant). Sans effet si le joueur n'est pas en combat ou si l'action est inconnue.
+// Act applies a player's combat action ("attack", "item", "flee") to the target monster (index in the
+// fight; invalid: the first living one). No effect if the player is not in combat or the action is unknown.
 func (g *Game) Act(id int, action string, target int) {
 	a, ok := combat.ParseAction(action)
 	if !ok {
@@ -47,19 +47,19 @@ func (g *Game) Act(id int, action string, target int) {
 	})
 }
 
-// startFight engage p et m (et les monstres compatibles qui l'entourent) s'ils sont tous libres.
+// startFight engages p and m (and the compatible monsters around them) if they are all free.
 func (g *Game) startFight(p *player, m *monster, playerStarted bool) {
 	if p.fight != nil || m.fight != nil {
 		return
 	}
 	if playerStarted {
-		p.calmUntil = 0 // attaquer met fin au répit
+		p.calmUntil = 0 // attacking ends the respite
 	}
 	g.engage(p, g.gatherGroup(m), playerStarted, "")
 }
 
-// engage ouvre le combat de p contre group (déjà rassemblé et libre). intro remplace, si elle est non vide, la
-// phrase d'ouverture par défaut.
+// engage opens p's fight against group (already gathered and free). intro replaces, if non-empty, the
+// default opening sentence.
 func (g *Game) engage(p *player, group []*monster, playerStarted bool, intro string) {
 	f := &fight{p: p, ms: group, slain: make([]bool, len(group)), lastAct: g.tick}
 	foes := make([]combat.Foe, len(group))
@@ -87,13 +87,13 @@ func (g *Game) engage(p *player, group []*monster, playerStarted bool, intro str
 		intro = i18n.T(p.lang, "fight.monster_attacks", foes[0].Name)
 	}
 	log := append([]string{intro}, f.b.Start()...)
-	if f.b.Result != combat.Ongoing { // terrassé par les coups d'ouverture
+	if f.b.Result != combat.Ongoing { // struck down by the opening blows
 		log = append(log, g.endFight(f)...)
 	}
 	g.sendFight(f, log)
 }
 
-// numberDuplicates numérote les monstres de même nom ("Loup 1", "Loup 2").
+// numberDuplicates numbers monsters with the same name ("Wolf 1", "Wolf 2").
 func numberDuplicates(foes []combat.Foe) {
 	count := map[string]int{}
 	for _, f := range foes {
@@ -108,7 +108,7 @@ func numberDuplicates(foes []combat.Foe) {
 	}
 }
 
-// groupLabel résume un groupe: "Loup ×2, Rat" (noms non numérotés).
+// groupLabel summarises a group: "Wolf ×2, Rat" (unnumbered names).
 func groupLabel(foes []combat.Foe) string {
 	var order []string
 	count := map[string]int{}
@@ -127,7 +127,7 @@ func groupLabel(foes []combat.Foe) string {
 	return strings.Join(order, ", ")
 }
 
-// act résout un tour de combat, récompense chaque monstre abattu et libère les combattants si c'est fini.
+// act resolves a combat turn, rewards each slain monster and frees the fighters if it is over.
 func (g *Game) act(p *player, a combat.Action, target int) {
 	f := p.fight
 	if f == nil {
@@ -149,22 +149,22 @@ func (g *Game) act(p *player, a combat.Action, target int) {
 	}
 	if f.b.Result != combat.Ongoing {
 		log = append(log, g.endFight(f)...)
-	} else if leveled { // un niveau gagné en plein combat: PV max, PM et fiche à jour
+	} else if leveled { // a level gained mid-fight: max HP, MP and sheet up to date
 		f.b.Player = p.fighter()
 	}
 	g.sendFight(f, log)
 }
 
-// monsterSlain récompense la mort du monstre i et le retire du monde. Renvoie les lignes de journal et si le
-// joueur a gagné un niveau.
+// monsterSlain rewards the death of monster i and removes it from the world. Returns the log lines and whether the
+// player gained a level.
 func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	p, m := f.p, f.ms[i]
 	f.slain[i] = true
 	m.fight = nil
-	if m.guard != nil { // un garde ne laisse ni XP ni butin : seulement la rancune du lieu
+	if m.guard != nil { // a guard leaves neither XP nor loot: only the place's grudge
 		return g.guardSlain(p, m.guard), false
 	}
-	if m.slot != nil { // l'emplacement ne repousse qu'après un délai
+	if m.slot != nil { // the slot only respawns after a delay
 		g.slotDefeated[*m.slot] = g.tick
 	}
 	g.removeMonster(m)
@@ -176,7 +176,7 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	if inst := g.instances[m.zone]; m.zone != 0 && inst != nil && m.sp.Boss {
 		log = append(log, g.questDungeon(p, inst.d.Region)...)
 	}
-	xp := p.xpWithBuff(m.sp.XP) // bénédiction d'un sanctuaire
+	xp := p.xpWithBuff(m.sp.XP) // blessing of a shrine
 	log = append(log, i18n.T(p.lang, "fight.xp", xp))
 	if gold := p.stats.AddGold(g.goldReward(m.sp)); gold > 0 {
 		log = append(log, i18n.T(p.lang, "fight.gold", gold))
@@ -188,8 +188,8 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 		log = append(log, i18n.T(p.lang, "fight.level_up", p.stats.Level))
 	}
 	if m.sp.Boss {
-		// Le seigneur d'une forteresse ou le maître d'un donjon laisse un trésor garanti, plus riche en donjon
-		// profond ; en donjon, sa mort déverrouille aussi le coffre du boss.
+		// The lord of a fortress or the master of a dungeon leaves a guaranteed treasure, richer in deeper
+		// dungeons; in a dungeon, its death also unlocks the boss chest.
 		bonus := 0
 		if inst := g.instances[m.zone]; m.zone != 0 && inst != nil {
 			g.bossSlain(inst)
@@ -209,9 +209,9 @@ func (g *Game) monsterSlain(f *fight, i int) ([]string, bool) {
 	return log, leveled
 }
 
-// monsterGear tire l'objet d'équipement que m laisse à p, de rang celui de sa région (un cran de plus pour un boss
-// ou une élite), et le range dans le sac. Seuls les monstres de surface en lâchent: ceux des donjons ont leurs
-// coffres. Renvoie la ligne de journal, vide s'il n'y a rien (ou si le sac est plein).
+// monsterGear draws the equipment item that m leaves to p, of its region's rank (one rank higher for a boss
+// or an elite), and puts it in the bag. Only surface monsters drop them: those in dungeons have their
+// chests. Returns the log line, empty if there is nothing (or if the bag is full).
 func (g *Game) monsterGear(p *player, m *monster) string {
 	if m.zone != 0 || m.sp.Dungeon || len(p.inv.Items) >= gear.BagCapacity {
 		return ""
@@ -236,8 +236,8 @@ func (g *Game) monsterGear(p *player, m *monster) string {
 	return i18n.T(p.lang, "fight.loot_gear", added.Name)
 }
 
-// endFight libère les combattants, applique les conséquences de l'issue et renvoie les lignes de journal
-// correspondantes. Les récompenses des monstres abattus ont déjà été données (monsterSlain).
+// endFight frees the fighters, applies the consequences of the outcome and returns the matching
+// log lines. The rewards for slain monsters have already been given (monsterSlain).
 func (g *Game) endFight(f *fight) []string {
 	p := f.p
 	p.fight = nil
@@ -249,7 +249,7 @@ func (g *Game) endFight(f *fight) []string {
 		p.hp, p.mana = p.stats.MaxHP, p.stats.MaxMana
 		respawn := "fight.respawn"
 		if p.zone != 0 {
-			g.leaveDungeon(p) // vaincu dans un donjon: on se réveille devant son entrée
+			g.leaveDungeon(p) // defeated in a dungeon: wake up in front of its entrance
 		} else {
 			spot, camp := g.respawnSpot(p)
 			g.setPos(p, spot)
@@ -263,7 +263,7 @@ func (g *Game) endFight(f *fight) []string {
 		calm := disengageCooldown
 		if f.b.Result == combat.Fled {
 			calm = fleeGrace
-			p.calmUntil = g.tick + fleeGrace // et aucun autre monstre ne vous prend en chasse
+			p.calmUntil = g.tick + fleeGrace // and no other monster chases you
 		}
 		for i, m := range f.ms {
 			if !f.slain[i] {
@@ -276,12 +276,12 @@ func (g *Game) endFight(f *fight) []string {
 			m.fight = nil
 		}
 	}
-	g.sendBag(p) // la fiche de personnage affiche le palmarès
-	g.save(p)    // un combat change la progression: on n'attend pas la sauvegarde périodique
+	g.sendBag(p) // the character sheet shows the record
+	g.save(p)    // a fight changes progression: do not wait for the periodic save
 	return log
 }
 
-// abortFight interrompt le combat d'un joueur qui part, sans issue.
+// abortFight interrupts the fight of a player who is leaving, with no outcome.
 func (g *Game) abortFight(p *player) {
 	if f := p.fight; f != nil {
 		for i, m := range f.ms {
@@ -294,7 +294,7 @@ func (g *Game) abortFight(p *player) {
 	}
 }
 
-// expireIdleFights fait fuir les joueurs qui n'ont pas joué depuis trop longtemps.
+// expireIdleFights makes players who have not played for too long flee.
 func (g *Game) expireIdleFights(ids []int) {
 	for _, id := range ids {
 		f := g.players[id].fight
@@ -307,14 +307,14 @@ func (g *Game) expireIdleFights(ids []int) {
 	}
 }
 
-// goldReward tire l'or lâché par un monstre: de la moitié à la totalité de son XP.
+// goldReward draws the gold dropped by a monster: from half to all of its XP.
 func (g *Game) goldReward(sp species) int {
 	return sp.XP/2 + g.rng.IntN(sp.XP-sp.XP/2+1)
 }
 
-// healDue renvoie les joueurs de ids qui récupèrent un PV à ce tick: toutes
-// les secondes dans une zone sûre, toutes les trois secondes ailleurs.
-// Appelée à chaque multiple de safeRegenEvery.
+// healDue returns the players in ids who recover one HP at this tick: every
+// second in a safe zone, every three seconds elsewhere.
+// Called at every multiple of safeRegenEvery.
 func (g *Game) healDue(ids []int) []int {
 	var due []int
 	for _, id := range ids {
@@ -326,8 +326,8 @@ func (g *Game) healDue(ids []int) []int {
 	return due
 }
 
-// regenerate rend 1 PV aux joueurs de ids qui sont blessés et ne se battent pas.
-// C'est step qui décide quels joueurs sont « dus » (voir healDue).
+// regenerate restores 1 HP to the players in ids who are wounded and not fighting.
+// It is step that decides which players are "due" (see healDue).
 func (g *Game) regenerate(ids []int) {
 	for _, id := range ids {
 		p := g.players[id]
@@ -343,7 +343,7 @@ func (g *Game) regenerate(ids []int) {
 	}
 }
 
-// sendFight envoie l'état du combat au joueur.
+// sendFight sends the fight state to the player.
 func (g *Game) sendFight(f *fight, log []string) {
 	if f.p.sendCombat == nil {
 		return
@@ -378,7 +378,7 @@ func (g *Game) sendFight(f *fight, log []string) {
 	})
 }
 
-// statsOf construit la fiche réseau d'un joueur.
+// statsOf builds a player's network sheet.
 func statsOf(p *player) protocol.Stats {
 	f := p.fighter()
 	return protocol.Stats{
@@ -389,7 +389,7 @@ func statsOf(p *player) protocol.Stats {
 	}
 }
 
-// fighter convertit le joueur en combattant, équipement porté compris.
+// fighter converts the player into a combatant, worn equipment included.
 func (p *player) fighter() combat.Fighter {
 	f := p.stats.Fighter(p.hp)
 	eq := p.inv.Equipped()

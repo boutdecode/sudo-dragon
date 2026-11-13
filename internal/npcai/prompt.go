@@ -15,15 +15,15 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// PromptVersion identifie la version du prompt (pour les journaux et les essais).
+// PromptVersion identifies the prompt version (for logs and experiments).
 const PromptVersion = 1
 
-// Les données issues de joueurs (présentations, souvenirs, pseudos) sont placées
-// dans un bloc JSON ÉCHAPPÉ, jamais dans la prose des règles: un joueur ne peut pas
-// refermer le bloc ni s'y faire passer pour une instruction. Ce n'est pas une
-// garantie contre un modèle docile, c'est une première barrière; les autres sont
-// l'absence totale de pouvoir du modèle sur le jeu (il ne produit que du texte),
-// la modération, et la brièveté des fiches.
+// Data coming from players (introductions, memories, nicknames) is placed
+// in an ESCAPED JSON block, never in the prose of the rules: a player cannot
+// close the block nor pass themselves off as an instruction in it. This is not a
+// guarantee against a compliant model, it is a first barrier; the others are
+// the model's total lack of power over the game (it only produces text),
+// moderation, and the brevity of the cards.
 
 type factsJSON struct {
 	Niveau           int `json:"niveau,omitempty"`
@@ -67,11 +67,11 @@ type interlocutorJSON struct {
 	Pseudo       string          `json:"pseudo"`
 	Certain      factsJSON       `json:"faits_certains"`
 	Presentation *cardJSON       `json:"sa_presentation"`
-	Hearsay      *cardJSON       `json:"ce_qu_on_raconte_de_lui,omitempty"` // fiche reçue par rumeur: le PNJ ne l'a jamais rencontré
+	Hearsay      *cardJSON       `json:"ce_qu_on_raconte_de_lui,omitempty"` // card received through rumor: the NPC never met them
 	Memory       string          `json:"mon_souvenir_de_lui"`
-	Reputation   *reputationJSON `json:"reputation_ici,omitempty"`      // fait établi par le serveur
-	DeedsDone    []deedJSON      `json:"quetes_rendues_ici,omitempty"`  // faits établis par le serveur
-	Impression   string          `json:"premiere_impression,omitempty"` // charisme, calculé par le serveur
+	Reputation   *reputationJSON `json:"reputation_ici,omitempty"`      // fact established by the server
+	DeedsDone    []deedJSON      `json:"quetes_rendues_ici,omitempty"`  // facts established by the server
+	Impression   string          `json:"premiere_impression,omitempty"` // charisma, computed by the server
 }
 
 type speciesJSON struct {
@@ -124,7 +124,7 @@ func factsOf(f lore.Facts) factsJSON {
 	return factsJSON{Niveau: f.Level, SeigneursVaincus: f.BossKills, Defaites: f.Deaths}
 }
 
-// age exprime une durée en langage courant ("il y a 5 min" / "5 min ago").
+// age expresses a duration in everyday language ("5 min ago" / "il y a 5 min").
 func age(l i18n.Lang, d time.Duration) string {
 	switch {
 	case d < time.Minute:
@@ -157,7 +157,7 @@ func jobLabel(l i18n.Lang, k world.NPCKind) string {
 	return i18n.T(l, "prompt.job.merchant")
 }
 
-// placeLabel renvoie le lieu avec son article: « du village de X », « de la ville de X ».
+// placeLabel returns the place with its article: "of the village of X", "of the town of X".
 func placeLabel(l i18n.Lang, k world.Kind, name string) string {
 	switch k {
 	case world.KindTown:
@@ -168,10 +168,10 @@ func placeLabel(l i18n.Lang, k world.Kind, name string) string {
 	return i18n.T(l, "prompt.place.village", name)
 }
 
-// BuildMessages assemble la conversation envoyée au modèle.
+// BuildMessages assembles the conversation sent to the model.
 //
-// heard est ce que ce PNJ sait (voir lore.Book.Heard), memory son souvenir privé de ce
-// joueur. Ni l'un ni l'autre ne contient le souvenir privé d'un autre joueur.
+// heard is what this NPC knows (see lore.Book.Heard), memory its private memory of this
+// player. Neither contains another player's private memory.
 func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory int, placeNames func(i18n.Lang, world.RegionPos) string) []llm.Message {
 	l := req.Lang
 	var b strings.Builder
@@ -213,13 +213,13 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 		b.WriteString(i18n.T(l, "prompt.quest_rules"))
 		b.WriteString("\n")
 	} else if n.GivesQuests {
-		b.WriteString(i18n.T(l, "prompt.no_work_rule")) // donneur de quêtes qui n'a rien à confier maintenant
+		b.WriteString(i18n.T(l, "prompt.no_work_rule")) // quest giver with nothing to hand out right now
 		b.WriteString("\n")
 	}
 	b.WriteString(i18n.T(l, "prompt.system_rules"))
 	b.WriteString("\n\n")
 
-	met := memory != "" // seul un souvenir privé prouve que ce PNJ a déjà parlé à ce joueur
+	met := memory != "" // only a private memory proves this NPC has already spoken to this player
 	data := dataJSON{Interlocutor: interlocutorJSON{
 		Pseudo: req.Speaker.Account,
 		Certain: factsJSON{
@@ -252,7 +252,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	}
 	for _, lm := range req.Landmarks {
 		if n.Kind != world.NPCChief && n.Kind != world.NPCMayor && n.Kind != world.NPCGuard {
-			break // seuls les chefs, maires et gardes connaissent les environs, quoi qu'on leur transmette
+			break // only chiefs, mayors and guards know the surroundings, whatever is passed to them
 		}
 		data.Landmarks = append(data.Landmarks, landmarkJSON{Name: lm.Name, Kind: lm.Kind, Region: lm.Region, Direction: lm.Direction, Distance: lm.Distance, Note: lm.Note})
 	}
@@ -290,7 +290,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 		for name := range o.Quest.Places {
 			oj.Places = append(oj.Places, name)
 		}
-		slices.Sort(oj.Places) // ordre stable: prompt reproductible
+		slices.Sort(oj.Places) // stable order: reproducible prompt
 		for name := range o.Quest.Dungeons {
 			oj.Dungeons = append(oj.Dungeons, name)
 		}
@@ -299,7 +299,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false) // « < » et « & » restent lisibles; les guillemets, eux, sont toujours échappés
+	enc.SetEscapeHTML(false) // "<" and "&" stay readable; quotes, however, are always escaped
 	_ = enc.Encode(data)
 
 	b.WriteString(i18n.T(l, "prompt.data_header"))
@@ -350,8 +350,8 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	return append(msgs, llm.Message{Role: llm.User, Content: last})
 }
 
-// assistantJSON présente une ancienne réplique du PNJ dans le format de sortie demandé,
-// pour que le modèle ne dérive pas vers du texte libre au fil de la conversation.
+// assistantJSON presents an earlier NPC reply in the requested output format,
+// so that the model does not drift toward free text as the conversation goes on.
 func assistantJSON(reply string) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

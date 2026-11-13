@@ -14,20 +14,20 @@ import (
 	"time"
 )
 
-// Valeurs par défaut. Les noms de modèles de Mistral changent et sont retirés
-// régulièrement (voir la page de cycle de vie des modèles): ils sont donc
-// configurables et vérifiés par une sonde au démarrage, jamais supposés valides.
+// Default values. Mistral's model names change and are retired
+// regularly (see the model lifecycle page): they are therefore
+// configurable and checked by a probe at startup, never assumed valid.
 const (
 	DefaultBaseURL         = "https://api.mistral.ai"
 	DefaultModel           = "mistral-small-latest"
 	DefaultModerationModel = "mistral-moderation-latest"
 
 	maxErrorBody   = 300
-	maxResponseLen = 1 << 20 // 1 Mo: une réponse de PNJ en fait quelques centaines d'octets
+	maxResponseLen = 1 << 20 // 1 MB: an NPC response is a few hundred bytes
 	maxRetryWait   = 10 * time.Second
 )
 
-// Mistral est un Client qui parle à l'API de Mistral AI.
+// Mistral is a Client that talks to the Mistral AI API.
 type Mistral struct {
 	apiKey          string
 	baseURL         string
@@ -37,32 +37,32 @@ type Mistral struct {
 	retries         int
 	backoff         time.Duration
 
-	// Injectables pour les tests.
+	// Injectable for tests.
 	sleep  func(ctx context.Context, d time.Duration) error
 	jitter func(d time.Duration) time.Duration
 }
 
-// Option configure un client Mistral.
+// Option configures a Mistral client.
 type Option func(*Mistral)
 
-// WithBaseURL remplace l'adresse de l'API (tests, proxy).
+// WithBaseURL replaces the API address (tests, proxy).
 func WithBaseURL(u string) Option { return func(m *Mistral) { m.baseURL = strings.TrimRight(u, "/") } }
 
-// WithModel fixe le modèle de chat par défaut.
+// WithModel sets the default chat model.
 func WithModel(name string) Option { return func(m *Mistral) { m.model = name } }
 
-// WithModerationModel fixe le modèle de modération.
+// WithModerationModel sets the moderation model.
 func WithModerationModel(name string) Option { return func(m *Mistral) { m.moderationModel = name } }
 
-// WithHTTPClient remplace le client HTTP (délai par tentative, transport).
+// WithHTTPClient replaces the HTTP client (per-attempt timeout, transport).
 func WithHTTPClient(c *http.Client) Option { return func(m *Mistral) { m.http = c } }
 
-// WithRetries fixe le nombre de reprises après un échec transitoire et le délai de base.
+// WithRetries sets the number of retries after a transient failure and the base delay.
 func WithRetries(n int, backoff time.Duration) Option {
 	return func(m *Mistral) { m.retries, m.backoff = max(0, n), backoff }
 }
 
-// NewMistral crée un client. La clé n'est jamais journalisée ni incluse dans une erreur.
+// NewMistral creates a client. The key is never logged nor included in an error.
 func NewMistral(apiKey string, opts ...Option) *Mistral {
 	m := &Mistral{
 		apiKey:          apiKey,
@@ -90,7 +90,7 @@ func NewMistral(apiKey string, opts ...Option) *Mistral {
 	return m
 }
 
-// --- formes JSON de l'API ---
+// --- API JSON shapes ---
 
 type wireMessage struct {
 	Role    string `json:"role"`
@@ -111,9 +111,9 @@ type wireFormat struct {
 	Type string `json:"type"`
 }
 
-// wireGuardrail est la forme documentée en novembre 2026:
+// wireGuardrail is the shape documented in November 2026:
 // {"moderation_llm_v2": {"custom_category_thresholds": {...}, "action": "block", "block_on_error": true}}.
-// Elle est à confirmer par la sonde réelle (voir npcai): l'API peut la refuser (HTTP 400/422).
+// It is to be confirmed by the real probe (see npcai): the API may reject it (HTTP 400/422).
 type wireGuardrail struct {
 	Moderation struct {
 		Thresholds   map[string]float64 `json:"custom_category_thresholds,omitempty"`
@@ -126,7 +126,7 @@ type wireResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
-			// Une chaîne, ou une liste de fragments {"type":"text","text":"..."}.
+			// A string, or a list of fragments {"type":"text","text":"..."}.
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
@@ -138,10 +138,10 @@ type wireResponse struct {
 	} `json:"usage"`
 }
 
-// Chat envoie une requête de complétion.
+// Chat sends a completion request.
 func (m *Mistral) Chat(ctx context.Context, req Request) (Response, error) {
 	if len(req.Messages) == 0 {
-		return Response{}, fmt.Errorf("%w: aucun message", ErrBadRequest)
+		return Response{}, fmt.Errorf("%w: no message", ErrBadRequest)
 	}
 	w := wireRequest{Model: req.Model, Temperature: req.Temperature, MaxTokens: req.MaxTokens, RandomSeed: req.Seed}
 	if w.Model == "" {
@@ -169,10 +169,10 @@ func (m *Mistral) Chat(ctx context.Context, req Request) (Response, error) {
 	}
 	var wr wireResponse
 	if err := json.Unmarshal(body, &wr); err != nil {
-		return Response{}, fmt.Errorf("%w: JSON invalide", ErrBadResponse)
+		return Response{}, fmt.Errorf("%w: invalid JSON", ErrBadResponse)
 	}
 	if len(wr.Choices) == 0 {
-		return Response{}, fmt.Errorf("%w: aucune réponse", ErrBadResponse)
+		return Response{}, fmt.Errorf("%w: no response", ErrBadResponse)
 	}
 	content, err := decodeContent(wr.Choices[0].Message.Content)
 	if err != nil {
@@ -185,11 +185,11 @@ func (m *Mistral) Chat(ctx context.Context, req Request) (Response, error) {
 	return out, nil
 }
 
-// decodeContent lit le contenu d'un message: une chaîne, ou une liste de fragments.
+// decodeContent reads a message's content: a string, or a list of fragments.
 func decodeContent(raw json.RawMessage) (string, error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
-		return "", fmt.Errorf("%w: contenu absent", ErrBadResponse)
+		return "", fmt.Errorf("%w: missing content", ErrBadResponse)
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
@@ -200,7 +200,7 @@ func decodeContent(raw json.RawMessage) (string, error) {
 		Text string `json:"text"`
 	}
 	if err := json.Unmarshal(raw, &chunks); err != nil {
-		return "", fmt.Errorf("%w: contenu de forme inconnue", ErrBadResponse)
+		return "", fmt.Errorf("%w: content of unknown shape", ErrBadResponse)
 	}
 	var b strings.Builder
 	for _, c := range chunks {
@@ -209,7 +209,7 @@ func decodeContent(raw json.RawMessage) (string, error) {
 		}
 	}
 	if b.Len() == 0 {
-		return "", fmt.Errorf("%w: contenu vide", ErrBadResponse)
+		return "", fmt.Errorf("%w: empty content", ErrBadResponse)
 	}
 	return b.String(), nil
 }
@@ -225,7 +225,7 @@ type wireModerationResponse struct {
 	} `json:"results"`
 }
 
-// Moderate classe chaque texte avec l'endpoint de modération.
+// Moderate classifies each text with the moderation endpoint.
 func (m *Mistral) Moderate(ctx context.Context, texts []string) ([]Verdict, error) {
 	if len(texts) == 0 {
 		return nil, nil
@@ -236,10 +236,10 @@ func (m *Mistral) Moderate(ctx context.Context, texts []string) ([]Verdict, erro
 	}
 	var wr wireModerationResponse
 	if err := json.Unmarshal(body, &wr); err != nil {
-		return nil, fmt.Errorf("%w: JSON invalide", ErrBadResponse)
+		return nil, fmt.Errorf("%w: invalid JSON", ErrBadResponse)
 	}
 	if len(wr.Results) != len(texts) {
-		return nil, fmt.Errorf("%w: %d verdicts pour %d textes", ErrBadResponse, len(wr.Results), len(texts))
+		return nil, fmt.Errorf("%w: %d verdicts for %d texts", ErrBadResponse, len(wr.Results), len(texts))
 	}
 	out := make([]Verdict, len(wr.Results))
 	for i, r := range wr.Results {
@@ -248,7 +248,7 @@ func (m *Mistral) Moderate(ctx context.Context, texts []string) ([]Verdict, erro
 				out[i].Flagged = append(out[i].Flagged, cat)
 			}
 		}
-		sortStrings(out[i].Flagged) // ordre stable pour les tests et les journaux
+		sortStrings(out[i].Flagged) // stable order for tests and logs
 	}
 	return out, nil
 }
@@ -261,8 +261,8 @@ func sortStrings(s []string) {
 	}
 }
 
-// post envoie un corps JSON avec reprises pour les échecs transitoires et
-// renvoie le corps de la réponse 200.
+// post sends a JSON body with retries for transient failures and
+// returns the body of the 200 response.
 func (m *Mistral) post(ctx context.Context, path string, payload any) ([]byte, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -277,7 +277,7 @@ func (m *Mistral) post(ctx context.Context, path string, payload any) ([]byte, e
 				wait = ae.RetryAfter
 			}
 			if wait > maxRetryWait {
-				return nil, last // attendre aussi longtemps ne sert à rien à un joueur qui patiente
+				return nil, last // waiting that long is no use to a player who is waiting
 			}
 			if err := m.sleep(ctx, m.jitter(wait)); err != nil {
 				return nil, err
@@ -295,7 +295,7 @@ func (m *Mistral) post(ctx context.Context, path string, payload any) ([]byte, e
 	return nil, last
 }
 
-// once fait une tentative. retry indique si l'échec vaut la peine d'une reprise.
+// once makes one attempt. retry indicates whether the failure is worth a retry.
 func (m *Mistral) once(ctx context.Context, path string, data []byte) (body []byte, retry bool, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.baseURL+path, bytes.NewReader(data))
 	if err != nil {
@@ -310,13 +310,13 @@ func (m *Mistral) once(ctx context.Context, path string, data []byte) (body []by
 		if ctx.Err() != nil {
 			return nil, false, ctx.Err()
 		}
-		// L'erreur de transport peut citer l'URL mais jamais la clé (elle est dans un en-tête).
+		// The transport error may quote the URL but never the key (it is in a header).
 		return nil, true, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseLen))
 	if err != nil {
-		return nil, true, fmt.Errorf("%w: lecture de la réponse", ErrUnavailable)
+		return nil, true, fmt.Errorf("%w: reading the response", ErrUnavailable)
 	}
 	if resp.StatusCode == http.StatusOK {
 		return raw, false, nil
@@ -341,7 +341,7 @@ func (m *Mistral) once(ctx context.Context, path string, data []byte) (body []by
 	return nil, false, ae
 }
 
-// parseRetryAfter lit un en-tête Retry-After (secondes ou date HTTP).
+// parseRetryAfter reads a Retry-After header (seconds or HTTP date).
 func parseRetryAfter(v string) time.Duration {
 	v = strings.TrimSpace(v)
 	if v == "" {

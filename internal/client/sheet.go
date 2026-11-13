@@ -16,9 +16,9 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// Fiche de personnage (touche P) : tout ce que le serveur établit sur le joueur. Les valeurs viennent
-// de l'instantané (PV, mana, Atq/Déf effectives), du sac (classe, caractéristiques, palmarès) et du
-// livre de quêtes (réputation).
+// Character sheet (P key): everything the server establishes about the player. Values come
+// from the snapshot (HP, mana, effective Atk/Def), the bag (class, abilities, record) and the
+// quest book (reputation).
 
 func (m Model) updateSheetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -28,7 +28,7 @@ func (m Model) updateSheetKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// sheetView dessine la fiche dans exactement w x h cellules.
+// sheetView draws the sheet in exactly w x h cells.
 func (m Model) sheetView(w, h int) string {
 	rightW := w / 2
 	leftW := w - rightW
@@ -137,7 +137,7 @@ func (m Model) sheetRight(w int) []string {
 	return lines
 }
 
-// blessingLines liste les bénédictions de sanctuaire encore actives, avec leur temps restant.
+// blessingLines lists the shrine blessings still active, with their remaining time.
 func (m Model) blessingLines(w int) []string {
 	var out []string
 	elapsed := int(time.Since(m.bagAt).Seconds())
@@ -151,8 +151,8 @@ func (m Model) blessingLines(w int) []string {
 	return out
 }
 
-// blessingDef est le bonus de DEF d'une bénédiction de sanctuaire : il fait partie de la DEF affichée, mais ni de la
-// base, ni de l'équipement.
+// blessingDef is a shrine blessing's DEF bonus: it is part of the displayed DEF, but neither of the
+// base nor of the equipment.
 func (m Model) blessingDef() int {
 	n := 0
 	elapsed := int(time.Since(m.bagAt).Seconds())
@@ -164,7 +164,7 @@ func (m Model) blessingDef() int {
 	return n
 }
 
-// reductionText présente les dés de réduction de l'armure ("—" sans armure).
+// reductionText presents the armor's reduction dice ("—" without armor).
 func reductionText(r string) string {
 	if r = cleanDice(r); r == "" {
 		return dimStyle.Render("—")

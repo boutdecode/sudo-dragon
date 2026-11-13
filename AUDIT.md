@@ -1,70 +1,70 @@
-# Audit client / serveur et risques de triche
+# Client / server audit and cheating risks
 
-## Contexte
-Cartographier chaque fonctionnalité de FEATURES.md (serveur, client, ou les deux) et évaluer le risque de triche. Analyse faite par lecture du code, sans exécution : « vérifié » = lu, « supposé » = déduit.
+## Context
+Map every feature of FEATURES.md (server, client, or both) and assess the cheating risk. The analysis was done by reading the code, without running it: "verified" = read, "assumed" = deduced.
 
-## 1. Répartition par fonctionnalité
+## 1. Breakdown by feature
 
-| Fonctionnalité | Où | Autorité | Risque si client modifié |
+| Feature | Where | Authority | Risk with a modified client |
 |---|---|---|---|
-| Monde, terrain, lieux, routes, climats, niveau de région, contrées | **Les deux** (`internal/world`, déterministe depuis la seed) | Serveur pour collisions | Faible : le client voit tout le monde (map hack), sans effet serveur |
-| Donjons : entrées, plans, palier | **Les deux** (plan recalculé des deux côtés) | Serveur pour instance, monstres, coffres, boss | Moyen (spoiler) : toutes les entrées et tous les plans sont lisibles, le « secret » est cosmétique |
-| Instance, état, reset des donjons, coffres, butin | **Serveur** | Serveur | Aucun levier client |
-| Découverte des entrées (`discoveries`) | **Serveur** (mémorise) + client (affichage) | Serveur | Cosmétique : marcher sur la case suffit à entrer |
-| Déplacement | **Serveur** (cooldown 2 ticks, collisions) ; client envoie seulement dx/dy ∈ {-1,0,1} | Serveur | Pas de speedhack ni téléportation (vérifié) |
-| `/goto`, pathfinding A* | **Client** seulement | Serveur juge les pas | Aucun : produit des `move` normaux |
-| Carte `M`, repères, brouillard, `map.json` | **Client** seulement | n/a | Local (fichier non borné en taille) |
-| Rendu, FX, i18n affichage, illustrations | **Client** | n/a | Aucun |
-| Monstres, IA, meutes, garnisons, mise à l'échelle | **Serveur** | Serveur | Aucun |
-| Combat (dés, initiative, dégâts, fuite, potions) | **Serveur** ; client = affichage et choix d'action | Serveur | Aucun : tous les jets côté serveur (mais voir RNG) |
-| Personnage, création, tirage 3d6, niveaux, mana | **Serveur** | Serveur | Reroll contournable par reconnexion |
-| Inventaire, équipement, boutiques, prix, charisme, réputation | **Serveur** | Serveur | Pas de duplication ni de prix négatif trouvés |
-| PNJ, services, quêtes (validation, récompenses) | **Serveur** | Serveur (le modèle ne fait que proposer) | Aucun levier ; PNJ placés de façon déterministe donc connus du client |
-| Dialogues LLM, lore, rumeurs | **Serveur** | Serveur | Prompt injection possible mais sans pouvoir sur le jeu |
-| Chat, commandes, MP | **Serveur** relaie ; client affiche | Serveur | Injection d'échappements (voir plus bas) |
-| Comptes, quotas, TLS, persistance SQLite | **Serveur** | Serveur | Voir failles |
+| World, terrain, places, roads, climates, region level, territories | **Both** (`internal/world`, deterministic from the seed) | Server for collisions | Low: the client sees the whole world (map hack), with no server effect |
+| Dungeons: entrances, layouts, tier | **Both** (layout recomputed on both sides) | Server for instance, monsters, chests, boss | Medium (spoiler): all entrances and layouts are readable, the "secret" is cosmetic |
+| Dungeon instance, state, reset, chests, loot | **Server** | Server | No client lever |
+| Entrance discovery (`discoveries`) | **Server** (remembers) + client (display) | Server | Cosmetic: stepping on the tile is enough to enter |
+| Movement | **Server** (2-tick cooldown, collisions); client only sends dx/dy ∈ {-1,0,1} | Server | No speedhack or teleport (verified) |
+| `/goto`, A* pathfinding | **Client** only | Server judges the steps | None: produces normal `move`s |
+| `M` map, landmarks, fog, `map.json` | **Client** only | n/a | Local (file with no size bound) |
+| Rendering, FX, display i18n, illustrations | **Client** | n/a | None |
+| Monsters, AI, packs, garrisons, scaling | **Server** | Server | None |
+| Combat (dice, initiative, damage, fleeing, potions) | **Server**; client = display and action choice | Server | None: all rolls are server-side (but see RNG) |
+| Character, creation, 3d6 roll, levels, mana | **Server** | Server | Reroll can be bypassed by reconnecting |
+| Inventory, equipment, shops, prices, charisma, reputation | **Server** | Server | No duplication or negative price found |
+| NPCs, services, quests (validation, rewards) | **Server** | Server (the model only proposes) | No lever; NPCs are placed deterministically so known to the client |
+| LLM dialogues, lore, rumors | **Server** | Server | Prompt injection possible but with no power over the game |
+| Chat, commands, DMs | **Server** relays; client displays | Server | Escape-sequence injection (see below) |
+| Accounts, quotas, TLS, SQLite persistence | **Server** | Server | See flaws |
 
-Bilan : l'architecture est saine, serveur autoritatif. Le client n'envoie aucune position, aucun or, aucun résultat de dé. Aucune triche d'économie ou de combat trouvée. Les risques sont surtout : fuite d'information (seed), abus réseau, texte non nettoyé.
+Summary: the architecture is sound, with an authoritative server. The client sends no position, no gold, no dice result. No economy or combat cheating found. The risks are mostly: information leakage (seed), network abuse, unsanitized text.
 
-## 2. Failles par sévérité
+## 2. Flaws by severity
 
-### Élevé
-1. **Chat non nettoyé** (vérifié) : `server.go:621-627` fait seulement TrimSpace + troncature, et le client affiche tel quel (`model.go:649-652`, `936-953`). Un joueur peut envoyer ANSI/OSC/bidi/fausses lignes à tous (`/g`, local, `/w`). `textsafe.Clean` n'est appliqué qu'aux répliques PNJ.
-2. **Quotas login/inscription contournables en parallèle** (vérifié) : `blocked(ip)` testé avant bcrypt, compteur incrémenté après (`server.go:268-304`, `292`). N connexions simultanées = N essais ou N comptes. Seul le sémaphore bcrypt freine.
+### High
+1. **Unsanitized chat** (verified): `server.go:621-627` only does TrimSpace + truncation, and the client displays it as is (`model.go:649-652`, `936-953`). A player can send ANSI/OSC/bidi/fake lines to everyone (`/g`, local, `/w`). `textsafe.Clean` is only applied to NPC replies.
+2. **Login/registration quotas can be bypassed in parallel** (verified): `blocked(ip)` is checked before bcrypt, the counter is incremented after (`server.go:268-304`, `292`). N simultaneous connections = N attempts or N accounts. Only the bcrypt semaphore slows this down.
 
-### Moyen
-3. **Pas de limite de débit** sur `move`, `combat_action`, `ping`, et `buy/sell/heal/talk/turnin` ; inbox de 1024 (`game.go:296`) : un flood fait attendre les `Join/Leave/Act` bloquants des autres. Pas de plafond de connexions. Impact exact supposé.
-4. **Seed publique + RNG dérivé de la seed** (`game.go:197`, `Welcome.Seed`) : entrées/plans de donjon lisibles (accepté), mais jets de dés potentiellement prédictibles (supposé) car le flux est partagé et les jets s'affichent.
-5. **Aucun niveau requis pour entrer dans un donjon** (`game.go:529`) : un niveau 1 atteint un palier 5 et ses coffres.
-6. **Pas de `recover()`** dans game/server : une panique dans la boucle de jeu tue le serveur (aucun chemin concret trouvé).
-7. **Double connexion** : chargement avant réservation du pseudo (`server.go:308` vs `335-346`), fenêtre étroite, risque de perte de progression (pas de duplication).
-8. **Budget LLM global** (1 M jetons/jour) épuisable avec de nombreux comptes ; `Stock` sans limite par compte/IP.
-9. **Mot de passe en clair sur `ws://`** ; le client n'avertit pas hors localhost (`net.go`, défaut `ws://localhost:8080/ws`).
+### Medium
+3. **No rate limit** on `move`, `combat_action`, `ping`, and `buy/sell/heal/talk/turnin`; inbox of 1024 (`game.go:296`): a flood makes the blocking `Join/Leave/Act` of other players wait. No connection cap. Exact impact assumed.
+4. **Public seed + RNG derived from the seed** (`game.go:197`, `Welcome.Seed`): dungeon entrances/layouts are readable (accepted), but dice rolls are potentially predictable (assumed) since the stream is shared and the rolls are displayed.
+5. **No level required to enter a dungeon** (`game.go:529`): a level 1 can reach a tier 5 and its chests.
+6. **No `recover()`** in game/server: a panic in the game loop kills the server (no concrete path found).
+7. **Double login**: loading happens before the nickname is reserved (`server.go:308` vs `335-346`), narrow window, risk of lost progress (no duplication).
+8. **Global LLM budget** (1 M tokens/day) can be exhausted with many accounts; `Stock` has no per-account/IP limit.
+9. **Plaintext password over `ws://`**; the client does not warn outside localhost (`net.go`, default `ws://localhost:8080/ws`).
 
-### Faible
-10. Déconnexion en combat = fuite gratuite à 100 % (`leave` → `abortFight`).
-11. PV d'ouverture de combat non synchronisés (`fight.go:80`) ; potions de butin écrasées en combat de groupe (`fight.go:130,185`) : bugs d'intégrité.
-12. Rerolls de stats illimités par reconnexion avant validation.
-13. `enterDungeon` entraîne de force les joueurs libres à 5 cases (grief).
-14. Énumération de comptes à l'inscription ; collisions Unicode `NOCASE` vs `EqualFold`.
-15. `map.json` : `Explored` sans borne à la lecture (local).
-16. `clientIP` = `RemoteAddr` seulement (proxy = quota partagé) ; `/stats` public ; pas de kick d'inactifs ; `allowSay` partagé gêne l'équipement rapide.
-17. LLM : rumeurs d'un joueur injectées dans les prompts d'autres joueurs (garde-fous : nettoyage, rejet de liens, modération fermée) ; souvenir privé non modéré ; alias imitable.
+### Low
+10. Disconnecting during combat = free 100% flee (`leave` → `abortFight`).
+11. Combat opening HP not synchronized (`fight.go:80`); loot potions overwritten in group combat (`fight.go:130,185`): integrity bugs.
+12. Unlimited stat rerolls by reconnecting before confirmation.
+13. `enterDungeon` forcibly drags free players within 5 tiles (griefing).
+14. Account enumeration at registration; Unicode collisions `NOCASE` vs `EqualFold`.
+15. `map.json`: `Explored` unbounded on read (local).
+16. `clientIP` = `RemoteAddr` only (proxy = shared quota); `/stats` is public; no kick of idle players; shared `allowSay` hinders quick equipping.
+17. LLM: one player's rumors injected into other players' prompts (safeguards: sanitizing, link rejection, closed moderation); private memory not moderated; alias can be imitated.
 
-### Vérifié sans défaut
-Pas de speedhack/téléport, pas de prix ou quantité négatifs, or plafonné, indices contrôlés, pas d'IDOR, SQL paramétré, snapshots limités à la vue, boucle de jeu mono-goroutine, login sans énumération de comptes.
+### Verified without defect
+No speedhack/teleport, no negative prices or quantities, gold capped, indices checked, no IDOR, parameterized SQL, snapshots limited to the view, single-goroutine game loop, login without account enumeration.
 
-Non audité en détail : `store/{quests,gear,lore,discoveries}.go`, `world/*`, `gear/{loot,fallback}.go`, `llm/mistral.go`.
+Not audited in detail: `store/{quests,gear,lore,discoveries}.go`, `world/*`, `gear/{loot,fallback}.go`, `llm/mistral.go`.
 
-## 3. Correctifs proposés (ordre de priorité)
-1. `textsafe.Clean(text, MaxChatLen)` dans `readLoop`/`handleChat` (`server.go`, `chat.go`) + nettoyage à la réception dans `client/model.go`.
-2. Réserver le quota login/inscription avant bcrypt (`server.go`, `limiter.go`), limiter les connexions non authentifiées par IP.
-3. Limiteur de débit par session pour `move`, `combat_action`, `ping`, `npc_action` ; plafond de connexions.
-4. Initialiser le RNG du jeu avec `crypto/rand` (`game.go:197`).
-5. Avertir ou refuser `ws://` hors localhost dans le client (`client/net.go`).
-6. Réserver le pseudo avant `LoadCharacter` ; `recover()` autour des tâches de la boucle de jeu.
-7. Corriger les bugs d'intégrité de combat (points 10-11), borner `Explored` à la lecture.
-8. Décision de design : exiger le niveau du palier (ou la découverte) pour entrer dans un donjon.
+## 3. Proposed fixes (in priority order)
+1. `textsafe.Clean(text, MaxChatLen)` in `readLoop`/`handleChat` (`server.go`, `chat.go`) + sanitizing on receipt in `client/model.go`.
+2. Reserve the login/registration quota before bcrypt (`server.go`, `limiter.go`), limit unauthenticated connections per IP.
+3. Per-session rate limiter for `move`, `combat_action`, `ping`, `npc_action`; connection cap.
+4. Initialize the game RNG with `crypto/rand` (`game.go:197`).
+5. Warn about or refuse `ws://` outside localhost in the client (`client/net.go`).
+6. Reserve the nickname before `LoadCharacter`; `recover()` around the game-loop tasks.
+7. Fix the combat integrity bugs (points 10-11), bound `Explored` on read.
+8. Design decision: require the tier level (or discovery) to enter a dungeon.
 
-## Vérification
-Tests unitaires par correctif (`make test`, `make race`, `make check` avec Go 1.27 dans `~/sdk/go1.27.3/bin`), test de flood avec `make load`, et mise à jour de FEATURES.md dans le même commit (règle AGENTS.md).
+## Verification
+Unit tests per fix (`make test`, `make race`, `make check` with Go 1.27 in `~/sdk/go1.27.3/bin`), a flood test with `make load`, and an update of FEATURES.md in the same commit (AGENTS.md rule).

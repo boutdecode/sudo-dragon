@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// namePool: pseudos valides (lettres Unicode, chiffres, _ et -).
+// namePool: valid names (Unicode letters, digits, _ and -).
 var namePool = []string{"alice", "Bob_2", "zoé", "Zoë-9", "日本語", "x-y_z", "Ünïcödé", "a1b2c3"}
 
 func randSnapshot(r *rand.Rand) *Snapshot {
@@ -42,7 +42,7 @@ func randSnapshot(r *rand.Rand) *Snapshot {
 	return s
 }
 
-// L'encodeur manuel doit produire exactement les mêmes octets qu'encoding/json.
+// The hand-written encoder must produce exactly the same bytes as encoding/json.
 func TestFastSnapshotMatchesEncodingJSON(t *testing.T) {
 	r := rand.New(rand.NewPCG(7, 11))
 	for i := 0; i < 3000; i++ {
@@ -53,12 +53,12 @@ func TestFastSnapshotMatchesEncodingJSON(t *testing.T) {
 		}
 		got := s.AppendJSON(nil)
 		if !bytes.Equal(got, want) {
-			t.Fatalf("divergence (cas %d)\n manuel : %s\n standard: %s", i, got, want)
+			t.Fatalf("divergence (case %d)\n manual  : %s\n standard: %s", i, got, want)
 		}
 	}
 }
 
-// Idem pour l'enveloppe complète produite par Encode.
+// Same for the full envelope produced by Encode.
 func TestEncodeEnvelopeMatchesEncodingJSON(t *testing.T) {
 	r := rand.New(rand.NewPCG(3, 5))
 	for i := 0; i < 500; i++ {
@@ -70,12 +70,12 @@ func TestEncodeEnvelopeMatchesEncodingJSON(t *testing.T) {
 		inner, _ := json.Marshal(s)
 		want, _ := json.Marshal(Envelope{T: TSnapshot, D: inner})
 		if !bytes.Equal(got, want) {
-			t.Fatalf("enveloppe différente (cas %d)\n manuel : %s\n standard: %s", i, got, want)
+			t.Fatalf("envelope differs (case %d)\n manual  : %s\n standard: %s", i, got, want)
 		}
 	}
 }
 
-// Et le résultat se relit en un Snapshot identique à l'original.
+// And the result reads back into a Snapshot identical to the original.
 func TestFastSnapshotRoundTrips(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2))
 	for i := 0; i < 500; i++ {
@@ -86,13 +86,13 @@ func TestFastSnapshotRoundTrips(t *testing.T) {
 		}
 		env, err := Decode(data)
 		if err != nil || env.T != TSnapshot {
-			t.Fatalf("décodage de l'enveloppe: %v (%q)", err, env.T)
+			t.Fatalf("decoding the envelope: %v (%q)", err, env.T)
 		}
 		var back Snapshot
 		if err := env.Payload(&back); err != nil {
 			t.Fatal(err)
 		}
-		// Les tranches vides sont omises: on normalise avant de comparer.
+		// Empty slices are omitted: normalize before comparing.
 		if len(s.Others) == 0 {
 			s.Others = nil
 		}
@@ -100,7 +100,7 @@ func TestFastSnapshotRoundTrips(t *testing.T) {
 			s.Monsters = nil
 		}
 		if !reflect.DeepEqual(*s, back) {
-			t.Fatalf("aller-retour différent (cas %d)\n avant: %+v\n après: %+v", i, *s, back)
+			t.Fatalf("round trip differs (case %d)\n before: %+v\n after: %+v", i, *s, back)
 		}
 	}
 }
@@ -109,15 +109,15 @@ func TestSnapshotWithoutOthersOrMonsters(t *testing.T) {
 	s := &Snapshot{Tick: 1, Self: Entity{ID: 1, Name: "a"}}
 	want, _ := json.Marshal(s)
 	if got := s.AppendJSON(nil); !bytes.Equal(got, want) {
-		t.Fatalf("manuel : %s\nstandard: %s", got, want)
+		t.Fatalf("manual  : %s\nstandard: %s", got, want)
 	}
 	if strings.Contains(string(want), "others") || strings.Contains(string(want), "monsters") {
-		t.Fatal("hypothèse du test fausse: les tranches vides doivent être omises")
+		t.Fatal("wrong test assumption: empty slices must be omitted")
 	}
 }
 
-// Chaînes adverses: l'échappement doit rester du JSON valide qui se relit à
-// l'identique (le pseudo est validé en amont, mais l'encodeur ne doit pas en dépendre).
+// Adversarial strings: escaping must remain valid JSON that reads back
+// identically (the name is validated upstream, but the encoder must not depend on it).
 func TestAppendStringEscaping(t *testing.T) {
 	cases := []string{
 		"", "simple", `guillemet " et \ antislash`, "ligne\nsuivante\ttab\rcr",
@@ -128,17 +128,17 @@ func TestAppendStringEscaping(t *testing.T) {
 		out := appendString(nil, in)
 		var back string
 		if err := json.Unmarshal(out, &back); err != nil {
-			t.Fatalf("%q: JSON invalide %s: %v", in, out, err)
+			t.Fatalf("%q: invalid JSON %s: %v", in, out, err)
 		}
-		// encoding/json remplace les octets invalides par U+FFFD; on attend la même chose.
+		// encoding/json replaces invalid bytes with U+FFFD; we expect the same.
 		wantBytes, _ := json.Marshal(in)
 		var want string
 		_ = json.Unmarshal(wantBytes, &want)
 		if back != want {
-			t.Errorf("%q: relu %q, attendu %q", in, back, want)
+			t.Errorf("%q: read back %q, expected %q", in, back, want)
 		}
 		if !bytes.Equal(out, wantBytes) {
-			t.Errorf("%q: octets différents\n manuel : %s\n standard: %s", in, out, wantBytes)
+			t.Errorf("%q: bytes differ\n manual  : %s\n standard: %s", in, out, wantBytes)
 		}
 	}
 }
@@ -182,6 +182,6 @@ func TestCombatStrikesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(out.Strikes) != 2 || out.Strikes[0] != in.Strikes[0] || out.Strikes[1] != in.Strikes[1] {
-		t.Fatalf("aller-retour: %+v", out.Strikes)
+		t.Fatalf("round trip: %+v", out.Strikes)
 	}
 }

@@ -13,13 +13,13 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Étalage des vendeurs d'équipement. Le modèle propose une spécialité et des objets en JSON ; chaque objet
-// passe par gear.Validate (bornes calculées par le serveur) et ses textes par la modération. Aucun texte
-// de joueur n'entre dans cette demande.
+// Equipment vendors' stock. The model proposes a specialty and items in JSON; each item
+// goes through gear.Validate (bounds computed by the server) and its texts through moderation. No player
+// text enters this request.
 
-// StockVersion identifie la version du prompt d'étalage (enregistrée avec l'assortiment).
-// La version 3 passe au combat par dés (famille et qualité des armes, réduction des armures) : les étalages plus
-// anciens sont régénérés.
+// StockVersion identifies the stock prompt version (saved with the assortment).
+// Version 3 moves to dice-based combat (weapon family and quality, armor reduction): older
+// stocks are regenerated.
 const StockVersion = 3
 
 const (
@@ -29,33 +29,33 @@ const (
 	maxSpecialty   = 80
 )
 
-// WaresRepo est le stockage des assortiments (implémenté par internal/store).
+// WaresRepo is the storage for assortments (implemented by internal/store).
 type WaresRepo interface {
 	GetWares(ctx context.Context, npc world.NPCKey) (gear.Wares, bool, error)
 	PutWares(ctx context.Context, w gear.Wares) error
 }
 
-// StockRequest demande l'assortiment d'un vendeur.
+// StockRequest asks for a vendor's assortment.
 type StockRequest struct {
 	NPC       world.NPC
 	Lang      i18n.Lang
 	Place     string
 	PlaceKind world.Kind
 	Region    string
-	Context   gear.Context // emplacements vendus et palier maximal du lieu
+	Context   gear.Context // slots sold and maximum tier of the place
 }
 
-// StockReply est l'assortiment d'un vendeur, ou la raison de son absence (le jeu utilise alors son repli).
+// StockReply is a vendor's assortment, or the reason for its absence (the game then uses its fallback).
 type StockReply struct {
 	Wares     gear.Wares
 	Failure   Failure
-	FromStore bool // relu de la base : aucun appel au modèle
+	FromStore bool // reread from the database: no model call
 }
 
-// WithWares branche le stockage des assortiments.
+// WithWares plugs in the assortment storage.
 func WithWares(r WaresRepo) Option { return func(s *Service) { s.wares = r } }
 
-// BuildStockMessages assemble la demande d'étalage.
+// BuildStockMessages assembles the stock request.
 func BuildStockMessages(req StockRequest) []llm.Message {
 	l := req.Lang
 	n := req.NPC
@@ -106,7 +106,7 @@ type rawStock struct {
 	Items     []rawStockItem `json:"items"`
 }
 
-// parseStock lit la réponse du modèle de façon tolérante (clôtures, texte autour du JSON, champs mal typés).
+// parseStock reads the model response leniently (fences, text around the JSON, wrongly typed fields).
 func parseStock(content string) (specialty string, props []gear.Proposal, ok bool) {
 	body := extractJSON(content)
 	if body == "" {
@@ -125,8 +125,8 @@ func parseStock(content string) (specialty string, props []gear.Proposal, ok boo
 	return textsafe.Clean(string(raw.Specialty), maxSpecialty), props, true
 }
 
-// Stock donne l'assortiment d'un vendeur : celui enregistré s'il existe, sinon il est généré une fois, validé,
-// modéré et enregistré. Ne bloque jamais ; n'appelle done que depuis une autre goroutine que l'appelant.
+// Stock gives a vendor's assortment: the saved one if it exists, otherwise it is generated once, validated,
+// moderated and saved. Never blocks; calls done only from a goroutine other than the caller's.
 func (s *Service) Stock(req StockRequest, done func(StockReply)) {
 	fail := func(f Failure) {
 		s.nFailures.Add(1)
@@ -160,18 +160,18 @@ func (s *Service) Stock(req StockRequest, done func(StockReply)) {
 	}
 }
 
-// processStock est exécuté par un worker.
+// processStock is run by a worker.
 func (s *Service) processStock(parent context.Context, req StockRequest) StockReply {
 	ctx, cancel := context.WithTimeout(parent, s.cfg.Timeout)
 	defer cancel()
 	key := req.NPC.Key()
 
-	var stale *gear.Wares // étalage d'une version plus ancienne: il sert tant qu'on ne sait pas le régénérer
+	var stale *gear.Wares // stock from an older version: it is used as long as it cannot be regenerated
 	if s.wares != nil {
 		if w, ok, err := s.wares.GetWares(ctx, key); err != nil {
-			s.log.Warn("lecture de l'assortiment", "err", err)
+			s.log.Warn("reading assortment", "err", err)
 		} else if ok && len(w.Items) > 0 {
-			w.Items = gear.SanitizeItems(w.Items) // objets d'une ancienne version: convertis
+			w.Items = gear.SanitizeItems(w.Items) // items from an older version: converted
 			if w.Version >= StockVersion {
 				return StockReply{Wares: w, FromStore: true}
 			}
@@ -185,7 +185,7 @@ func (s *Service) processStock(parent context.Context, req StockRequest) StockRe
 	return r
 }
 
-// generateStock demande un nouvel étalage au modèle, le valide, le modère et l'enregistre.
+// generateStock asks the model for a new stock, validates it, moderates it and saves it.
 func (s *Service) generateStock(ctx context.Context, req StockRequest, key world.NPCKey) StockReply {
 	if !s.Available() {
 		return StockReply{Failure: Unavailable}
@@ -203,7 +203,7 @@ func (s *Service) generateStock(ctx context.Context, req StockRequest, key world
 	specialty, props, ok := parseStock(resp.Content)
 	if !ok {
 		s.nStockRejected.Add(1)
-		s.log.Warn("assortiment inexploitable")
+		s.log.Warn("unusable assortment")
 		return StockReply{Failure: Unavailable}
 	}
 	var items []gear.Item
@@ -222,7 +222,7 @@ func (s *Service) generateStock(ctx context.Context, req StockRequest, key world
 	}
 	if specialty == "" || lore.LooksLikeLink(specialty) || len(items) < minStockItems {
 		s.nStockRejected.Add(1)
-		s.log.Info("assortiment écarté", "objets_valides", len(items))
+		s.log.Info("assortment discarded", "valid_items", len(items))
 		return StockReply{Failure: Unavailable}
 	}
 	texts := []string{specialty}
@@ -234,14 +234,14 @@ func (s *Service) generateStock(ctx context.Context, req StockRequest, key world
 	}
 	if err := s.moderator(ctx, texts); err != nil {
 		s.nStockRejected.Add(1)
-		s.log.Info("assortiment non modéré", "raison", err.Error())
+		s.log.Info("assortment not moderated", "reason", err.Error())
 		return StockReply{Failure: Blocked}
 	}
 
 	w := gear.Wares{NPC: key, Specialty: specialty, Items: items, Version: StockVersion, CreatedAt: s.now()}
 	if s.wares != nil {
 		if err := s.wares.PutWares(ctx, w); err != nil {
-			s.log.Warn("écriture de l'assortiment", "err", err) // l'étalage sert quand même, mais ne sera pas figé
+			s.log.Warn("writing assortment", "err", err) // the stock is still served, but will not be frozen
 		}
 	}
 	s.nStockGenerated.Add(1)

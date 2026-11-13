@@ -1,4 +1,4 @@
-// Package store persiste les comptes et les personnages dans SQLite.
+// Package store persists accounts and characters in SQLite.
 package store
 
 import (
@@ -11,33 +11,33 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
-	_ "modernc.org/sqlite" // pilote SQLite en Go pur (pas de CGO)
+	_ "modernc.org/sqlite" // pure Go SQLite driver (no CGO)
 
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Erreurs renvoyées par le magasin.
+// Errors returned by the store.
 var (
-	ErrExists       = errors.New("ce pseudo existe déjà")
-	ErrInvalid      = errors.New("identifiants invalides") // inconnu ou mauvais mot de passe: volontairement indistinguable
-	ErrWeakPassword = errors.New("mot de passe trop court ou trop long")
+	ErrExists       = errors.New("username already taken")
+	ErrInvalid      = errors.New("invalid credentials") // unknown or wrong password: deliberately indistinguishable
+	ErrWeakPassword = errors.New("password too short or too long")
 )
 
 const (
 	minPassword = 8
-	maxPassword = 72 // limite de bcrypt
+	maxPassword = 72 // bcrypt limit
 )
 
-// Character est l'état sauvegardé d'un personnage. Les caractéristiques de
-// combat se déduisent du niveau (voir combat.StatsAt).
+// Character is the saved state of a character. Combat stats are
+// derived from the level (see combat.StatsAt).
 type Character struct {
 	Level, XP, Potions int
 	HP                 int
 
-	// Création du personnage (voir internal/hero). Scores à zéro: la création reste à faire.
-	// MaxHP est la somme des dés de vie (0: à recalculer), Mana la réserve actuelle.
+	// Character creation (see internal/hero). Zero scores: creation is still to be done.
+	// MaxHP is the sum of the hit dice (0: to be recomputed), Mana the current pool.
 	Class  string
 	Scores [6]int
 	MaxHP  int
@@ -45,77 +45,77 @@ type Character struct {
 	X, Y   int
 	Gold   int
 
-	// Accord du joueur pour l'envoi de ses messages à un service de langage
-	// tiers (voir le dialogue des PNJ), et faits établis par le serveur que les
-	// PNJ peuvent invoquer.
+	// Player's consent to send their messages to a third-party language
+	// service (see NPC dialogue), and facts established by the server that
+	// NPCs may invoke.
 	LLMConsent bool
 	Kills      int
 	BossKills  int
 	Deaths     int
 
-	// Quêtes en cours et rendues, et réputation par lieu (voir internal/quest).
-	// QuestsDirty indique qu'elles ont changé depuis la dernière sauvegarde: seules
-	// les sauvegardes qui les modifient réécrivent leurs tables.
+	// Ongoing and handed-in quests, and reputation per place (see internal/quest).
+	// QuestsDirty tells that they changed since the last save: only
+	// saves that modify them rewrite their tables.
 	Quests      []quest.Quest
 	Rep         map[world.RegionPos]int
 	QuestsDirty bool
 
-	// Sac d'équipement et objets portés (voir internal/gear). GearDirty : à réécrire.
+	// Equipment bag and worn items (see internal/gear). GearDirty: to be rewritten.
 	Gear      gear.Inventory
 	GearDirty bool
 
-	// Donjons dont le personnage a découvert l'entrée, désignés par la région qui les cache (voir
-	// internal/world). DiscoveriesDirty : à réécrire.
+	// Dungeons whose entrance the character has discovered, identified by the region that hides them (see
+	// internal/world). DiscoveriesDirty: to be rewritten.
 	Discoveries      []world.RegionPos
 	DiscoveriesDirty bool
 
-	// Point de réapparition (feu de camp) et pierres dressées activées, désignées par leur région. Ils tiennent
-	// dans la ligne du personnage : ils sont réécrits à chaque sauvegarde, sans drapeau.
+	// Respawn point (campfire) and activated standing stones, identified by their region. They fit
+	// in the character row: they are rewritten on every save, without a flag.
 	RespawnSet bool
 	RespawnX   int
 	RespawnY   int
 	Stones     []world.RegionPos
-	Maps       []world.Pos    // cartes au trésor détenues : la case à creuser de chacune
-	Resources  map[string]int // sac de matières : quantité par identifiant de ressource
-	Skills     map[string]int // expérience cumulée des métiers de récolte, par catégorie
+	Maps       []world.Pos    // treasure maps held: the tile to dig for each one
+	Resources  map[string]int // materials bag: quantity per resource identifier
+	Skills     map[string]int // accumulated experience of gathering jobs, per category
 }
 
-// Store est la base de données.
+// Store is the database.
 type Store struct {
 	db   *sql.DB
 	cost int
 
-	// hashSem borne le nombre de hachages bcrypt simultanés: chacun occupe un
-	// cœur pendant des dizaines de millisecondes, et des centaines de
-	// connexions simultanées affameraient sinon la boucle de jeu.
+	// hashSem bounds the number of concurrent bcrypt hashes: each one occupies a
+	// core for tens of milliseconds, and hundreds of simultaneous
+	// connections would otherwise starve the game loop.
 	hashSem    chan struct{}
-	activeHash atomic.Int32 // hachages en cours (pour les tests)
-	peakHash   atomic.Int32 // maximum observé (pour les tests)
+	activeHash atomic.Int32 // hashes in progress (for tests)
+	peakHash   atomic.Int32 // observed maximum (for tests)
 
-	// dummyHash sert à égaliser le temps de réponse quand le compte n'existe pas,
-	// pour ne pas révéler quels pseudos existent.
+	// dummyHash is used to equalize the response time when the account does not exist,
+	// so as not to reveal which names exist.
 	dummyHash []byte
 }
 
-// Option configure Open.
+// Option configures Open.
 type Option func(*Store)
 
-// WithBcryptCost règle le coût de bcrypt (à réduire uniquement dans les tests).
+// WithBcryptCost sets the bcrypt cost (to be lowered only in tests).
 func WithBcryptCost(cost int) Option { return func(s *Store) { s.cost = cost } }
 
-// WithHashConcurrency borne les hachages bcrypt simultanés (défaut: la moitié des cœurs).
+// WithHashConcurrency bounds concurrent bcrypt hashes (default: half the cores).
 func WithHashConcurrency(n int) Option {
 	return func(s *Store) { s.hashSem = make(chan struct{}, max(1, n)) }
 }
 
-// Open ouvre (et migre si besoin) la base à path.
+// Open opens (and migrates if needed) the database at path.
 func Open(path string, opts ...Option) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	// Une seule connexion: SQLite n'a qu'un écrivain, et cela évite les « database is locked ».
+	// A single connection: SQLite has only one writer, and this avoids "database is locked" errors.
 	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db, cost: bcrypt.DefaultCost}
@@ -129,7 +129,7 @@ func Open(path string, opts ...Option) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migration: %w", err)
 	}
-	s.dummyHash, err = bcrypt.GenerateFromPassword([]byte("inutilisé"), s.cost)
+	s.dummyHash, err = bcrypt.GenerateFromPassword([]byte("unused"), s.cost)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -137,11 +137,11 @@ func Open(path string, opts ...Option) (*Store, error) {
 	return s, nil
 }
 
-// Close ferme la base.
+// Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
-// migrations est la liste ordonnée des évolutions du schéma. N'en modifier
-// aucune après publication: en ajouter une nouvelle.
+// migrations is the ordered list of schema changes. Never modify
+// one after release: add a new one.
 var migrations = []string{
 	`CREATE TABLE meta (
 		key   TEXT PRIMARY KEY,
@@ -162,15 +162,15 @@ var migrations = []string{
 		y          INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL
 	)`,
-	// 4: monnaie du jeu. Les personnages existants démarrent sans or.
+	// 4: in-game currency. Existing characters start with no gold.
 	`ALTER TABLE characters ADD COLUMN gold INTEGER NOT NULL DEFAULT 0`,
-	// 5 à 8: accord pour les dialogues avec un modèle de langage, et faits vérifiés.
+	// 5 to 8: consent for dialogues with a language model, and verified facts.
 	`ALTER TABLE characters ADD COLUMN llm_consent INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN kills INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN boss_kills INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN deaths INTEGER NOT NULL DEFAULT 0`,
-	// 9: présentations des joueurs, une par (compte, lieu). Les faits (level…) sont
-	// établis par le serveur; le reste est dit par le joueur et reste non vérifié.
+	// 9: player introductions, one per (account, place). Facts (level...) are
+	// established by the server; the rest is stated by the player and stays unverified.
 	`CREATE TABLE npc_cards (
 		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
 		region_x   INTEGER NOT NULL,
@@ -188,7 +188,7 @@ var migrations = []string{
 		PRIMARY KEY (account, region_x, region_y)
 	)`,
 	`CREATE INDEX npc_cards_place ON npc_cards(region_x, region_y, updated_at)`,
-	// 11: souvenir privé d'un PNJ sur un joueur (jamais montré à un autre joueur).
+	// 11: an NPC's private memory of a player (never shown to another player).
 	`CREATE TABLE npc_memories (
 		region_x   INTEGER NOT NULL,
 		region_y   INTEGER NOT NULL,
@@ -198,8 +198,8 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL,
 		PRIMARY KEY (region_x, region_y, npc_index, account)
 	)`,
-	// 12: quêtes des joueurs et réputation par lieu. Les quêtes rendues (state = 'done')
-	// servent aussi de mémoire aux PNJ (rumeurs).
+	// 12: player quests and reputation per place. Handed-in quests (state = 'done')
+	// also serve as NPC memory (rumors).
 	`CREATE TABLE quests (
 		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
 		id         INTEGER NOT NULL,
@@ -232,7 +232,7 @@ var migrations = []string{
 		points   INTEGER NOT NULL,
 		PRIMARY KEY (account, region_x, region_y)
 	)`,
-	// 13: sac d'équipement des joueurs et assortiments générés des vendeurs.
+	// 13: players' equipment bag and generated vendor wares.
 	`CREATE TABLE items (
 		account    TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
 		id         INTEGER NOT NULL,
@@ -259,8 +259,8 @@ var migrations = []string{
 		created_at  INTEGER NOT NULL,
 		PRIMARY KEY (region_x, region_y, npc_index)
 	)`,
-	// 14: classe, caractéristiques tirées à la création (toutes à 0: création à faire), PV maximaux
-	// (somme des dés de vie), mana, et style des armes du sac.
+	// 14: class, abilities rolled at creation (all 0: creation to be done), max HP
+	// (sum of hit dice), mana, and style of the bag's weapons.
 	`ALTER TABLE characters ADD COLUMN class TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE characters ADD COLUMN str INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN agi INTEGER NOT NULL DEFAULT 0`,
@@ -271,39 +271,39 @@ var migrations = []string{
 	`ALTER TABLE characters ADD COLUMN max_hp INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN mana INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE items ADD COLUMN kind TEXT NOT NULL DEFAULT ''`,
-	// 15: combat par dés. Un objet a une famille (type de dégâts ou d'armure) et une qualité (bonus aux dégâts
-	// d'une arme) ; la colonne atk n'est plus utilisée. Les anciens objets (famille vide) sont convertis à la
-	// lecture par gear.Sanitize.
+	// 15: dice combat. An item has a family (damage or armor type) and a quality (damage bonus
+	// of a weapon); the atk column is no longer used. Old items (empty family) are converted
+	// on read by gear.Sanitize.
 	`ALTER TABLE items ADD COLUMN family TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE items ADD COLUMN quality INTEGER NOT NULL DEFAULT 0`,
-	// 16: entrées de donjon découvertes, par personnage.
+	// 16: discovered dungeon entrances, per character.
 	`CREATE TABLE discoveries (
 		account  TEXT    NOT NULL COLLATE NOCASE REFERENCES accounts(name) ON DELETE CASCADE,
 		region_x INTEGER NOT NULL,
 		region_y INTEGER NOT NULL,
 		PRIMARY KEY (account, region_x, region_y)
 	)`,
-	// 17: point de réapparition (feu de camp) et pierres dressées activées (liste « x,y;x,y »).
+	// 17: respawn point (campfire) and activated standing stones ("x,y;x,y" list).
 	`ALTER TABLE characters ADD COLUMN respawn_set INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN respawn_x INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN respawn_y INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE characters ADD COLUMN stones TEXT NOT NULL DEFAULT ''`,
-	// 18: cartes au trésor détenues (liste « x,y;x,y » des cases à creuser).
+	// 18: treasure maps held ("x,y;x,y" list of tiles to dig).
 	`ALTER TABLE characters ADD COLUMN maps TEXT NOT NULL DEFAULT ''`,
-	// 19: sac de matières (liste « id:quantité;id:quantité »).
+	// 19: materials bag ("id:quantity;id:quantity" list).
 	`ALTER TABLE characters ADD COLUMN resources TEXT NOT NULL DEFAULT ''`,
-	// 20: expérience des métiers de récolte (liste « catégorie:xp;catégorie:xp »).
+	// 20: experience of gathering jobs ("category:xp;category:xp" list).
 	`ALTER TABLE characters ADD COLUMN skills TEXT NOT NULL DEFAULT ''`,
 }
 
-// migrate applique les migrations manquantes, chacune dans sa transaction.
+// migrate applies the missing migrations, each in its own transaction.
 func (s *Store) migrate() error {
 	var version int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
 	if version > len(migrations) {
-		return fmt.Errorf("base plus récente que ce programme (version %d, connue %d)", version, len(migrations))
+		return fmt.Errorf("database newer than this program (version %d, known %d)", version, len(migrations))
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.Begin()
@@ -314,7 +314,7 @@ func (s *Store) migrate() error {
 			tx.Rollback()
 			return fmt.Errorf("migration %d: %w", i+1, err)
 		}
-		// PRAGMA n'accepte pas de paramètre: i+1 est un entier de confiance.
+		// PRAGMA does not accept a parameter: i+1 is a trusted integer.
 		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, i+1)); err != nil {
 			tx.Rollback()
 			return err
@@ -326,7 +326,7 @@ func (s *Store) migrate() error {
 	return nil
 }
 
-// Meta lit une valeur de la table meta.
+// Meta reads a value from the meta table.
 func (s *Store) Meta(key string) (value string, ok bool, err error) {
 	err = s.db.QueryRow(`SELECT value FROM meta WHERE key = ?`, key).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -335,18 +335,18 @@ func (s *Store) Meta(key string) (value string, ok bool, err error) {
 	return value, err == nil, err
 }
 
-// SetMeta écrit une valeur dans la table meta.
+// SetMeta writes a value to the meta table.
 func (s *Store) SetMeta(key, value string) error {
 	_, err := s.db.Exec(`INSERT INTO meta(key, value) VALUES(?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
 }
 
-// withHashSlot exécute fn en occupant l'un des créneaux de hachage.
+// withHashSlot runs fn while occupying one of the hashing slots.
 func (s *Store) withHashSlot(fn func()) {
 	s.hashSem <- struct{}{}
 	n := s.activeHash.Add(1)
-	for { // maximum observé, sans verrou
+	for { // observed maximum, lock-free
 		cur := s.peakHash.Load()
 		if n <= cur || s.peakHash.CompareAndSwap(cur, n) {
 			break
@@ -359,13 +359,13 @@ func (s *Store) withHashSlot(fn func()) {
 	fn()
 }
 
-// CreateAccount crée un compte et renvoie le pseudo tel qu'enregistré.
+// CreateAccount creates an account and returns the name as stored.
 func (s *Store) CreateAccount(name, password string) (string, error) {
 	if l := len(password); l < minPassword || l > maxPassword {
 		return "", ErrWeakPassword
 	}
-	// Pseudo déjà pris: on refuse avant de dépenser un hachage coûteux. La
-	// contrainte UNIQUE ci-dessous reste l'arbitre en cas de course.
+	// Name already taken: refuse before spending an expensive hash. The
+	// UNIQUE constraint below remains the arbiter in case of a race.
 	var taken int
 	err := s.db.QueryRow(`SELECT 1 FROM accounts WHERE name = ?`, name).Scan(&taken)
 	if err == nil {
@@ -391,9 +391,9 @@ func (s *Store) CreateAccount(name, password string) (string, error) {
 	return name, nil
 }
 
-// Authenticate vérifie un mot de passe et renvoie le pseudo tel qu'enregistré
-// (la casse saisie peut différer). Un pseudo inconnu et un mauvais mot de
-// passe donnent la même erreur, après un temps comparable.
+// Authenticate checks a password and returns the name as stored
+// (the typed case may differ). An unknown name and a wrong
+// password give the same error, after a comparable time.
 func (s *Store) Authenticate(name, password string) (string, error) {
 	var canonical, hash string
 	err := s.db.QueryRow(`SELECT name, pass_hash FROM accounts WHERE name = ?`, name).Scan(&canonical, &hash)
@@ -412,7 +412,7 @@ func (s *Store) Authenticate(name, password string) (string, error) {
 	return canonical, nil
 }
 
-// LoadCharacter renvoie le personnage d'un compte, ou nil s'il n'en a pas encore.
+// LoadCharacter returns an account's character, or nil if it has none yet.
 func (s *Store) LoadCharacter(account string) (*Character, error) {
 	var c Character
 	var consent, respawnSet int
@@ -447,8 +447,8 @@ func (s *Store) LoadCharacter(account string) (*Character, error) {
 	return &c, nil
 }
 
-// SaveCharacters enregistre plusieurs personnages en une seule transaction
-// (tout ou rien). Les comptes inconnus sont ignorés plutôt que de faire échouer le lot.
+// SaveCharacters saves several characters in a single transaction
+// (all or nothing). Unknown accounts are skipped rather than failing the batch.
 func (s *Store) SaveCharacters(chars map[string]Character) error {
 	if len(chars) == 0 {
 		return nil
@@ -486,21 +486,21 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 			c.Class, c.Scores[0], c.Scores[1], c.Scores[2], c.Scores[3], c.Scores[4], c.Scores[5], c.MaxHP, c.Mana,
 			boolToInt(c.RespawnSet), c.RespawnX, c.RespawnY, encodeStones(c.Stones), encodeMaps(c.Maps), encodeResources(c.Resources), encodeResources(c.Skills),
 			now, account); err != nil {
-			return fmt.Errorf("sauvegarde de %s: %w", account, err)
+			return fmt.Errorf("saving %s: %w", account, err)
 		}
 		if c.QuestsDirty {
 			if err := saveQuests(tx, account, c); err != nil {
-				return fmt.Errorf("quêtes de %s: %w", account, err)
+				return fmt.Errorf("quests of %s: %w", account, err)
 			}
 		}
 		if c.GearDirty {
 			if err := saveGear(tx, account, c.Gear); err != nil {
-				return fmt.Errorf("équipement de %s: %w", account, err)
+				return fmt.Errorf("equipment of %s: %w", account, err)
 			}
 		}
 		if c.DiscoveriesDirty {
 			if err := saveDiscoveries(tx, account, c); err != nil {
-				return fmt.Errorf("donjons découverts de %s: %w", account, err)
+				return fmt.Errorf("discovered dungeons of %s: %w", account, err)
 			}
 		}
 	}

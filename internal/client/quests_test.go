@@ -62,27 +62,27 @@ func sentQuestActions(out chan []byte) (acts []protocol.QuestAction) {
 func TestQuestBookShowsQuestsAndSidebarSummary(t *testing.T) {
 	m := withBook(t, playingModel(t, 120, 36))
 	if side := ansi.Strip(m.View().Content); !strings.Contains(side, "Quêtes : 2 (1 à rendre)") {
-		t.Fatalf("résumé absent du panneau:\n%s", side)
+		t.Fatalf("summary missing from the panel:\n%s", side)
 	}
 	m = press(m, "q")
 	out := ansi.Strip(m.View().Content)
 	for _, want := range []string{"Livre de quêtes", "Les loups du bois", "Un message", "Vaincre : Loup × 3", "Progression : 1/3",
 		"Récompense : 40 or · 6 XP · 1 potion(s)", "Doran le Rieur", "Réputation : +3"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("livre sans %q:\n%s", want, out)
+			t.Errorf("book without %q:\n%s", want, out)
 		}
 	}
 	m = press(m, "down")
 	if out := ansi.Strip(m.View().Content); !strings.Contains(out, "Prête !") {
-		t.Errorf("la quête prête devrait inviter à la rendre:\n%s", out)
+		t.Errorf("the ready quest should prompt to hand it in:\n%s", out)
 	}
 	m = press(m, "tab")
 	if out := ansi.Strip(m.View().Content); !strings.Contains(out, "Connu · 5") || !strings.Contains(out, "Les rats") {
-		t.Errorf("onglet réputation:\n%s", out)
+		t.Errorf("reputation tab:\n%s", out)
 	}
 	m = press(m, "esc")
 	if m.questBook {
-		t.Fatal("Échap devrait fermer le livre")
+		t.Fatal("Escape should close the book")
 	}
 }
 
@@ -92,17 +92,17 @@ func TestQuestAbandonNeedsConfirmation(t *testing.T) {
 	m = press(m, "q")
 	m = press(m, "x")
 	if acts := sentQuestActions(out); len(acts) != 0 {
-		t.Fatalf("abandon sans confirmation: %v", acts)
+		t.Fatalf("abandon without confirmation: %v", acts)
 	}
 	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Appuyez de nouveau") {
-		t.Fatal("la confirmation devrait être demandée")
+		t.Fatal("confirmation should be asked")
 	}
-	m = press(m, "j") // autre touche: annule
+	m = press(m, "j") // other key: cancels
 	m = press(m, "x")
 	m = press(m, "x")
 	acts := sentQuestActions(out)
 	if len(acts) != 1 || acts[0].Action != protocol.QuestAbandon || acts[0].ID != 9 {
-		t.Fatalf("abandon attendu de la quête 9 (sélectionnée): %v", acts)
+		t.Fatalf("abandon of quest 9 (selected) expected: %v", acts)
 	}
 }
 
@@ -116,22 +116,22 @@ func TestQuestBookFitsAllSizesAndIsSanitized(t *testing.T) {
 		m := press(tm.(Model), "q")
 		view := m.View().Content
 		if strings.Contains(view, "pwn") && strings.Contains(view, "\x1b]0;") {
-			t.Fatalf("%v: séquence OSC non neutralisée", sz)
+			t.Fatalf("%v: OSC sequence not neutralized", sz)
 		}
 		lines := strings.Split(ansi.Strip(view), "\n")
 		if len(lines) > sz[1] {
-			t.Errorf("%v: %d lignes > hauteur", sz, len(lines))
+			t.Errorf("%v: %d lines > height", sz, len(lines))
 		}
 		for i, l := range lines {
 			if w := ansi.StringWidth(l); w > sz[0] {
-				t.Errorf("%v ligne %d: largeur %d > %d", sz, i, w, sz[0])
+				t.Errorf("%v line %d: width %d > %d", sz, i, w, sz[0])
 			}
 		}
 		if strings.ContainsAny(ansi.Strip(view), "\u202e") {
-			t.Errorf("%v: marque bidirectionnelle conservée", sz)
+			t.Errorf("%v: bidirectional mark kept", sz)
 		}
 	}
-	// La notification passe dans le journal, nettoyée.
+	// The notification goes into the log, cleaned.
 	tm, _ := playingModel(t, 120, 36).Update(questsMsg(t, hostile))
 	last := tm.(Model).chat[len(tm.(Model).chat)-1]
 	if strings.Contains(last.Text, "\x1b") || !strings.Contains(last.Text, "accomplie") {
@@ -156,21 +156,21 @@ func TestQuestProposalCardAndKeys(t *testing.T) {
 	view := ansi.Strip(m.View().Content)
 	for _, want := range []string{"Proposition de quête", "Les loups du bois", "Récompense : 40 or · 6 XP · 1 potion(s)", "[A] Accepter la quête", "[R] Refuser"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("carte sans %q:\n%s", want, view)
+			t.Errorf("card without %q:\n%s", want, view)
 		}
 	}
-	m = press(m, "enter") // Entrée n'accepte jamais
+	m = press(m, "enter") // Enter never accepts
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("Entrée a envoyé %v", got)
+		t.Fatalf("Enter sent %v", got)
 	}
 	m = press(m, "a")
 	if got := sentNPCActions(out); len(got) != 1 || got[0] != protocol.NPCQuestAccept {
-		t.Fatalf("accepter: %v", got)
+		t.Fatalf("accept: %v", got)
 	}
 	m = press(m, "r")
 	m = press(m, "esc")
 	if got := sentNPCActions(out); len(got) != 2 || got[0] != protocol.NPCQuestRefuse || got[1] != protocol.NPCQuestRefuse {
-		t.Fatalf("refuser: %v", got)
+		t.Fatalf("decline: %v", got)
 	}
 }
 
@@ -185,7 +185,7 @@ func TestTurnInOffersUseNumberKeys(t *testing.T) {
 	m = openNPC(t, m, d)
 	view := ansi.Strip(m.View().Content)
 	if !strings.Contains(view, "[1] Rendre : Les loups") || !strings.Contains(view, "[2] Rendre : Un message") {
-		t.Fatalf("remises mal numérotées:\n%s", view)
+		t.Fatalf("hand-ins badly numbered:\n%s", view)
 	}
 	m = press(m, "2")
 	data := <-out
@@ -193,11 +193,11 @@ func TestTurnInOffersUseNumberKeys(t *testing.T) {
 	var a protocol.NPCAction
 	_ = env.Payload(&a)
 	if a.Action != protocol.NPCTurnIn || a.Text != "9" {
-		t.Fatalf("remise: %+v", a)
+		t.Fatalf("hand-in: %+v", a)
 	}
-	press(m, "3") // pas de troisième quête
+	press(m, "3") // no third quest
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("remise inexistante envoyée: %v", got)
+		t.Fatalf("nonexistent hand-in sent: %v", got)
 	}
 }
 
@@ -206,7 +206,7 @@ func TestQuestsResetOnReconnect(t *testing.T) {
 	tm, _ := m.Update(eventMsg{Event{Err: errClosed}})
 	tm, _ = tm.Update(connectedMsg{welcome: protocol.Welcome{ID: 1, Name: "bob", Seed: 1}})
 	if got := tm.(Model); len(got.quests.Open) != 0 || got.questBook {
-		t.Fatalf("le livre d'une session précédente est resté: %+v", got.quests)
+		t.Fatalf("the book from a previous session stayed: %+v", got.quests)
 	}
 }
 
@@ -216,23 +216,23 @@ func TestGiverIdleFollowsOpenQuestsPausesAndTheCap(t *testing.T) {
 	var m Model
 	m.questsAt = time.Now()
 	if m.giverIdle(a) {
-		t.Fatal("sans quête, personne n'est sans travail")
+		t.Fatal("without a quest, nobody is out of work")
 	}
 	m.quests.Open = []protocol.QuestInfo{{GiverRX: 1, GiverRY: 2, GiverIdx: 3}}
 	if !m.giverIdle(a) || m.giverIdle(b) {
-		t.Fatal("seul le donneur d'une quête ouverte est sans travail")
+		t.Fatal("only the giver of an open quest is out of work")
 	}
 	m.quests.Open = nil
 	m.quests.Pauses = []protocol.GiverPause{{RX: 4, RY: 5, Idx: 0, Secs: 60}}
 	if !m.giverIdle(b) {
-		t.Fatal("donneur en pause")
+		t.Fatal("giver on pause")
 	}
 	m.questsAt = time.Now().Add(-2 * time.Minute)
 	if m.giverIdle(b) {
-		t.Fatal("la pause est écoulée: le « ! » doit revenir sans nouveau message")
+		t.Fatal("the pause is over: the \"!\" must come back without a new message")
 	}
 	m.quests.Full = true
 	if !m.giverIdle(a) || !m.giverIdle(b) {
-		t.Fatal("quota atteint: personne n'a de travail")
+		t.Fatal("quota reached: nobody has work")
 	}
 }

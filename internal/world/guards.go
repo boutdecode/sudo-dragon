@@ -2,24 +2,24 @@ package world
 
 import "github.com/kevin/ascii-adventure/internal/i18n"
 
-// NPCGuard est le garde d'un village ou d'une ville. Contrairement aux autres PNJ il n'est pas posté : il patrouille
-// (voir game/guards.go). Il n'est donc pas dans NPCKinds, ni dans Structure.NPCs, et n'occupe jamais une case de
-// NPCAt : seule sa position de départ est déterministe.
+// NPCGuard is the guard of a village or town. Unlike the other NPCs it is not posted: it patrols
+// (see game/guards.go). It is therefore not in NPCKinds, nor in Structure.NPCs, and never occupies a tile of
+// NPCAt: only its starting position is deterministic.
 const NPCGuard NPCKind = "guard"
 
-// GuardIndexBase est le rang du premier garde d'un lieu dans la numérotation de ses PNJ (Index). Il est assez
-// grand pour ne jamais recouvrir un PNJ posté.
+// GuardIndexBase is the rank of the first guard of a place in the numbering of its NPCs (Index). It is large
+// enough never to overlap a posted NPC.
 const GuardIndexBase = 100
 
-// guardsPerKind donne le nombre de gardes d'un lieu.
+// guardsPerKind gives the number of guards of a place.
 var guardsPerKind = map[Kind]int{KindVillage: 2, KindTown: 5}
 
-// guardSalt est le sel du flux d'identité des gardes : distinct de ceux des plans, des noms et des PNJ postés,
-// pour ne rien décaler de ce qui existe.
+// guardSalt is the salt of the guards' identity stream: distinct from those of the plans, the names and the posted NPCs,
+// so as not to shift anything that exists.
 const guardSalt = 8000
 
-// makeGuards invente les gardes du lieu : identité (nom unique dans le lieu) et case de départ sur un chemin.
-// Il ne consomme rien du flux des plans.
+// makeGuards invents the guards of the place: identity (name unique within the place) and starting tile on a road.
+// It consumes nothing from the plans' stream.
 func (w *World) makeGuards(s *Structure, taken map[string]bool) {
 	n := guardsPerKind[s.Kind]
 	if n == 0 {
@@ -65,5 +65,5 @@ func (w *World) makeGuards(s *Structure, taken map[string]bool) {
 	}
 }
 
-// RoadAt indique si (x, y) est un chemin de la structure (là où les gardes patrouillent).
+// RoadAt tells whether (x, y) is a road of the structure (where the guards patrol).
 func (s *Structure) RoadAt(x, y int) bool { return s.Contains(x, y) && s.TileAt(x, y) == Road }

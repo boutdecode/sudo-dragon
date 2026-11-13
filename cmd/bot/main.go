@@ -1,5 +1,5 @@
-// Commande bot : lance des joueurs automatiques qui se promènent au hasard.
-// Sert à tester la tenue en charge et à observer le monde (monstres, etc.).
+// Command bot: runs automatic players that wander at random.
+// Used to test behaviour under load and to observe the world (monsters, etc.).
 package main
 
 import (
@@ -20,7 +20,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
 
-// serverStats reprend la forme JSON de l'endpoint /stats du serveur.
+// serverStats mirrors the JSON shape of the server's /stats endpoint.
 type serverStats struct {
 	Players     int     `json:"players"`
 	Monsters    int     `json:"monsters"`
@@ -33,7 +33,7 @@ type serverStats struct {
 	TickRecentMaxMS float64 `json:"tick_recent_max_ms"`
 }
 
-// statsURL déduit l'adresse de /stats de celle du WebSocket.
+// statsURL derives the /stats address from the WebSocket one.
 func statsURL(wsAddr string) string {
 	u := strings.Replace(wsAddr, "wss://", "https://", 1)
 	u = strings.Replace(u, "ws://", "http://", 1)
@@ -58,11 +58,11 @@ type stats struct {
 	snapshots  atomic.Int64
 	bytes      atomic.Int64
 	maxMonster atomic.Int64
-	kinds      sync.Map // espèce -> struct{}
+	kinds      sync.Map // species -> struct{}
 	failures   atomic.Int64
 
 	connMu    sync.Mutex
-	connTimes []time.Duration // durée de connexion (Dial + login + welcome) de chaque bot
+	connTimes []time.Duration // connection time (Dial + login + welcome) of each bot
 }
 
 func (s *stats) recordConnect(d time.Duration) {
@@ -71,7 +71,7 @@ func (s *stats) recordConnect(d time.Duration) {
 	s.connMu.Unlock()
 }
 
-// connSummary renvoie la médiane et le maximum des durées de connexion.
+// connSummary returns the median and maximum of the connection times.
 func (s *stats) connSummary() (median, maxD time.Duration) {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
@@ -84,13 +84,13 @@ func (s *stats) connSummary() (median, maxD time.Duration) {
 }
 
 func main() {
-	addr := flag.String("addr", "ws://localhost:8080/ws", "adresse du serveur")
-	n := flag.Int("n", 5, "nombre de bots")
-	dur := flag.Duration("d", 30*time.Second, "durée")
-	verbose := flag.Bool("v", false, "afficher les monstres vus par le premier bot")
-	pass := flag.String("pass", "bot-password-123", "mot de passe commun des comptes bots")
-	warmup := flag.Duration("warmup", 0, "délai avant de mesurer la cadence (laisse passer la vague de connexions)")
-	minRate := flag.Float64("min-tick-rate", 0, "échoue si le serveur tient moins de N ticks/s (0 = ne pas vérifier)")
+	addr := flag.String("addr", "ws://localhost:8080/ws", "server address")
+	n := flag.Int("n", 5, "number of bots")
+	dur := flag.Duration("d", 30*time.Second, "duration")
+	verbose := flag.Bool("v", false, "print the monsters seen by the first bot")
+	pass := flag.String("pass", "bot-password-123", "shared password of the bot accounts")
+	warmup := flag.Duration("warmup", 0, "delay before measuring the tick rate (lets the connection wave pass)")
+	minRate := flag.Float64("min-tick-rate", 0, "fail if the server holds fewer than N ticks/s (0 = do not check)")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), *dur)
@@ -104,10 +104,10 @@ func main() {
 			defer wg.Done()
 			runBot(ctx, *addr, fmt.Sprintf("bot%03d", i), *pass, &st, *verbose && i == 0)
 		}(i)
-		time.Sleep(20 * time.Millisecond) // évite un pic de connexions simultanées
+		time.Sleep(20 * time.Millisecond) // avoids a spike of simultaneous connections
 	}
 
-	// Mesure de la cadence du serveur sur la période où tous les bots sont connectés.
+	// Measure the server tick rate over the period when all the bots are connected.
 	url := statsURL(*addr)
 	select {
 	case <-time.After(*warmup):
@@ -124,27 +124,27 @@ func main() {
 	var kinds []string
 	st.kinds.Range(func(k, _ any) bool { kinds = append(kinds, k.(string)); return true })
 	med, worst := st.connSummary()
-	fmt.Printf("bots: %d (échecs de connexion: %d); durée de connexion: médiane %v, max %v\n",
+	fmt.Printf("bots: %d (connection failures: %d); connection time: median %v, max %v\n",
 		*n, st.failures.Load(), med.Round(time.Millisecond), worst.Round(time.Millisecond))
-	fmt.Printf("snapshots reçus: %d (%.1f/s au total), %.1f Ko/s\n",
+	fmt.Printf("snapshots received: %d (%.1f/s in total), %.1f KB/s\n",
 		st.snapshots.Load(), float64(st.snapshots.Load())/secs, float64(st.bytes.Load())/1024/secs)
-	fmt.Printf("monstres vus en même temps (max): %d; espèces: %v\n", st.maxMonster.Load(), kinds)
+	fmt.Printf("monsters seen at the same time (max): %d; species: %v\n", st.maxMonster.Load(), kinds)
 
 	exit := 0
 	if errBefore != nil || errAfter != nil {
-		fmt.Fprintf(os.Stderr, "stats du serveur indisponibles (%v / %v)\n", errBefore, errAfter)
+		fmt.Fprintf(os.Stderr, "server stats unavailable (%v / %v)\n", errBefore, errAfter)
 		if *minRate > 0 {
 			exit = 1
 		}
 	} else if dt := after.Ticks - before.Ticks; dt > 0 && elapsed > 0 {
 		rate := float64(dt) / elapsed
 		avg := (after.TickTotalMS - before.TickTotalMS) / float64(dt)
-		fmt.Printf("serveur: %d joueurs, %d monstres\n", after.Players, after.Monsters)
-		fmt.Printf("cadence: %.2f ticks/s (cible 10), ticks lents: %d\n", rate, after.SlowTicks-before.SlowTicks)
-		fmt.Printf("durée d'un tick (budget 100 ms): moyenne %.2f ms, p99 %.2f ms, max sur 60 s %.2f ms, max depuis le démarrage %.2f ms\n",
+		fmt.Printf("server: %d players, %d monsters\n", after.Players, after.Monsters)
+		fmt.Printf("tick rate: %.2f ticks/s (target 10), slow ticks: %d\n", rate, after.SlowTicks-before.SlowTicks)
+		fmt.Printf("tick duration (100 ms budget): average %.2f ms, p99 %.2f ms, max over 60 s %.2f ms, max since startup %.2f ms\n",
 			avg, after.TickP99MS, after.TickRecentMaxMS, after.TickMaxMS)
 		if *minRate > 0 && rate < *minRate {
-			fmt.Fprintf(os.Stderr, "ÉCHEC: %.2f ticks/s < %.2f exigés\n", rate, *minRate)
+			fmt.Fprintf(os.Stderr, "FAILED: %.2f ticks/s < %.2f required\n", rate, *minRate)
 			exit = 1
 		}
 	}
@@ -155,10 +155,10 @@ func main() {
 }
 
 func runBot(ctx context.Context, addr, name, pass string, st *stats, verbose bool) {
-	// Crée le compte au premier passage, s'y connecte ensuite.
+	// Create the account on the first run, then log in afterwards.
 	started := time.Now()
 	c, _, err := client.Dial(ctx, addr, name, pass, true)
-	if err != nil && strings.Contains(err.Error(), "existe déjà") {
+	if err != nil && (strings.Contains(err.Error(), "existe déjà") || strings.Contains(err.Error(), "already exists")) {
 		c, _, err = client.Dial(ctx, addr, name, pass, false)
 	}
 	if err != nil {
@@ -204,7 +204,7 @@ func runBot(ctx context.Context, addr, name, pass string, st *stats, verbose boo
 				st.kinds.Store(m.Kind, struct{}{})
 			}
 			if verbose && len(s.Monsters) > 0 && s.Tick%50 == 0 {
-				fmt.Printf("[%s tick %d] en (%d,%d):", name, s.Tick, s.Self.X, s.Self.Y)
+				fmt.Printf("[%s tick %d] at (%d,%d):", name, s.Tick, s.Self.X, s.Self.Y)
 				for _, m := range s.Monsters {
 					fmt.Printf(" %s(%+d,%+d)", m.Kind, m.X-s.Self.X, m.Y-s.Self.Y)
 				}

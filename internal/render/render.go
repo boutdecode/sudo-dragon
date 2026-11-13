@@ -1,7 +1,7 @@
-// Package render dessine le monde en ASCII coloré (Lip Gloss).
+// Package render draws the world in coloured ASCII (Lip Gloss).
 //
-// Les glyphes sont volontairement en ASCII pur (pas de ♣, ≈…) : ces caractères
-// ont une largeur ambiguë selon les terminaux et décaleraient la grille.
+// Glyphs are deliberately pure ASCII (no ♣, ≈...): these characters
+// have an ambiguous width depending on the terminal and would shift the grid.
 package render
 
 import (
@@ -16,14 +16,14 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Indices de style: les tuiles occupent 0..NumTiles-1 (valeur de world.Tile),
-// les styles de joueurs viennent ensuite. Ils sont définis à partir de
-// NumTiles: des valeurs codées en dur entreraient en collision dès qu'une
-// nouvelle tuile est ajoutée (un mur s'afficherait comme le joueur).
+// Style indices: tiles occupy 0..NumTiles-1 (world.Tile value),
+// player styles come next. They are defined from
+// NumTiles: hard-coded values would collide as soon as a
+// new tile is added (a wall would be displayed as the player).
 const (
 	styleSelf = int(world.NumTiles) + iota
 	styleOther
-	styleFight // combattants (joueurs et monstres engagés)
+	styleFight // fighters (players and engaged monsters)
 	numBaseStyles
 )
 
@@ -43,7 +43,7 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.Chest:     fg("#facc15").Bold(true),
 	world.Stairs:    fg("#a78bfa").Bold(true),
 	world.Entrance:  fg("#c084fc").Bold(true),
-	world.Rock:      fg("#3b4252"), // roche d'un donjon: en sourdine, pour que salles et couloirs ressortent
+	world.Rock:      fg("#3b4252"), // dungeon rock: muted, so that rooms and corridors stand out
 	world.Campfire:  fg("#fb923c").Bold(true),
 	world.Shrine:    fg("#f0abfc").Bold(true),
 	world.Tower:     fg("#fde68a").Bold(true),
@@ -67,14 +67,14 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 
 func fg(hex string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)) }
 
-// monsterLook est l'apparence d'une espèce de monstre.
+// monsterLook is the appearance of a monster species.
 type monsterLook struct {
 	glyph rune
 	style lipgloss.Style
 }
 
-// monsterLooks est indexé par l'identifiant d'espèce envoyé par le serveur
-// (voir game.SpeciesKinds, vérifié par un test).
+// monsterLooks is indexed by the species identifier sent by the server
+// (see game.SpeciesKinds, checked by a test).
 var monsterLooks = map[string]monsterLook{
 	"rat":    {'r', fg("#d4a373")},
 	"wolf":   {'w', fg("#cbd5e1").Bold(true)},
@@ -82,30 +82,30 @@ var monsterLooks = map[string]monsterLook{
 	"goblin": {'g', fg("#a3e635").Bold(true)},
 	"yeti":   {'Y', fg("#bae6fd").Bold(true)},
 
-	// Biomes du générateur v2.
+	// Biomes of generator v2.
 	"scorpion": {'s', fg("#f59e0b").Bold(true)},
 	"panther":  {'p', fg("#a78bfa").Bold(true)},
 	"toad":     {'b', fg("#84cc16")},
 	"bear":     {'U', fg("#e7e5e4").Bold(true)},
 
-	// Garnisons de forteresse.
+	// Fortress garrisons.
 	"skeleton": {'S', fg("#e5e7eb")},
 	"knight":   {'K', fg("#94a3b8").Bold(true)},
 	"warlord":  {'B', fg("#dc2626").Bold(true)},
 
-	// Donjons.
+	// Dungeons.
 	"wraith": {'W', fg("#a5b4fc")},
 	"golem":  {'O', fg("#a8a29e").Bold(true)},
 	"lich":   {'L', fg("#c084fc").Bold(true)},
 
-	// Garde d'un village ou d'une ville (voir game/guards.go) : envoyé comme un monstre, mais on lui parle.
+	// Guard of a village or town (see game/guards.go): sent as a monster, but one talks to him.
 	"guard": {'G', fg("#60a5fa").Bold(true)},
 
-	// Marchand ambulant d'une route (voir game/caravan.go) : envoyé comme un monstre, mais on lui parle.
+	// Travelling merchant on a road (see game/caravan.go): sent as a monster, but one talks to him.
 	"caravan": {'E', fg("#fbbf24").Bold(true)},
 }
 
-// npcLooks donne l'apparence des PNJ, indexée par leur type (voir world.NPCKind).
+// npcLooks gives the appearance of NPCs, indexed by their type (see world.NPCKind).
 var npcLooks = map[world.NPCKind]monsterLook{
 	world.NPCMerchant: {'M', fg("#fbbf24").Bold(true)},
 	world.NPCHealer:   {'H', fg("#34d399").Bold(true)},
@@ -119,11 +119,11 @@ var npcLooks = map[world.NPCKind]monsterLook{
 	world.NPCGuard:    {'G', fg("#60a5fa").Bold(true)},
 }
 
-// questGiverKind n'est pas un vrai type de PNJ : c'est l'apparence d'un villageois qui
-// confie des quêtes sur la carte (le type réel reste NPCVillager partout ailleurs).
+// questGiverKind is not a real NPC type: it is the appearance of a villager who
+// hands out quests on the map (the real type remains NPCVillager everywhere else).
 const questGiverKind world.NPCKind = "villager+quest"
 
-// questTurnInKind : le donneur à qui le joueur a une quête prête à rendre (« ? » au lieu de « ! »).
+// questTurnInKind: the giver to whom the player has a quest ready to hand in ("?" instead of "!").
 const questTurnInKind world.NPCKind = "villager+turnin"
 
 var unknownNPC = monsterLook{'N', fg("#f472b6").Bold(true)}
@@ -135,7 +135,7 @@ func npcLookOf(k world.NPCKind) monsterLook {
 	return unknownNPC
 }
 
-// NPCName renvoie le nom affichable d'un type de PNJ.
+// NPCName returns the displayable name of an NPC type.
 func NPCName(l i18n.Lang, k world.NPCKind) string {
 	if _, ok := npcLooks[k]; !ok {
 		return i18n.T(l, "npc.kind.unknown")
@@ -143,7 +143,7 @@ func NPCName(l i18n.Lang, k world.NPCKind) string {
 	return i18n.T(l, "npc.kind."+string(k))
 }
 
-// NPCGlyph renvoie le glyphe d'un type de PNJ.
+// NPCGlyph returns the glyph of an NPC type.
 func NPCGlyph(k world.NPCKind) rune { return npcLookOf(k).glyph }
 
 var unknownMonster = monsterLook{'?', fg("#f472b6").Bold(true)}
@@ -155,7 +155,7 @@ func lookOf(kind string) monsterLook {
 	return unknownMonster
 }
 
-// MonsterName renvoie le nom affichable d'une espèce.
+// MonsterName returns the displayable name of a species.
 func MonsterName(l i18n.Lang, kind string) string {
 	if _, ok := monsterLooks[kind]; !ok {
 		return i18n.T(l, "monster.unknown")
@@ -163,11 +163,11 @@ func MonsterName(l i18n.Lang, kind string) string {
 	return i18n.T(l, "monster."+kind)
 }
 
-// MonsterGlyph renvoie le glyphe d'une espèce.
+// MonsterGlyph returns the glyph of a species.
 func MonsterGlyph(kind string) rune { return lookOf(kind).glyph }
 
-// styles regroupe les styles de tuiles, de joueurs puis de monstres; les
-// monstres sont indexés par monsterStyle.
+// styles groups the tile, player and then monster styles; the
+// monsters are indexed by monsterStyle.
 var (
 	styles       []lipgloss.Style
 	monsterStyle = map[string]int{}
@@ -185,7 +185,7 @@ func init() {
 		monsterStyle[k] = len(styles)
 		styles = append(styles, monsterLooks[k].style)
 	}
-	monsterStyle[""] = len(styles) // espèce inconnue
+	monsterStyle[""] = len(styles) // unknown species
 	styles = append(styles, unknownMonster.style)
 
 	npcKinds := make([]string, 0, len(npcLooks))
@@ -197,15 +197,15 @@ func init() {
 		npcStyle[world.NPCKind(k)] = len(styles)
 		styles = append(styles, npcLooks[world.NPCKind(k)].style)
 	}
-	npcStyle[""] = len(styles) // PNJ inconnu
+	npcStyle[""] = len(styles) // unknown NPC
 	styles = append(styles, unknownNPC.style)
 	addResourceStyles()
 	addClimateStyles()
 	buildNightStyles()
 }
 
-// variants donne plusieurs glyphes par terrain pour éviter l'effet « mur de
-// caractères identiques ». Le choix dépend uniquement de la position.
+// variants gives several glyphs per terrain to avoid the "wall of identical
+// characters" effect. The choice depends only on the position.
 var variants = map[world.Tile][]rune{
 	world.DeepWater: []rune("~~~~~~~"),
 	world.Water:     []rune("~~~-~~"),
@@ -241,7 +241,7 @@ var variants = map[world.Tile][]rune{
 	world.FishNode:  []rune("--~-~-"),
 }
 
-// TerrainName renvoie le nom d'un terrain dans la langue l.
+// TerrainName returns the name of a terrain in language l.
 func TerrainName(l i18n.Lang, t world.Tile) string {
 	switch t {
 	case world.DeepWater:
@@ -314,7 +314,7 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 
 func glyph(t world.Tile, x, y int) rune { return pick(variants[t], x, y) }
 
-// pick choisit un glyphe parmi v d'après la seule position.
+// pick chooses a glyph among v based on the position alone.
 func pick(v []rune, x, y int) rune {
 	h := uint32(x)*73856093 ^ uint32(y)*19349663
 	h ^= h >> 13
@@ -323,23 +323,23 @@ func pick(v []rune, x, y int) rune {
 	return v[h%uint32(len(v))]
 }
 
-// Terrain est ce que Viewport sait dessiner: le monde ou le plan d'un donjon.
+// Terrain is what Viewport knows how to draw: the world or a dungeon plan.
 type Terrain interface {
 	At(x, y int) world.Tile
 	NPCsIn(x0, y0, x1, y1 int) []world.NPC
 }
 
-// dungeonTerrain montre un donjon à travers le brouillard: les cases jamais vues sont de la roche, un coffre
-// ouvert est un sol nu. La première couche de roche, celle qui touche une case praticable (diagonales comprises),
-// est dessinée en mur blanc pour souligner le contour des salles et des couloirs ; le reste de la roche est en sourdine.
+// dungeonTerrain shows a dungeon through the fog: cells never seen are rock, an opened chest
+// is bare floor. The first layer of rock, the one touching a walkable cell (diagonals included),
+// is drawn as a white wall to outline the rooms and corridors; the rest of the rock is muted.
 type dungeonTerrain struct {
 	m      *world.DungeonMap
 	seen   func(x, y int) bool
 	opened map[[2]int]bool
 }
 
-// DungeonTerrain adapte le plan d'un donjon à Viewport. seen dit si une case a déjà été vue (nil: tout est
-// visible) et opened liste les coffres vidés.
+// DungeonTerrain adapts a dungeon plan to Viewport. seen says whether a cell has already been seen (nil: everything is
+// visible) and opened lists the emptied chests.
 func DungeonTerrain(m *world.DungeonMap, seen func(x, y int) bool, opened [][2]int) Terrain {
 	t := dungeonTerrain{m: m, seen: seen, opened: make(map[[2]int]bool, len(opened))}
 	for _, o := range opened {
@@ -362,7 +362,7 @@ func (d dungeonTerrain) At(x, y int) world.Tile {
 	return t
 }
 
-// bordersFloor dit si une case voisine (8 directions) est praticable.
+// bordersFloor reports whether a neighbouring cell (8 directions) is walkable.
 func (d dungeonTerrain) bordersFloor(x, y int) bool {
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
@@ -374,13 +374,13 @@ func (d dungeonTerrain) bordersFloor(x, y int) bool {
 	return false
 }
 
-// entranceTerrain montre, sur la carte principale, les entrées de donjon que le joueur a découvertes.
+// entranceTerrain shows, on the main map, the dungeon entrances the player has discovered.
 type entranceTerrain struct {
 	Terrain
 	at map[[2]int]bool
 }
 
-// WithEntrances superpose à t les entrées de donjon découvertes (clés: x, y). Sans entrée, t est rendu tel quel.
+// WithEntrances overlays on t the discovered dungeon entrances (keys: x, y). Without an entrance, t is rendered as is.
 func WithEntrances(t Terrain, entrances [][2]int) Terrain {
 	if len(entrances) == 0 {
 		return t
@@ -392,7 +392,7 @@ func WithEntrances(t Terrain, entrances [][2]int) Terrain {
 	return e
 }
 
-// NodeAt fait suivre le nœud de ressource du terrain décoré, s'il en a un.
+// NodeAt passes on the resource node of the decorated terrain, if it has one.
 func (e entranceTerrain) NodeAt(x, y int) (resource.Kind, world.Tile, bool) {
 	if n, ok := e.Terrain.(noded); ok {
 		return n.NodeAt(x, y)
@@ -407,15 +407,15 @@ func (e entranceTerrain) At(x, y int) world.Tile {
 	return e.Terrain.At(x, y)
 }
 
-// spentTerrain dessine les nœuds de ressources épuisés comme le terrain nu qu'ils recouvrent (base).
+// spentTerrain draws depleted resource nodes as the bare terrain they cover (base).
 type spentTerrain struct {
 	Terrain
 	spent map[[2]int]bool
 	base  func(x, y int) world.Tile
 }
 
-// WithSpent superpose à t les nœuds de ressources épuisés (clés: x, y): ils reprennent le terrain brut base(x, y).
-// Sans nœud épuisé, t est rendu tel quel.
+// WithSpent overlays on t the depleted resource nodes (keys: x, y): they take back the raw terrain base(x, y).
+// Without a depleted node, t is rendered as is.
 func WithSpent(t Terrain, spent map[[2]int]bool, base func(x, y int) world.Tile) Terrain {
 	if len(spent) == 0 || base == nil {
 		return t
@@ -423,7 +423,7 @@ func WithSpent(t Terrain, spent map[[2]int]bool, base func(x, y int) world.Tile)
 	return spentTerrain{Terrain: t, spent: spent, base: base}
 }
 
-// ClimateAt et NodeAt font suivre au terrain décoré ce qu'il offre en plus; un nœud épuisé n'est plus un nœud.
+// ClimateAt and NodeAt pass on to the decorated terrain what it offers in addition; a depleted node is no longer a node.
 func (s spentTerrain) ClimateAt(x, y int) world.Climate {
 	if c, ok := s.Terrain.(climated); ok {
 		return c.ClimateAt(x, y)
@@ -449,27 +449,27 @@ func (s spentTerrain) At(x, y int) world.Tile {
 	return t
 }
 
-// NPCsIn : il n'y a personne à qui parler sous terre.
+// NPCsIn: there is nobody to talk to underground.
 func (dungeonTerrain) NPCsIn(int, int, int, int) []world.NPC { return nil }
 
-// Viewport dessine une fenêtre de cols x rows tuiles centrée sur (cx, cy).
-// Chaque joueur est dessiné par '@' (selfID désigne le joueur local), les
-// monstres par le glyphe de leur espèce, les PNJ des structures par le leur;
-// les joueurs priment sur les monstres, qui priment sur les PNJ.
-// Le résultat contient exactement rows lignes de cols colonnes visibles.
+// Viewport draws a window of cols x rows tiles centred on (cx, cy).
+// Each player is drawn as '@' (selfID designates the local player), the
+// monsters by the glyph of their species, structure NPCs by theirs;
+// players take precedence over monsters, which take precedence over NPCs.
+// The result contains exactly rows lines of cols visible columns.
 func Viewport(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int) string {
 	return ViewportReady(w, cx, cy, cols, rows, ents, monsters, selfID, nil, nil)
 }
 
-// ViewportReady est ViewportNight en plein jour.
+// ViewportReady is ViewportNight in full daylight.
 func ViewportReady(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool, idle func(world.NPCKey) bool) string {
 	return ViewportNight(w, cx, cy, cols, rows, ents, monsters, selfID, readyGivers, idle, 0)
 }
 
-// ViewportNight est ViewportReady avec un niveau d'obscurité (0 = jour, voir NightLevel):
-// seul le terrain s'assombrit. Les PNJ de readyGivers
-// (donneurs d'une quête prête) s'affichent « ? » au lieu de « ! », et ceux pour qui idle est vrai (donneurs qui
-// n'ont rien à confier maintenant) comme de simples villageois.
+// ViewportNight is ViewportReady with a darkness level (0 = day, see NightLevel):
+// only the terrain darkens. NPCs in readyGivers
+// (givers of a ready quest) are shown as "?" instead of "!", and those for whom idle is true (givers who
+// have nothing to hand out right now) as plain villagers.
 func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, monsters []protocol.Monster, selfID int, readyGivers map[world.NPCKey]bool, idle func(world.NPCKey) bool, night int) string {
 	night = max(0, min(night, NightLevels-1))
 	type key struct{ x, y int }
@@ -498,7 +498,7 @@ func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 	}
 	occ := make(map[key]int, len(ents))
 	for _, e := range ents {
-		// Le joueur local prime s'il partage une case (ne devrait pas arriver).
+		// The local player takes precedence if sharing a cell (should not happen).
 		if _, taken := occ[key{e.X, e.Y}]; !taken || e.ID == selfID {
 			occ[key{e.X, e.Y}] = e.ID
 		}
@@ -554,7 +554,7 @@ func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 				}
 				ch, st = glyphIn(c, t, x, y), styleFor(c, t)
 				if hasNodes && (t == world.TreeNode || t == world.OreNode || t == world.HerbNode || t == world.FishNode) {
-					// Un nœud garde le glyphe du terrain qu'il recouvre; sa couleur dit la ressource.
+					// A node keeps the glyph of the terrain it covers; its colour says the resource.
 					if kind, base, ok := nd.NodeAt(x, y); ok {
 						ch = glyphIn(c, base, x, y)
 						if rs, known := resourceStyle[kind]; known {
@@ -562,7 +562,7 @@ func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 						}
 					}
 				}
-				if night > 0 && !lit(t) { // la nuit n'assombrit que le terrain
+				if night > 0 && !lit(t) { // night only darkens the terrain
 					st += night * len(styles)
 				}
 			}

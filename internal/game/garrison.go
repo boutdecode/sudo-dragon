@@ -5,23 +5,23 @@ import (
 )
 
 const (
-	// garrisonActivation: une forteresse à moins de cette distance (Chebyshev) d'un
-	// joueur fait apparaître sa garnison. C'est la zone de conservation des
-	// monstres (despawnFar) : un monstre créé ici n'est pas supprimé aussitôt.
+	// garrisonActivation: a fortress within this distance (Chebyshev) of a
+	// player spawns its garrison. This is the monster retention zone
+	// (despawnFar): a monster created here is not removed right away.
 	garrisonActivation = keepHalfH
 
-	guardRespawn = 3000 // ticks (5 min) avant que le poste d'un soldat soit réoccupé après sa défaite
-	bossRespawn  = 9000 // ticks (15 min) pour le seigneur
+	guardRespawn = 3000 // ticks (5 min) before a soldier's post is reoccupied after its defeat
+	bossRespawn  = 9000 // ticks (15 min) for the lord
 
-	// Butin garanti du seigneur de guerre, en plus de l'or ordinaire.
+	// Guaranteed loot of the warlord, on top of the ordinary gold.
 	bossGold    = 100
 	bossPotions = 3
 
-	// Or de plus par palier du donjon, pour le boss d'un donjon.
+	// Extra gold per dungeon tier, for a dungeon's boss.
 	bossGoldPerTier = 40
 )
 
-// speciesForRole renvoie l'espèce qui occupe un emplacement de forteresse.
+// speciesForRole returns the species that occupies a fortress slot.
 func speciesForRole(r world.SlotRole) (species, bool) {
 	kind := map[world.SlotRole]string{
 		world.RoleGuard: "skeleton",
@@ -36,7 +36,7 @@ func speciesForRole(r world.SlotRole) (species, bool) {
 	return species{}, false
 }
 
-// respawnDelay renvoie le délai de repousse après la défaite d'un monstre de garnison.
+// respawnDelay returns the respawn delay after the defeat of a garrison monster.
 func respawnDelay(sp species) uint64 {
 	if sp.Boss {
 		return bossRespawn
@@ -44,9 +44,9 @@ func respawnDelay(sp species) uint64 {
 	return guardRespawn
 }
 
-// activateGarrisons peuple les forteresses proches d'un joueur. Un emplacement
-// reste vide tant que son monstre est en vie, qu'il est en repousse après une
-// victoire, ou qu'un joueur ou un monstre s'y tient.
+// activateGarrisons populates the fortresses near a player. A slot
+// stays empty while its monster is alive, while it is respawning after a
+// victory, or while a player or a monster stands on it.
 func (g *Game) activateGarrisons() {
 	for _, id := range g.sortedIDs() {
 		p := g.players[id]
@@ -77,9 +77,9 @@ func (g *Game) fillSlot(s *world.Structure, i int, slot world.Slot) {
 		if g.tick-at < respawnDelay(sp) {
 			return
 		}
-		delete(g.slotDefeated, key) // délai écoulé
+		delete(g.slotDefeated, key) // delay elapsed
 	}
-	if g.blocked(slot.Pos) { // quelqu'un se tient sur le poste: on réessaie au prochain passage
+	if g.blocked(slot.Pos) { // someone is standing on the post: retry on the next pass
 		return
 	}
 	m := g.addMonster(scaledForLevel(sp, world.LevelAt(slot.Pos.X, slot.Pos.Y)), slot.Pos)

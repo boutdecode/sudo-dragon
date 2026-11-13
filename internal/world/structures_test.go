@@ -9,8 +9,8 @@ import (
 
 var testSeeds = []int64{1, 2, 7, 42, 1234}
 
-// sharedWorld renvoie un monde partagé entre les tests en lecture seule: les
-// régions déjà générées ne le sont pas une seconde fois.
+// sharedWorld returns a world shared between the read-only tests: the
+// regions already generated are not generated a second time.
 var (
 	sharedMu     sync.Mutex
 	sharedWorlds = map[int64]*World{}
@@ -27,7 +27,7 @@ func sharedWorld(seed int64) *World {
 	return w
 }
 
-// allStructures renvoie les structures des régions [-n, n]² d'un monde.
+// allStructures returns the structures of the regions [-n, n]² of a world.
 func allStructures(w *World, n int) []*Structure {
 	var out []*Structure
 	for ry := -n; ry <= n; ry++ {
@@ -52,12 +52,12 @@ func TestStructuresAreDeterministic(t *testing.T) {
 			for rx := -4; rx <= 4; rx++ {
 				sa, sb := a.structureForRegion(RegionPos{rx, ry}), b.structureForRegion(RegionPos{rx, ry})
 				if (sa == nil) != (sb == nil) || (sa != nil && !sameStructure(sa, sb)) {
-					t.Fatalf("seed %d région (%d,%d): deux mondes identiques diffèrent", seed, rx, ry)
+					t.Fatalf("seed %d region (%d,%d): two identical worlds differ", seed, rx, ry)
 				}
 			}
 		}
 	}
-	// Une autre seed donne un autre monde.
+	// Another seed gives another world.
 	a, b := allStructures(newTestWorld(1), 4), allStructures(newTestWorld(2), 4)
 	if len(a) == len(b) {
 		same := true
@@ -65,12 +65,12 @@ func TestStructuresAreDeterministic(t *testing.T) {
 			same = same && sameStructure(a[i], b[i])
 		}
 		if same {
-			t.Fatal("deux seeds différentes donnent les mêmes structures")
+			t.Fatal("two different seeds give the same structures")
 		}
 	}
 }
 
-// Le cache ne doit pas changer le résultat: vidé, il se reconstruit à l'identique.
+// The cache must not change the result: emptied, it rebuilds identically.
 func TestStructureCacheRebuildsIdentically(t *testing.T) {
 	w := newTestWorld(7)
 	before := allStructures(w, 3)
@@ -79,11 +79,11 @@ func TestStructureCacheRebuildsIdentically(t *testing.T) {
 	w.smu.Unlock()
 	after := allStructures(w, 3)
 	if len(before) != len(after) {
-		t.Fatalf("%d structures puis %d après vidage du cache", len(before), len(after))
+		t.Fatalf("%d structures then %d after emptying the cache", len(before), len(after))
 	}
 	for i := range before {
 		if !sameStructure(before[i], after[i]) {
-			t.Fatalf("structure %d différente après reconstruction", i)
+			t.Fatalf("structure %d different after rebuilding", i)
 		}
 	}
 }
@@ -94,10 +94,10 @@ func TestStructuresStayInsideTheirRegion(t *testing.T) {
 		for _, s := range allStructures(w, 5) {
 			lx, ly := s.Origin.X-s.Region.X*RegionSize, s.Origin.Y-s.Region.Y*RegionSize
 			if lx < regionMargin || ly < regionMargin || lx+s.W > RegionSize-regionMargin || ly+s.H > RegionSize-regionMargin {
-				t.Fatalf("seed %d: %v en (%d,%d) %dx%d sort de sa région ou de sa marge", seed, s.Kind, lx, ly, s.W, s.H)
+				t.Fatalf("seed %d: %v at (%d,%d) %dx%d leaves its region or its margin", seed, s.Kind, lx, ly, s.W, s.H)
 			}
 			if RegionOf(s.Origin.X, s.Origin.Y) != s.Region || RegionOf(s.Origin.X+s.W-1, s.Origin.Y+s.H-1) != s.Region {
-				t.Fatalf("seed %d: l'emprise chevauche deux régions", seed)
+				t.Fatalf("seed %d: the footprint straddles two regions", seed)
 			}
 		}
 	}
@@ -105,7 +105,7 @@ func TestStructuresStayInsideTheirRegion(t *testing.T) {
 
 func TestSafeMarginStaysInsideRegion(t *testing.T) {
 	if safeMargin >= regionMargin {
-		t.Fatalf("safeMargin (%d) doit rester inférieure à regionMargin (%d)", safeMargin, regionMargin)
+		t.Fatalf("safeMargin (%d) must stay below regionMargin (%d)", safeMargin, regionMargin)
 	}
 }
 
@@ -114,15 +114,15 @@ func TestStructureSizesMatchLayouts(t *testing.T) {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
 			want := kindSize[s.Kind]
 			if s.W != want[0] || s.H != want[1] || len(s.tiles) != s.W*s.H {
-				t.Fatalf("seed %d: %v de %dx%d (%d tuiles), attendu %v", seed, s.Kind, s.W, s.H, len(s.tiles), want)
+				t.Fatalf("seed %d: %v of %dx%d (%d tiles), want %v", seed, s.Kind, s.W, s.H, len(s.tiles), want)
 			}
 		}
 	}
 }
 
-// reachable calcule, par parcours en largeur à 4 voisins depuis le coin de
-// l'emprise (toujours du terrain dégagé), les cases praticables atteignables.
-// Les PNJ comptent comme des obstacles: ils occupent leur case.
+// reachable computes, by 4-neighbour breadth-first traversal from the corner of
+// the footprint (always clear terrain), the reachable walkable tiles.
+// NPCs count as obstacles: they occupy their tile.
 func reachable(s *Structure) map[Pos]bool {
 	blocked := map[Pos]bool{}
 	for _, n := range s.NPCs {
@@ -153,7 +153,7 @@ func TestEveryOpenTileIsReachableFromOutside(t *testing.T) {
 			total++
 			seen := reachable(s)
 			if !s.TileAt(s.Origin.X, s.Origin.Y).Walkable() {
-				t.Fatalf("seed %d %v: le coin de l'emprise n'est pas dégagé", seed, s.Kind)
+				t.Fatalf("seed %d %v: the corner of the footprint is not clear", seed, s.Kind)
 			}
 			blocked := map[Pos]bool{}
 			for _, n := range s.NPCs {
@@ -167,27 +167,27 @@ func TestEveryOpenTileIsReachableFromOutside(t *testing.T) {
 						continue
 					}
 					if !seen[p] {
-						t.Fatalf("seed %d %v: %v (tuile %d) inaccessible depuis l'extérieur (en %v)", seed, s.Kind, p, tile, s.Origin)
+						t.Fatalf("seed %d %v: %v (tile %d) unreachable from outside (at %v)", seed, s.Kind, p, tile, s.Origin)
 					}
 				}
 			}
 		}
 	}
 	if total < 20 {
-		t.Fatalf("seulement %d structures testées: l'échantillon est trop pauvre", total)
+		t.Fatalf("only %d structures tested: the sample is too poor", total)
 	}
 }
 
 func TestNPCsStandOnFloorAndNeverBlockEntrance(t *testing.T) {
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
-			seen := reachable(s) // les PNJ sont des obstacles dans ce parcours
+			seen := reachable(s) // NPCs are obstacles in this traversal
 			for _, n := range s.NPCs {
-				// Les villageois peuvent se tenir sur la place (route) ; les autres PNJ restent à l'intérieur.
+				// Villagers may stand on the square (road); the other NPCs stay inside.
 				if tile := s.TileAt(n.Pos.X, n.Pos.Y); tile != Floor && !(n.Kind != NPCMerchant && n.Kind != NPCHealer && tile == Road) {
-					t.Fatalf("seed %d %v: PNJ %s hors d'un sol intérieur (tuile %d)", seed, s.Kind, n.Kind, tile)
+					t.Fatalf("seed %d %v: NPC %s off an interior floor (tile %d)", seed, s.Kind, n.Kind, tile)
 				}
-				// Au moins un voisin atteignable, sinon le joueur ne peut pas lui parler.
+				// At least one reachable neighbour, otherwise the player cannot talk to it.
 				ok := false
 				for _, d := range [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
 					if seen[Pos{n.Pos.X + d[0], n.Pos.Y + d[1]}] {
@@ -195,7 +195,7 @@ func TestNPCsStandOnFloorAndNeverBlockEntrance(t *testing.T) {
 					}
 				}
 				if !ok {
-					t.Fatalf("seed %d %v: personne ne peut atteindre le PNJ %s en %v", seed, s.Kind, n.Kind, n.Pos)
+					t.Fatalf("seed %d %v: nobody can reach NPC %s at %v", seed, s.Kind, n.Kind, n.Pos)
 				}
 			}
 		}
@@ -214,36 +214,36 @@ func TestNPCsPerKind(t *testing.T) {
 			switch s.Kind {
 			case KindVillage:
 				if counts[NPCHealer] != 1 || counts[NPCVillager] != 3 || counts[NPCChief] != 1 || counts[NPCSmith]+counts[NPCArmorer] != 1 || len(s.NPCs) != 6 {
-					t.Fatalf("village: PNJ %v, attendu un soigneur, 3 villageois, un chef et un seul vendeur d'équipement", counts)
+					t.Fatalf("village: NPCs %v, want a healer, 3 villagers, a chief and a single equipment seller", counts)
 				}
 				if k := s.NPCs[len(s.NPCs)-1].Kind; k != NPCSmith && k != NPCArmorer || s.NPCs[len(s.NPCs)-2].Kind != NPCChief {
-					t.Fatalf("village: le vendeur d'équipement doit suivre le chef, en dernier: %v", s.NPCs)
+					t.Fatalf("village: the equipment seller must follow the chief, last: %v", s.NPCs)
 				}
 			case KindTown:
 				if counts[NPCHealer] != 1 || counts[NPCMerchant] != 1 || counts[NPCVillager] != 5 || counts[NPCMayor] != 1 || counts[NPCSmith] != 1 || counts[NPCArmorer] != 1 || len(s.NPCs) != 10 {
-					t.Fatalf("ville: PNJ %v, attendu marchand, soigneur, 5 villageois, maire, forgeron et armurier", counts)
+					t.Fatalf("town: NPCs %v, want merchant, healer, 5 villagers, mayor, blacksmith and armourer", counts)
 				}
 				if s.NPCs[len(s.NPCs)-3].Kind != NPCMayor || s.NPCs[len(s.NPCs)-2].Kind != NPCSmith || s.NPCs[len(s.NPCs)-1].Kind != NPCArmorer {
-					t.Fatalf("ville: ordre des derniers PNJ: %v", s.NPCs)
+					t.Fatalf("town: order of the last NPCs: %v", s.NPCs)
 				}
 				if s.NPCs[0].Kind != NPCMerchant || s.NPCs[1].Kind != NPCHealer {
-					t.Fatalf("ville: les indices des PNJ d'origine ont bougé : %v", s.NPCs)
+					t.Fatalf("town: the indices of the original NPCs moved: %v", s.NPCs)
 				}
 			case KindFortress:
 				if len(s.NPCs) != 0 {
-					t.Fatalf("forteresse avec des PNJ: %v", counts)
+					t.Fatalf("fortress with NPCs: %v", counts)
 				}
 			}
 		}
 	}
 	for _, k := range []Kind{KindVillage, KindTown, KindFortress} {
 		if kinds[k] == 0 {
-			t.Errorf("aucune structure de type %v sur l'échantillon", k)
+			t.Errorf("no structure of type %v in the sample", k)
 		}
 	}
 }
 
-// Les PNJ d'origine gardent leur indice (les souvenirs en base y sont rattachés) ; les villageois suivent.
+// The original NPCs keep their index (the memories in the database are attached to it); the villagers follow.
 func TestVillagersComeAfterOriginalNPCsAndAreDistinct(t *testing.T) {
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -251,19 +251,19 @@ func TestVillagersComeAfterOriginalNPCsAndAreDistinct(t *testing.T) {
 			sawVillager := false
 			for i, n := range s.NPCs {
 				if n.Index != i {
-					t.Fatalf("indice %d au rang %d", n.Index, i)
+					t.Fatalf("index %d at rank %d", n.Index, i)
 				}
 				if n.Kind == NPCVillager {
 					sawVillager = true
 				} else if sawVillager && n.Kind != NPCChief && n.Kind != NPCMayor && n.Kind != NPCSmith && n.Kind != NPCArmorer {
-					t.Fatalf("PNJ %s après un villageois", n.Kind)
+					t.Fatalf("NPC %s after a villager", n.Kind)
 				}
 				if seenPos[n.Pos] || seenName[n.Name] {
-					t.Fatalf("doublon de position ou de nom : %v %q", n.Pos, n.Name)
+					t.Fatalf("duplicate position or name: %v %q", n.Pos, n.Name)
 				}
 				seenPos[n.Pos], seenName[n.Name] = true, true
 				if !s.Contains(n.Pos.X, n.Pos.Y) {
-					t.Fatalf("PNJ hors de l'emprise : %v", n.Pos)
+					t.Fatalf("NPC outside the footprint: %v", n.Pos)
 				}
 			}
 		}
@@ -284,30 +284,30 @@ func TestFortressGarrison(t *testing.T) {
 			for _, sl := range s.Slots {
 				roles[sl.Role]++
 				if seenPos[sl.Pos] {
-					t.Fatalf("deux emplacements sur %v", sl.Pos)
+					t.Fatalf("two slots on %v", sl.Pos)
 				}
 				seenPos[sl.Pos] = true
 				if s.TileAt(sl.Pos.X, sl.Pos.Y) != Floor {
-					t.Fatalf("emplacement %v hors d'un sol intérieur", sl.Pos)
+					t.Fatalf("slot %v off an interior floor", sl.Pos)
 				}
 				if !reach[sl.Pos] {
-					t.Fatalf("emplacement %v (rôle %d) inaccessible: on ne pourrait pas affronter ce monstre", sl.Pos, sl.Role)
+					t.Fatalf("slot %v (role %d) unreachable: this monster could not be fought", sl.Pos, sl.Role)
 				}
 			}
 			if roles[RoleBoss] != 1 || roles[RoleElite] != 2 || roles[RoleGuard] != 6 {
-				t.Fatalf("garnison %v, attendu 1 seigneur, 2 élites, 6 soldats", roles)
+				t.Fatalf("garrison %v, want 1 lord, 2 elites, 6 soldiers", roles)
 			}
 		}
 	}
 	if found == 0 {
-		t.Fatal("aucune forteresse trouvée sur l'échantillon")
+		t.Fatal("no fortress found in the sample")
 	}
 }
 
 func TestOnlyFortressesHaveSlots(t *testing.T) {
 	for _, s := range allStructures(sharedWorld(3), 5) {
 		if s.Kind != KindFortress && len(s.Slots) != 0 {
-			t.Fatalf("%v avec des emplacements de garnison", s.Kind)
+			t.Fatalf("%v with garrison slots", s.Kind)
 		}
 	}
 }
@@ -323,28 +323,28 @@ func TestBuildingsHaveDoors(t *testing.T) {
 				}
 			}
 			if doors < min[s.Kind] {
-				t.Fatalf("seed %d %v: %d portes, au moins %d attendues", seed, s.Kind, doors, min[s.Kind])
+				t.Fatalf("seed %d %v: %d doors, at least %d expected", seed, s.Kind, doors, min[s.Kind])
 			}
 		}
 	}
 }
 
-// Le point de départ ne doit jamais être recouvert ni encombré par une structure.
+// The starting point must never be covered or cluttered by a structure.
 func TestNoStructureNearSpawn(t *testing.T) {
 	for seed := int64(1); seed <= 60; seed++ {
 		w := sharedWorld(seed)
 		sp := w.FindSpawn()
 		if near := w.StructuresNear(sp, startClearance-1); len(near) != 0 {
-			t.Fatalf("seed %d: %v à moins de %d cases du point de départ %v", seed, near[0].Kind, startClearance, sp)
+			t.Fatalf("seed %d: %v within %d tiles of the starting point %v", seed, near[0].Kind, startClearance, sp)
 		}
-		// Une route peut passer sur le point de départ: elle reste praticable.
+		// A road may pass over the starting point: it remains walkable.
 		if tile := w.At(sp.X, sp.Y); tile != Plain && tile != Forest && tile != Road {
-			t.Fatalf("seed %d: le point de départ est sur %d", seed, tile)
+			t.Fatalf("seed %d: the starting point is on %d", seed, tile)
 		}
 	}
 }
 
-// Un nouveau joueur doit trouver un village à une marche raisonnable.
+// A new player must find a village within a reasonable walk.
 func TestStartVillageIsNear(t *testing.T) {
 	const seeds = 60
 	near, villages := 0, 0
@@ -360,9 +360,9 @@ func TestStartVillageIsNear(t *testing.T) {
 			}
 		}
 	}
-	// Quelques mondes peuvent démarrer sur une île ou entre des montagnes: on tolère 10 %.
+	// Some worlds may start on an island or between mountains: we tolerate 10 %.
 	if near < seeds*9/10 {
-		t.Fatalf("seulement %d/%d mondes ont un village à moins de 160 cases du départ", near, seeds)
+		t.Fatalf("only %d/%d worlds have a village within 160 tiles of the start", near, seeds)
 	}
 	_ = villages
 }
@@ -381,7 +381,7 @@ func TestSafeZones(t *testing.T) {
 		}
 	}
 	if village == nil || fortress == nil {
-		t.Skip("échantillon sans village ou sans forteresse")
+		t.Skip("sample without a village or without a fortress")
 	}
 
 	for _, s := range []*Structure{village, town} {
@@ -390,23 +390,23 @@ func TestSafeZones(t *testing.T) {
 		}
 		c := s.Center()
 		if !w.Safe(c.X, c.Y) {
-			t.Errorf("%v: le centre n'est pas en zone sûre", s.Kind)
+			t.Errorf("%v: the centre is not in the safe zone", s.Kind)
 		}
-		// Limite exacte: safeMargin cases autour de l'emprise.
+		// Exact limit: safeMargin tiles around the footprint.
 		if !w.Safe(s.Origin.X-safeMargin, c.Y) || w.Safe(s.Origin.X-safeMargin-1, c.Y) {
-			t.Errorf("%v: la lisière ouest de la zone sûre est mal placée", s.Kind)
+			t.Errorf("%v: the west edge of the safe zone is misplaced", s.Kind)
 		}
 		if !w.Safe(c.X, s.Origin.Y+s.H-1+safeMargin) || w.Safe(c.X, s.Origin.Y+s.H+safeMargin) {
-			t.Errorf("%v: la lisière sud de la zone sûre est mal placée", s.Kind)
+			t.Errorf("%v: the south edge of the safe zone is misplaced", s.Kind)
 		}
 	}
 	fc := fortress.Center()
 	if w.Safe(fc.X, fc.Y) {
-		t.Error("une forteresse ne doit pas être une zone sûre")
+		t.Error("a fortress must not be a safe zone")
 	}
 	sp := w.FindSpawn()
 	if w.Safe(sp.X, sp.Y) {
-		t.Error("le point de départ ne doit pas être en zone sûre")
+		t.Error("the starting point must not be in a safe zone")
 	}
 }
 
@@ -414,19 +414,19 @@ func TestStructuresNearSemantics(t *testing.T) {
 	w := sharedWorld(1)
 	all := allStructures(w, 4)
 	if len(all) == 0 {
-		t.Fatal("aucune structure")
+		t.Fatal("no structure")
 	}
 	s := all[0]
 	c := s.Center()
 
 	if got := w.StructuresNear(c, 0); len(got) == 0 || got[0] != s {
-		t.Fatalf("depuis son centre, la structure doit être la première (rayon 0): %v", got)
+		t.Fatalf("from its centre, the structure must be first (radius 0): %v", got)
 	}
-	// Juste à l'extérieur de l'emprise, rayon trop court: absente; assez long: présente.
+	// Just outside the footprint, radius too short: absent; long enough: present.
 	out := Pos{s.Origin.X - 10, c.Y}
 	for _, o := range w.StructuresNear(out, 9) {
 		if o == s {
-			t.Fatal("trouvée à 10 cases avec un rayon de 9")
+			t.Fatal("found at 10 tiles with a radius of 9")
 		}
 	}
 	found := false
@@ -434,14 +434,14 @@ func TestStructuresNearSemantics(t *testing.T) {
 		found = found || o == s
 	}
 	if !found {
-		t.Fatal("non trouvée à 10 cases avec un rayon de 10")
+		t.Fatal("not found at 10 tiles with a radius of 10")
 	}
-	// Tri par proximité.
+	// Sorting by proximity.
 	list := w.StructuresNear(Pos{}, 600)
 	for i := 1; i < len(list); i++ {
 		a, b := list[i-1].Center(), list[i].Center()
 		if abs(a.X)+abs(a.Y) > abs(b.X)+abs(b.Y) {
-			t.Fatal("StructuresNear n'est pas triée de la plus proche à la plus lointaine")
+			t.Fatal("StructuresNear is not sorted from closest to farthest")
 		}
 	}
 }
@@ -454,10 +454,10 @@ func TestNPCLookups(t *testing.T) {
 			checked++
 			got, ok := w.NPCAt(n.Pos.X, n.Pos.Y)
 			if !ok || got != n {
-				t.Fatalf("NPCAt(%v) = %v, %v; attendu %v", n.Pos, got, ok, n)
+				t.Fatalf("NPCAt(%v) = %v, %v; want %v", n.Pos, got, ok, n)
 			}
 			if _, ok := w.NPCAt(n.Pos.X+1, n.Pos.Y); ok {
-				t.Fatalf("NPCAt trouve un PNJ à côté de %v", n.Pos)
+				t.Fatalf("NPCAt finds an NPC next to %v", n.Pos)
 			}
 			in := w.NPCsIn(n.Pos.X-3, n.Pos.Y-3, n.Pos.X+3, n.Pos.Y+3)
 			has := false
@@ -465,26 +465,26 @@ func TestNPCLookups(t *testing.T) {
 				has = has || o == n
 			}
 			if !has {
-				t.Fatalf("NPCsIn ne renvoie pas le PNJ en %v", n.Pos)
+				t.Fatalf("NPCsIn does not return the NPC at %v", n.Pos)
 			}
 			if far := w.NPCsIn(n.Pos.X+1, n.Pos.Y+1, n.Pos.X+5, n.Pos.Y+5); len(far) != 0 {
 				for _, o := range far {
 					if o == n {
-						t.Fatalf("NPCsIn renvoie un PNJ hors du rectangle")
+						t.Fatalf("NPCsIn returns an NPC outside the rectangle")
 					}
 				}
 			}
 		}
 	}
 	if checked == 0 {
-		t.Fatal("aucun PNJ vérifié")
+		t.Fatal("no NPC checked")
 	}
 	if _, ok := w.NPCAt(1_000_003, -777); ok {
-		t.Fatal("PNJ trouvé en pleine nature")
+		t.Fatal("NPC found in the wild")
 	}
 }
 
-// Les chunks (chemin rapide) et TileAt (chemin direct) doivent donner les mêmes tuiles.
+// Chunks (fast path) and TileAt (direct path) must give the same tiles.
 func TestChunksAgreeWithTileAt(t *testing.T) {
 	w := sharedWorld(1)
 	for _, s := range allStructures(w, 3) {
@@ -493,18 +493,18 @@ func TestChunksAgreeWithTileAt(t *testing.T) {
 				t.Fatalf("%v: At=%d, TileAt=%d", p, got, want)
 			}
 		}
-		// Tout l'emprise, tuile par tuile.
+		// The whole footprint, tile by tile.
 		for y := s.Origin.Y; y < s.Origin.Y+s.H; y++ {
 			for x := s.Origin.X; x < s.Origin.X+s.W; x++ {
 				if w.At(x, y) != s.TileAt(x, y) {
-					t.Fatalf("(%d,%d): le chunk ne reflète pas la structure", x, y)
+					t.Fatalf("(%d,%d): the chunk does not reflect the structure", x, y)
 				}
 			}
 		}
 	}
 }
 
-// Hors des structures, le terrain est inchangé.
+// Outside structures, the terrain is unchanged.
 func TestTerrainOutsideStructuresIsUnchanged(t *testing.T) {
 	w := sharedWorld(1)
 	for _, p := range []Pos{{-500, 300}, {0, 0}, {900, -40}, {123, 456}} {
@@ -512,7 +512,7 @@ func TestTerrainOutsideStructuresIsUnchanged(t *testing.T) {
 			continue
 		}
 		if got := w.TileAt(p.X, p.Y); got != w.terrainAt(p.X, p.Y) && got != Road {
-			t.Fatalf("%v: TileAt diffère du terrain brut hors structure (et n'est pas une route)", p)
+			t.Fatalf("%v: TileAt differs from the raw terrain outside structures (and is not a road)", p)
 		}
 	}
 }
@@ -521,7 +521,7 @@ func TestStructureTilesAreStructureTiles(t *testing.T) {
 	for _, s := range allStructures(sharedWorld(1), 5) {
 		for _, tile := range s.tiles {
 			if tile >= NumTiles {
-				t.Fatalf("tuile %d hors de l'énumération", tile)
+				t.Fatalf("tile %d outside the enumeration", tile)
 			}
 		}
 	}
@@ -544,12 +544,12 @@ func TestStructureDistribution(t *testing.T) {
 	}
 	frac := float64(withStruct) / float64(regions)
 	if frac < 0.20 || frac > 0.60 {
-		t.Fatalf("%.0f%% des régions ont une structure (attendu entre 20 et 60 %%)", frac*100)
+		t.Fatalf("%.0f%% of the regions have a structure (want between 20 and 60 %%)", frac*100)
 	}
 	if counts[KindVillage] <= counts[KindTown] || counts[KindVillage] <= counts[KindFortress]/2 {
-		t.Fatalf("répartition inattendue: %v (les villages devraient dominer, les villes être rares)", counts)
+		t.Fatalf("unexpected distribution: %v (villages should dominate, towns be rare)", counts)
 	}
-	t.Logf("%d régions, %.0f%% occupées: %v", regions, frac*100, counts)
+	t.Logf("%d regions, %.0f%% occupied: %v", regions, frac*100, counts)
 }
 
 func TestFirstChunkGenerationIsFast(t *testing.T) {
@@ -561,17 +561,17 @@ func TestFirstChunkGenerationIsFast(t *testing.T) {
 		}
 	}
 	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("100 chunks en %v: la recherche de structure ralentit la génération", d)
+		t.Fatalf("100 chunks in %v: the structure lookup slows down generation", d)
 	}
 }
 
 func TestWallsBlockAndDoorsOpen(t *testing.T) {
 	if Wall.Walkable() {
-		t.Fatal("un mur doit bloquer")
+		t.Fatal("a wall must block")
 	}
 	for _, tile := range []Tile{Door, Floor, Road} {
 		if !tile.Walkable() {
-			t.Fatalf("la tuile %d devrait être praticable", tile)
+			t.Fatalf("tile %d should be walkable", tile)
 		}
 	}
 }
@@ -594,7 +594,7 @@ func TestEveryPlaceHasAQuestGiverAndOthersAreVillagers(t *testing.T) {
 			givers, villagers := 0, 0
 			for _, n := range s.NPCs {
 				if n.GivesQuests && n.Kind != NPCVillager {
-					t.Fatalf("%s ne devrait pas donner de quêtes", n.Kind)
+					t.Fatalf("%s should not give quests", n.Kind)
 				}
 				if n.Kind == NPCVillager {
 					villagers++
@@ -606,11 +606,11 @@ func TestEveryPlaceHasAQuestGiverAndOthersAreVillagers(t *testing.T) {
 				}
 			}
 			if villagers > 0 && givers == 0 {
-				t.Fatalf("seed %d %v : aucun donneur de quêtes parmi %d villageois", seed, s.Kind, villagers)
+				t.Fatalf("seed %d %v : no quest giver among %d villagers", seed, s.Kind, villagers)
 			}
 		}
 	}
 	if !someOther {
-		t.Error("tous les villageois donnent des quêtes : le tirage ne varie pas")
+		t.Error("all villagers give quests: the draw does not vary")
 	}
 }

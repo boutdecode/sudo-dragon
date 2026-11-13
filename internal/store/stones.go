@@ -9,10 +9,10 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// maxStoredStones borne les pierres dressées mémorisées par compte (il y en a environ une par dix régions).
+// maxStoredStones bounds the standing stones remembered per account (there is about one per ten regions).
 const maxStoredStones = 500
 
-// encodeStones écrit les pierres activées sous la forme « x,y;x,y ».
+// encodeStones writes the activated stones in the form "x,y;x,y".
 func encodeStones(list []world.RegionPos) string {
 	var b strings.Builder
 	for i, rp := range list {
@@ -27,7 +27,7 @@ func encodeStones(list []world.RegionPos) string {
 	return b.String()
 }
 
-// decodeStones relit encodeStones ; les éléments illisibles sont ignorés.
+// decodeStones reads back encodeStones; unreadable elements are ignored.
 func decodeStones(s string) []world.RegionPos {
 	var out []world.RegionPos
 	for _, f := range strings.Split(s, ";") {
@@ -39,10 +39,10 @@ func decodeStones(s string) []world.RegionPos {
 	return out
 }
 
-// maxStoredMaps borne les cartes au trésor mémorisées par compte.
+// maxStoredMaps bounds the treasure maps remembered per account.
 const maxStoredMaps = 16
 
-// encodeMaps écrit les cases à creuser sous la forme « x,y;x,y ».
+// encodeMaps writes the tiles to dig in the form "x,y;x,y".
 func encodeMaps(list []world.Pos) string {
 	var b strings.Builder
 	for i, p := range list {
@@ -57,7 +57,7 @@ func encodeMaps(list []world.Pos) string {
 	return b.String()
 }
 
-// decodeMaps relit encodeMaps ; les éléments illisibles sont ignorés.
+// decodeMaps reads back encodeMaps; unreadable elements are ignored.
 func decodeMaps(s string) []world.Pos {
 	var out []world.Pos
 	for _, f := range strings.Split(s, ";") {
@@ -69,13 +69,13 @@ func decodeMaps(s string) []world.Pos {
 	return out
 }
 
-// Bornes des ressources mémorisées par compte.
+// Bounds on the resources remembered per account.
 const (
-	maxStoredResources = 64   // types distincts
-	maxStoredQty       = 9999 // quantité par type
+	maxStoredResources = 64   // distinct types
+	maxStoredQty       = 9999 // quantity per type
 )
 
-// encodeResources écrit le sac de matières sous la forme « iron:3;oak:12 », trié pour un texte stable.
+// encodeResources writes the materials bag in the form "iron:3;oak:12", sorted for a stable text.
 func encodeResources(m map[string]int) string {
 	keys := make([]string, 0, len(m))
 	for k, n := range m {
@@ -97,7 +97,7 @@ func encodeResources(m map[string]int) string {
 	return b.String()
 }
 
-// decodeResources relit encodeResources ; les éléments illisibles sont ignorés.
+// decodeResources reads back encodeResources; unreadable elements are ignored.
 func decodeResources(s string) map[string]int {
 	var out map[string]int
 	for _, f := range strings.Split(s, ";") {

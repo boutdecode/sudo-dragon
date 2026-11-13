@@ -4,18 +4,18 @@ import (
 	"github.com/kevin/ascii-adventure/internal/hero"
 )
 
-// Famille d'arme ou d'armure : elle fixe le type de dégâts (le dé d'une arme : coupant 4, tranchant 6,
-// contondant 8, deux mains 12 ; le dé de réduction d'une armure : légère 4, intermédiaire 6, lourde 8).
-// Le modèle de langage peut CHOISIR une famille mais jamais les dés eux-mêmes.
+// Weapon or armour family: it sets the damage type (a weapon's die: slashing 4, cutting 6,
+// blunt 8, two-handed 12; an armour's reduction die: light 4, medium 6, heavy 8).
+// The language model may CHOOSE a family but never the dice themselves.
 type Family struct {
 	ID        string
 	Slot      Slot
-	Kind      hero.Kind // style d'une arme
+	Kind      hero.Kind // style of a weapon
 	Die       int
 	TwoHanded bool
 }
 
-// Familles d'armes.
+// Weapon families.
 var weaponFamilies = []Family{
 	{ID: "dagger", Slot: Weapon, Kind: hero.Melee, Die: 4},
 	{ID: "spear", Slot: Weapon, Kind: hero.Melee, Die: 4},
@@ -31,14 +31,14 @@ var weaponFamilies = []Family{
 	{ID: "staff", Slot: Weapon, Kind: hero.Magic, Die: 6, TwoHanded: true},
 }
 
-// Familles d'armures (dés de réduction).
+// Armour families (reduction dice).
 var armorFamilies = []Family{
 	{ID: "light", Slot: Armor, Die: 4},
 	{ID: "medium", Slot: Armor, Die: 6},
 	{ID: "heavy", Slot: Armor, Die: 8},
 }
 
-// FamilyByID renvoie la famille d'un identifiant pour un emplacement (les boucliers et casques n'en ont pas).
+// FamilyByID returns the family for an identifier and a slot (shields and helmets have none).
 func FamilyByID(slot Slot, id string) (Family, bool) {
 	var list []Family
 	switch slot {
@@ -55,7 +55,7 @@ func FamilyByID(slot Slot, id string) (Family, bool) {
 	return Family{}, false
 }
 
-// Families liste les identifiants de famille permis pour un emplacement (pour le prompt d'étalage).
+// Families lists the family identifiers allowed for a slot (for the stock prompt).
 func Families(slot Slot) []string {
 	var out []string
 	switch slot {
@@ -71,8 +71,8 @@ func Families(slot Slot) []string {
 	return out
 }
 
-// DefaultFamily est la famille retenue quand le modèle n'en donne pas (ou une inconnue) : d'après le style
-// pour une arme, intermédiaire pour une armure, aucune pour le reste.
+// DefaultFamily is the family used when the model gives none (or an unknown one): based on the style
+// for a weapon, medium for an armour, none for the rest.
 func DefaultFamily(slot Slot, kind hero.Kind) string {
 	switch slot {
 	case Weapon:
@@ -89,12 +89,12 @@ func DefaultFamily(slot Slot, kind hero.Kind) string {
 	return ""
 }
 
-// weaponNameFamilies range les noms du catalogue de repli (gear.name.weapon.N) par famille.
+// weaponNameFamilies groups the fallback catalogue names (gear.name.weapon.N) by family.
 var weaponNameFamilies = []string{
 	"shortsword", "longsword", "axe", "mace", "dagger", "spear", // 0-5
 	"shortbow", "crossbow", "staff", "wand", // 6-9
 	"greatsword", "greataxe", // 10-11
 }
 
-// armorNameFamilies range les noms d'armures (gear.name.armor.N) par famille.
+// armorNameFamilies groups armour names (gear.name.armor.N) by family.
 var armorNameFamilies = []string{"medium", "heavy", "light", "heavy", "medium"}

@@ -6,20 +6,20 @@ import (
 	"testing"
 )
 
-// testGen est la version du générateur de terrain avec laquelle newTestWorld construit les mondes de test.
+// testGen is the terrain generator version with which newTestWorld builds the test worlds.
 var testGen = GenV1
 
-// newTestWorld crée un monde de test avec la version de générateur en cours d'essai (voir TestMain).
+// newTestWorld creates a test world with the generator version under test (see TestMain).
 func newTestWorld(seed int64) *World { return NewVersion(seed, testGen) }
 
-// TestMain joue toute la suite une fois par version du générateur: les règles du monde (structures, routes,
-// points d'intérêt, donjons, spawn…) doivent tenir quel que soit le terrain. Les tests qui visent une
-// version précise construisent leur monde avec NewVersion.
+// TestMain runs the whole suite once per generator version: the world rules (structures, roads,
+// points of interest, dungeons, spawn...) must hold whatever the terrain. Tests that target a
+// specific version build their world with NewVersion.
 func TestMain(m *testing.M) {
 	code := 0
 	for gen := GenV1; gen <= GenV3; gen++ {
 		testGen = gen
-		fmt.Printf("=== générateur de terrain v%d ===\n", gen)
+		fmt.Printf("=== terrain generator v%d ===\n", gen)
 		if c := m.Run(); c != 0 {
 			code = c
 		}

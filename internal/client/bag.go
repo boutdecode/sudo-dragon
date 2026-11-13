@@ -18,7 +18,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// Sac d'équipement : emplacements portés et objets, dans l'écran du sac (touche I).
+// Equipment bag: worn slots and items, in the bag screen (I key).
 
 const maxBagRows = 64
 
@@ -42,7 +42,7 @@ func cleanItem(it protocol.ItemInfo) protocol.ItemInfo {
 	return it
 }
 
-// applyBag enregistre le sac reçu et affiche ses notifications dans le journal.
+// applyBag records the bag received and shows its notifications in the log.
 func (m *Model) applyBag(b protocol.Bag) {
 	m.bagAt = time.Now()
 	items := make([]protocol.ItemInfo, 0, min(len(b.Items), maxBagRows))
@@ -84,7 +84,7 @@ func (m *Model) applyBag(b protocol.Bag) {
 	m.bag.Notice = nil
 }
 
-// wornIn renvoie l'objet porté dans un emplacement.
+// wornIn returns the item worn in a slot.
 func (m Model) wornIn(slot gear.Slot) (protocol.ItemInfo, bool) {
 	for _, it := range m.bag.Items {
 		if it.Worn && it.Slot == string(slot) {
@@ -94,7 +94,7 @@ func (m Model) wornIn(slot gear.Slot) (protocol.ItemInfo, bool) {
 	return protocol.ItemInfo{}, false
 }
 
-// bonusText résume les bonus d'un objet.
+// bonusText summarizes an item's bonuses.
 func (m Model) bonusText(it protocol.ItemInfo) string {
 	if it.Slot == string(gear.Weapon) {
 		return m.t("bag.item.atk", it.Dice, m.t("gear.family."+it.Family)) + " · " + m.t("hero.kind."+it.Kind)
@@ -105,8 +105,8 @@ func (m Model) bonusText(it protocol.ItemInfo) string {
 	return m.t("bag.item.def", it.Def)
 }
 
-// itemDetailLines est la fiche d'un objet (sac et boutiques). En mode compact, sans lignes vides ni description
-// au-delà de deux lignes, pour tenir dans un petit panneau.
+// itemDetailLines is an item's sheet (bag and shops). In compact mode, no blank lines and no description
+// beyond two lines, to fit in a small panel.
 func (m Model) itemDetailLines(it protocol.ItemInfo, dw int, compact bool) []string {
 	gap := func() []string {
 		if compact {
@@ -140,7 +140,7 @@ func (m Model) itemDetailLines(it protocol.ItemInfo, dw int, compact bool) []str
 	return out
 }
 
-// updateBagKey traite une touche dans l'écran du sac.
+// updateBagKey handles a key in the bag screen.
 func (m Model) updateBagKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "i":
@@ -162,7 +162,7 @@ func (m Model) updateBagKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// inventoryView dessine le sac : à gauche potions, or, emplacements portés et objets ; à droite le détail.
+// inventoryView draws the bag: on the left potions, gold, worn slots and items; on the right the detail.
 func (m Model) inventoryView(w, h int) string {
 	st := m.snap.Stats
 	detailW := min(44, w/2)
@@ -221,10 +221,10 @@ func (m Model) inventoryView(w, h int) string {
 
 var _ = fmt.Sprintf
 
-// maxResourceRows borne les matières affichées (le serveur n'en envoie pas plus que le catalogue).
+// maxResourceRows bounds the materials displayed (the server does not send more than the catalogue).
 const maxResourceRows = 64
 
-// jobOf renvoie le métier d'une catégorie reçu du serveur (le zéro s'il manque).
+// jobOf returns the job of a category received from the server (the zero value if missing).
 func (m Model) jobOf(c resource.Category) protocol.JobInfo {
 	for _, j := range m.bag.Jobs {
 		if j.Job == c.Key() {
@@ -234,8 +234,8 @@ func (m Model) jobOf(c resource.Category) protocol.JobInfo {
 	return protocol.JobInfo{Job: c.Key(), Level: 1}
 }
 
-// resourceLines liste les matières récoltées, groupées par catégorie, chacune sous l'en-tête de son métier
-// (niveau et remplissage du sac). Les quatre catégories sont toujours présentes, même vides.
+// resourceLines lists the harvested materials, grouped by category, each under its job's header
+// (level and bag fill). The four categories are always present, even when empty.
 func (m Model) resourceLines() []string {
 	if len(m.bag.Jobs) == 0 && len(m.bag.Resources) == 0 {
 		return nil
@@ -258,7 +258,7 @@ func (m Model) resourceLines() []string {
 	return lines
 }
 
-// scoresLine est la ligne compacte des caractéristiques du panneau latéral (vide tant que le sac n'est pas reçu).
+// scoresLine is the compact line of ability scores in the side panel (empty until the bag is received).
 func (m Model) scoresLine() string {
 	if len(m.bag.Scores) != int(hero.NumAbilities) {
 		return ""
@@ -270,7 +270,7 @@ func (m Model) scoresLine() string {
 	return " " + strings.Join(parts[:3], " ") + "\n " + strings.Join(parts[3:], " ")
 }
 
-// cleanDice ne garde qu'une notation de dés valide reçue du serveur ("" sinon).
+// cleanDice keeps only a valid dice notation received from the server ("" otherwise).
 func cleanDice(s string) string {
 	if d, ok := dice.Parse(s); ok && !d.IsZero() {
 		return d.String()
@@ -278,7 +278,7 @@ func cleanDice(s string) string {
 	return ""
 }
 
-// itemPower compare deux objets du même emplacement: dégâts moyens, réduction moyenne et DEF (1 point de DEF vaut 4).
+// itemPower compares two items of the same slot: average damage, average reduction and DEF (1 point of DEF is worth 4).
 func itemPower(it protocol.ItemInfo) int {
 	p := 4 * it.Def
 	if d, ok := dice.Parse(it.Dice); ok {

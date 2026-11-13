@@ -17,28 +17,28 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// DefaultBlockedCategories sont les catégories de modération qui font refuser un message
-// ou une présentation. Les catégories « santé », « finance » et « droit » en sont absentes:
-// un soigneur ou un marchand en parle légitimement.
+// DefaultBlockedCategories are the moderation categories that cause a message
+// or an introduction to be refused. The "health", "financial" and "law" categories are absent:
+// a healer or a merchant legitimately talks about them.
 var DefaultBlockedCategories = []string{
 	"hate_and_discrimination", "violence_and_threats", "sexual", "selfharm", "dangerous", "criminal", "pii", "jailbreaking",
 }
 
 var (
-	errModerationOff = errors.New("npcai: modération indisponible")
-	errFlagged       = errors.New("npcai: texte refusé par la modération")
+	errModerationOff = errors.New("npcai: moderation unavailable")
+	errFlagged       = errors.New("npcai: text rejected by moderation")
 )
 
 type job struct {
 	req       Request
-	stock     *StockRequest // demande d'étalage (au lieu d'une réplique)
+	stock     *StockRequest // stock request (instead of a reply)
 	stockDone func(StockReply)
 	done      func(Reply)
 	acct      string
 	enqueued  time.Time
 }
 
-// Service fait parler les PNJ. Il est sûr pour un usage concurrent.
+// Service makes NPCs talk. It is safe for concurrent use.
 type Service struct {
 	llm      llm.Client
 	book     *lore.Book
@@ -52,7 +52,7 @@ type Service struct {
 	queue chan *job
 	wg    sync.WaitGroup
 
-	// Disponibilité, fixée par Probe (optimiste tant qu'il n'a pas été appelé).
+	// Availability, set by Probe (optimistic until it has been called).
 	chatOK, moderationOK, guardrailsOK atomic.Bool
 
 	mu       sync.Mutex
@@ -60,10 +60,10 @@ type Service struct {
 	lastMsg  map[string]time.Time
 	hours    map[string][]time.Time
 	lastCard map[string]time.Time
-	day      time.Time // jour UTC du compteur de jetons
+	day      time.Time // UTC day of the token counter
 	tokens   int
 	fails    int
-	openTill time.Time // disjoncteur: pas d'appel avant cet instant
+	openTill time.Time // circuit breaker: no call before this instant
 
 	nRequests, nFailures, nBlocked, nRemembered atomic.Uint64
 	nQuestsProposed, nQuestsRejected            atomic.Uint64
@@ -75,24 +75,24 @@ type Service struct {
 	active              atomic.Int32
 }
 
-// Option configure un Service.
+// Option configures a Service.
 type Option func(*Service)
 
-// WithLogger fixe le journal.
+// WithLogger sets the logger.
 func WithLogger(l *slog.Logger) Option { return func(s *Service) { s.log = l } }
 
-// WithClock remplace l'horloge (tests).
+// WithClock replaces the clock (tests).
 func WithClock(now func() time.Time) Option { return func(s *Service) { s.now = now } }
 
-// WithProvider fixe le nom du fournisseur montré aux joueurs dans l'avis de confidentialité.
+// WithProvider sets the provider name shown to players in the privacy notice.
 func WithProvider(name string) Option { return func(s *Service) { s.provider = name } }
 
-// WithPlaceNames fournit le nom d'un lieu d'après sa région, pour nommer l'origine des rumeurs.
+// WithPlaceNames provides a place's name from its region, to name the origin of rumors.
 func WithPlaceNames(f func(i18n.Lang, world.RegionPos) string) Option {
 	return func(s *Service) { s.places = f }
 }
 
-// WithBlockedCategories remplace les catégories de modération bloquantes.
+// WithBlockedCategories replaces the blocking moderation categories.
 func WithBlockedCategories(cats []string) Option {
 	return func(s *Service) {
 		s.blocked = map[string]bool{}
@@ -102,7 +102,7 @@ func WithBlockedCategories(cats []string) Option {
 	}
 }
 
-// New crée un service. Appeler Start pour lancer les workers, et Probe pour vérifier l'API.
+// New creates a service. Call Start to launch the workers, and Probe to check the API.
 func New(c llm.Client, book *lore.Book, cfg Config, opts ...Option) *Service {
 	cfg = cfg.withDefaults()
 	s := &Service{
@@ -120,7 +120,7 @@ func New(c llm.Client, book *lore.Book, cfg Config, opts ...Option) *Service {
 	return s
 }
 
-// Start lance les workers; ils s'arrêtent à l'annulation de ctx.
+// Start launches the workers; they stop when ctx is canceled.
 func (s *Service) Start(ctx context.Context) {
 	for i := 0; i < s.cfg.Workers; i++ {
 		s.wg.Add(1)
@@ -138,15 +138,15 @@ func (s *Service) Start(ctx context.Context) {
 	}
 }
 
-// Wait attend la fin des workers (après l'annulation du contexte de Start).
+// Wait waits for the workers to finish (after the Start context is canceled).
 func (s *Service) Wait() { s.wg.Wait() }
 
-// Provider renvoie le nom du fournisseur du modèle (pour l'avis de confidentialité),
-// ou "" s'il n'est pas connu: l'appelant emploie alors une formule générique dans la
-// langue du joueur.
+// Provider returns the model provider's name (for the privacy notice),
+// or "" if unknown: the caller then uses a generic phrase in the
+// player's language.
 func (s *Service) Provider() string { return s.provider }
 
-// Available indique si les PNJ peuvent converser: l'API répond et le disjoncteur est fermé.
+// Available reports whether NPCs can converse: the API responds and the circuit breaker is closed.
 func (s *Service) Available() bool {
 	if !s.chatOK.Load() {
 		return false
@@ -156,9 +156,9 @@ func (s *Service) Available() bool {
 	return !s.now().Before(s.openTill)
 }
 
-// Ask demande une réplique de PNJ. Il ne bloque jamais et n'appelle done QUE depuis
-// une autre goroutine que l'appelant (jamais en ligne), pour qu'un appelant qui tient
-// un verrou ou une file propre puisse appeler Ask sans risque d'interblocage.
+// Ask requests an NPC reply. It never blocks and calls done ONLY from
+// a goroutine other than the caller's (never inline), so that a caller holding
+// a lock or its own queue can call Ask without risk of deadlock.
 func (s *Service) Ask(req Request, done func(Reply)) {
 	reject := func(f Failure) {
 		s.nFailures.Add(1)
@@ -200,7 +200,7 @@ func (s *Service) Ask(req Request, done func(Reply)) {
 
 	select {
 	case s.queue <- &job{req: req, done: done, acct: acct, enqueued: now}:
-	default: // file pleine
+	default: // queue full
 		s.release(acct)
 		reject(Busy)
 	}
@@ -220,7 +220,7 @@ func trimBefore(ts []time.Time, cutoff time.Time) []time.Time {
 	return ts[i:]
 }
 
-// rollDay remet le compteur de jetons à zéro quand le jour UTC change (verrou tenu).
+// rollDay resets the token counter to zero when the UTC day changes (lock held).
 func (s *Service) rollDay(now time.Time) {
 	day := now.UTC().Truncate(24 * time.Hour)
 	if !day.Equal(s.day) {
@@ -228,7 +228,7 @@ func (s *Service) rollDay(now time.Time) {
 	}
 }
 
-// sweep oublie les joueurs inactifs depuis plus d'une heure (verrou tenu).
+// sweep forgets players inactive for more than an hour (lock held).
 func (s *Service) sweep(now time.Time) {
 	for a, t := range s.lastMsg {
 		if now.Sub(t) > time.Hour && !s.inflight[a] {
@@ -239,8 +239,8 @@ func (s *Service) sweep(now time.Time) {
 	}
 }
 
-// run traite une demande sans jamais faire tomber le serveur: un plantage inattendu
-// (réponse du modèle imprévue…) devient une réplique d'échec.
+// run handles a request without ever bringing the server down: an unexpected crash
+// (unforeseen model response...) becomes a failure reply.
 func (s *Service) run(ctx context.Context, j *job) {
 	if j.stock != nil {
 		s.runStock(ctx, j)
@@ -251,7 +251,7 @@ func (s *Service) run(ctx context.Context, j *job) {
 	reply := func() (r Reply) {
 		defer func() {
 			if p := recover(); p != nil {
-				s.log.Error("plantage dans le service de dialogue", "panic", fmt.Sprint(p))
+				s.log.Error("crash in the dialogue service", "panic", fmt.Sprint(p))
 				r = s.failureReply(j.req, Unavailable)
 			}
 		}()
@@ -277,8 +277,8 @@ func (s *Service) guardrail() *llm.Guardrail {
 	return &llm.Guardrail{Thresholds: th}
 }
 
-// moderator est le contrôle appliqué aux présentations avant leur écriture: refus si le texte
-// est signalé, et aussi si la modération est indisponible (on n'écrit jamais sans contrôle).
+// moderator is the check applied to introductions before they are written: refusal if the text
+// is flagged, and also if moderation is unavailable (nothing is ever written unchecked).
 func (s *Service) moderator(ctx context.Context, texts []string) error {
 	if !s.moderationOK.Load() {
 		return errModerationOff
@@ -304,26 +304,26 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 	npc := req.NPC
 	account := req.Speaker.Account
 
-	// Mémoire: en cas de panne de la base, la conversation continue sans souvenirs.
+	// Memory: if the database is down, the conversation continues without memories.
 	heard, err := s.book.Heard(ctx, npc.Region, account)
 	if err != nil {
-		s.log.Warn("lecture des rumeurs", "err", err)
+		s.log.Warn("reading rumors", "err", err)
 		heard = nil
 	}
 	memory, err := s.book.Recall(ctx, npc.Key(), account)
 	if err != nil {
-		s.log.Warn("lecture du souvenir", "err", err)
+		s.log.Warn("reading memory", "err", err)
 	}
 
 	mine, others, err := s.book.HeardDeeds(ctx, npc.Region, account)
 	if err != nil {
-		s.log.Warn("lecture des quêtes rendues", "err", err)
+		s.log.Warn("reading completed quests", "err", err)
 	}
 	req.Deeds = Deeds{Mine: mine, Others: others}
 
 	maxTokens := s.cfg.MaxTokens
 	if req.Offer != nil {
-		maxTokens += questExtraTokens // le champ "quest" allonge la réponse
+		maxTokens += questExtraTokens // the "quest" field lengthens the response
 	}
 	temp := s.cfg.Temperature
 	chat := llm.Request{
@@ -333,7 +333,7 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		Temperature: &temp,
 	}
 
-	// Modération de l'entrée: par le champ « guardrails » (une seule requête) ou, à défaut, explicitement.
+	// Input moderation: through the "guardrails" field (a single request) or, failing that, explicitly.
 	memoryWrites := s.moderationOK.Load()
 	if s.guardrailsOK.Load() {
 		chat.Guardrail = s.guardrail()
@@ -341,13 +341,13 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		s.nBlocked.Add(1)
 		return s.failureReply(req, Blocked)
 	} else if !checked {
-		memoryWrites = false // pas pu vérifier ce message: on parle, mais on ne retient rien
+		memoryWrites = false // could not check this message: we talk, but retain nothing
 	}
 
 	resp, err := s.llm.Chat(ctx, chat)
 	if err != nil && chat.Guardrail != nil && errors.Is(err, llm.ErrBadRequest) {
-		// L'API refuse désormais le champ « guardrails »: repli sur la modération explicite.
-		s.log.Warn("guardrails refusés par l'API, repli sur la modération explicite", "err", err)
+		// The API now rejects the "guardrails" field: fall back to explicit moderation.
+		s.log.Warn("guardrails rejected by the API, falling back to explicit moderation", "err", err)
 		s.guardrailsOK.Store(false)
 		chat.Guardrail = nil
 		if blocked, checked := s.screen(ctx, req.Message); blocked {
@@ -366,7 +366,7 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 
 	out, ok := parseOutput(resp.Content)
 	if !ok {
-		s.log.Warn("réponse du modèle inexploitable")
+		s.log.Warn("unusable model response")
 		return Reply{Text: s.failureReply(req, Unavailable).Text, Failure: Unavailable, Tokens: tokens}
 	}
 	reply := Reply{Text: out.Reply, Tokens: tokens}
@@ -375,12 +375,12 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		reply.QuestDropped = reply.Quest == nil
 	}
 
-	// Ce qui est retenu n'est écrit que si la réponse respecte le format et que la modération fonctionne.
+	// What is retained is written only if the response follows the format and moderation works.
 	if out.Structured && memoryWrites && !req.Opening {
 		facts := lore.Facts{Level: req.Speaker.Level, BossKills: req.Speaker.BossKills, Deaths: req.Speaker.Deaths}
 		if out.Intro != nil && s.cardAllowed(acct) {
 			if _, err := s.book.Remember(ctx, account, npc.Region, *out.Intro, facts, s.moderator); err != nil {
-				s.log.Info("présentation non retenue", "raison", err.Error())
+				s.log.Info("introduction not retained", "reason", err.Error())
 			} else {
 				reply.Remembered = true
 				s.nRemembered.Add(1)
@@ -388,26 +388,26 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 			}
 		}
 		if err := s.book.Memorize(ctx, npc.Key(), account, out.Memory); err != nil {
-			s.log.Warn("écriture du souvenir", "err", err)
+			s.log.Warn("writing memory", "err", err)
 		}
 		if err := s.book.RefreshFacts(ctx, account, facts); err != nil {
-			s.log.Warn("mise à jour des faits", "err", err)
+			s.log.Warn("updating facts", "err", err)
 		}
 	}
 	return reply
 }
 
-// questExtraTokens est la marge de réponse ajoutée quand le modèle peut proposer une quête.
+// questExtraTokens is the extra response margin added when the model can propose a quest.
 const questExtraTokens = 160
 
-// checkQuest valide (quest.Validate) puis modère une quête proposée. Toute erreur, y compris une
-// modération indisponible, écarte la proposition : on n'affiche jamais un texte non contrôlé.
+// checkQuest validates (quest.Validate) then moderates a proposed quest. Any error, including
+// unavailable moderation, discards the proposal: unchecked text is never displayed.
 func (s *Service) checkQuest(ctx context.Context, p quest.Proposal, qc quest.Context) *quest.Quest {
 	s.nQuestsProposed.Add(1)
 	q, err := quest.Validate(p, qc)
 	if err != nil {
 		s.nQuestsRejected.Add(1)
-		s.log.Info("quête proposée écartée", "raison", err.Error())
+		s.log.Info("proposed quest discarded", "reason", err.Error())
 		return nil
 	}
 	texts := []string{q.Title, q.Story}
@@ -416,14 +416,14 @@ func (s *Service) checkQuest(ctx context.Context, p quest.Proposal, qc quest.Con
 	}
 	if err := s.moderator(ctx, texts); err != nil {
 		s.nQuestsRejected.Add(1)
-		s.log.Info("quête proposée non modérée", "raison", err.Error())
+		s.log.Info("proposed quest not moderated", "reason", err.Error())
 		return nil
 	}
 	return &q
 }
 
-// screen modère un message avec l'endpoint de modération. blocked: le message est refusé.
-// checked: la vérification a pu avoir lieu (faux si la modération est indisponible).
+// screen moderates a message with the moderation endpoint. blocked: the message is refused.
+// checked: the check could take place (false if moderation is unavailable).
 func (s *Service) screen(ctx context.Context, msg string) (blocked, checked bool) {
 	if !s.moderationOK.Load() {
 		return false, false
@@ -448,7 +448,7 @@ func (s *Service) markCard(acct string) {
 	s.mu.Unlock()
 }
 
-// success enregistre un appel réussi: jetons du jour, disjoncteur remis à zéro.
+// success records a successful call: day's tokens, circuit breaker reset.
 func (s *Service) success(tokens int) {
 	s.mu.Lock()
 	s.rollDay(s.now())
@@ -457,7 +457,7 @@ func (s *Service) success(tokens int) {
 	s.mu.Unlock()
 }
 
-// chatFailure traduit une erreur du fournisseur en réplique d'échec et alimente le disjoncteur.
+// chatFailure turns a provider error into a failure reply and feeds the circuit breaker.
 func (s *Service) chatFailure(req Request, err error) Reply {
 	switch {
 	case errors.Is(err, llm.ErrBlocked):
@@ -466,31 +466,31 @@ func (s *Service) chatFailure(req Request, err error) Reply {
 	case errors.Is(err, llm.ErrRateLimited):
 		return s.failureReply(req, Busy)
 	case errors.Is(err, llm.ErrUnauthorized):
-		s.log.Error("clé d'API refusée: dialogues de PNJ désactivés")
+		s.log.Error("API key rejected: NPC dialogues disabled")
 		s.chatOK.Store(false)
 		return s.failureReply(req, Unavailable)
 	}
-	// Panne, délai dépassé, réponse inexploitable: le disjoncteur s'ouvre après plusieurs échecs
-	// consécutifs pour ne pas faire attendre chaque joueur sur un service qui ne répond plus.
-	s.log.Warn("appel au modèle échoué", "err", err.Error())
+	// Outage, timeout, unusable response: the circuit breaker opens after several consecutive
+	// failures so as not to make every player wait on a service that no longer responds.
+	s.log.Warn("model call failed", "err", err.Error())
 	s.mu.Lock()
 	s.fails++
 	if s.fails >= s.cfg.BreakerFails {
 		s.openTill = s.now().Add(s.cfg.BreakerPause)
 		s.fails = 0
-		s.log.Error("service de dialogue suspendu", "pause", s.cfg.BreakerPause.String())
+		s.log.Error("dialogue service suspended", "pause", s.cfg.BreakerPause.String())
 	}
 	s.mu.Unlock()
 	return s.failureReply(req, Unavailable)
 }
 
-// failureReply fabrique une réplique « en personnage » pour un échec.
+// failureReply builds an in-character reply for a failure.
 func (s *Service) failureReply(req Request, f Failure) Reply {
 	return Reply{Text: InCharacter(req.Lang, req.NPC.NameIn(req.Lang), f), Failure: f}
 }
 
-// InCharacter renvoie la réplique d'un PNJ qui ne peut pas répondre, sans jamais
-// montrer au joueur de message technique.
+// InCharacter returns the line of an NPC who cannot answer, without ever
+// showing the player a technical message.
 func InCharacter(l i18n.Lang, name string, f Failure) string {
 	if name == "" {
 		name = i18n.T(l, "npc.fail.anonymous")
@@ -508,15 +508,15 @@ func InCharacter(l i18n.Lang, name string, f Failure) string {
 	return i18n.T(l, "npc.fail.default", name)
 }
 
-// ProbeResult est le résultat de la vérification de l'API.
+// ProbeResult is the result of the API check.
 type ProbeResult struct {
 	Chat, Guardrails, Moderation bool
 	ChatErr, ModerationErr       error
 }
 
-// Probe vérifie, avec de toutes petites requêtes, que le chat fonctionne, que le champ
-// « guardrails » est accepté et que la modération répond; il règle ensuite la
-// disponibilité du service en conséquence. À appeler au démarrage.
+// Probe checks, with tiny requests, that chat works, that the "guardrails"
+// field is accepted and that moderation responds; it then sets the service
+// availability accordingly. To be called at startup.
 func (s *Service) Probe(ctx context.Context) ProbeResult {
 	var res ProbeResult
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
@@ -525,13 +525,13 @@ func (s *Service) Probe(ctx context.Context) ProbeResult {
 	temp := 0.0
 	probe := llm.Request{
 		Messages: []llm.Message{
-			{Role: llm.System, Content: `Réponds uniquement par l'objet JSON {"ok": true}.`},
+			{Role: llm.System, Content: `Reply only with the JSON object {"ok": true}.`},
 			{Role: llm.User, Content: "test"},
 		},
 		JSON: true, MaxTokens: 16, Temperature: &temp, Guardrail: s.guardrail(),
 	}
 	resp, err := s.llm.Chat(ctx, probe)
-	if err != nil && errors.Is(err, llm.ErrBadRequest) { // champ « guardrails » refusé
+	if err != nil && errors.Is(err, llm.ErrBadRequest) { // "guardrails" field rejected
 		probe.Guardrail = nil
 		resp, err = s.llm.Chat(ctx, probe)
 	} else if err == nil {
@@ -544,7 +544,7 @@ func (s *Service) Probe(ctx context.Context) ProbeResult {
 		s.success(resp.TotalTokens(probe))
 	}
 
-	if _, err := s.llm.Moderate(ctx, []string{"Bonjour voyageur"}); err != nil {
+	if _, err := s.llm.Moderate(ctx, []string{"Hello traveler"}); err != nil {
 		res.ModerationErr = err
 	} else {
 		res.Moderation = true
@@ -556,10 +556,10 @@ func (s *Service) Probe(ctx context.Context) ProbeResult {
 	return res
 }
 
-// Supervise relance la sonde à intervalle régulier tant que le chat ou la modération
-// sont indisponibles : une panne au démarrage (ou une clé corrigée entre-temps) ne doit
-// pas désactiver les dialogues jusqu'au prochain redémarrage. Bloquant, à lancer dans une
-// goroutine ; s'arrête à l'annulation de ctx.
+// Supervise reruns the probe at regular intervals as long as chat or moderation
+// is unavailable: an outage at startup (or a key fixed in the meantime) must not
+// disable dialogues until the next restart. Blocking, to be run in a
+// goroutine; stops when ctx is canceled.
 func (s *Service) Supervise(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
@@ -572,12 +572,12 @@ func (s *Service) Supervise(ctx context.Context, every time.Duration) {
 				continue
 			}
 			res := s.Probe(ctx)
-			s.log.Info("nouvelle sonde du service de dialogue", "chat", res.Chat, "moderation", res.Moderation)
+			s.log.Info("new probe of the dialogue service", "chat", res.Chat, "moderation", res.Moderation)
 		}
 	}
 }
 
-// Stats renvoie l'état courant des compteurs.
+// Stats returns the current state of the counters.
 func (s *Service) Stats() Stats {
 	s.mu.Lock()
 	s.rollDay(s.now())
@@ -596,13 +596,13 @@ func (s *Service) Stats() Stats {
 	return st
 }
 
-// runStock traite une demande d'étalage sans jamais faire tomber le serveur.
+// runStock handles a stock request without ever bringing the server down.
 func (s *Service) runStock(ctx context.Context, j *job) {
 	s.active.Add(1)
 	reply := func() (r StockReply) {
 		defer func() {
 			if p := recover(); p != nil {
-				s.log.Error("plantage dans la génération d'étalage", "panic", fmt.Sprint(p))
+				s.log.Error("crash in stock generation", "panic", fmt.Sprint(p))
 				r = StockReply{Failure: Unavailable}
 			}
 		}()

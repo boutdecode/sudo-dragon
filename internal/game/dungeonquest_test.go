@@ -5,24 +5,26 @@ import (
 	"testing"
 
 	"github.com/kevin/ascii-adventure/internal/dice"
+	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// workRig place un joueur de niveau 5 devant un villageois qui donne des quêtes, avec un donjon à portée.
+// workRig places a level 5 player in front of a villager who gives quests, with a dungeon within range.
 func workRig(t *testing.T) (*npcRig, *world.Dungeon) {
 	t.Helper()
 	r := newNPCRig(t, world.NPCVillager)
+	r.p.lang = i18n.FR // dungeon names (d.Name) are the French ones
 	if !r.npc.GivesQuests {
-		t.Skip("premier villageois sans quêtes")
+		t.Skip("first villager without quests")
 	}
 	r.g.Dungeons = true
 	r.p.stats.Level = 5
 	r.talk()
 	ds := r.g.dungeonsFor(r.p, r.npc)
 	if len(ds) == 0 {
-		t.Skip("aucun donjon à portée du village de départ")
+		t.Skip("no dungeon within range of the starting village")
 	}
 	return r, ds[0]
 }
@@ -39,49 +41,49 @@ func offered(d protocol.NPCDialog, action string) bool {
 func TestAVillagerWithADungeonNearbyOffersWorkWithoutAModel(t *testing.T) {
 	r, d := workRig(t)
 	if r.g.Talker != nil {
-		t.Fatal("ce test vise le cas sans modèle de langage")
+		t.Fatal("this test targets the case without a language model")
 	}
 	if !offered(r.last(), protocol.NPCAskWork) {
-		t.Fatalf("pas d'offre de travail: %+v", r.last().Offers)
+		t.Fatalf("no work offer: %+v", r.last().Offers)
 	}
 	r.act(protocol.NPCAskWork)
 	got := r.last()
 	if got.Mode != protocol.NPCModeQuest || got.Proposal == nil {
-		t.Fatalf("une proposition était attendue: %+v", got)
+		t.Fatalf("a proposal was expected: %+v", got)
 	}
 	pr := got.Proposal
 	if !strings.Contains(pr.Goal, d.Name) || !strings.Contains(pr.Title, d.Name) || pr.Need != 1 {
-		t.Errorf("proposition: %+v", pr)
+		t.Errorf("proposal: %+v", pr)
 	}
 	if pr.Gold <= 0 || pr.XP <= 0 {
-		t.Errorf("récompense vide: %+v", pr)
+		t.Errorf("empty reward: %+v", pr)
 	}
 	if len(r.p.quests) != 0 {
-		t.Fatal("la quête existe avant l'acceptation")
+		t.Fatal("the quest exists before acceptance")
 	}
-	// Elle ne révèle rien tant qu'on n'a pas accepté.
+	// It reveals nothing until accepted.
 	if r.p.discovered[d.Region] {
-		t.Fatal("entrée révélée avant l'acceptation")
+		t.Fatal("entrance revealed before acceptance")
 	}
 
 	var dungeons []protocol.Dungeons
 	r.p.sendDungeonsMsg = func(m protocol.Dungeons) { dungeons = append(dungeons, m) }
 	r.act(protocol.NPCQuestAccept)
 	if len(r.p.quests) != 1 {
-		t.Fatalf("%d quêtes après acceptation", len(r.p.quests))
+		t.Fatalf("%d quests after acceptance", len(r.p.quests))
 	}
 	q := r.p.quests[0]
 	if q.Objective != (quest.Objective{Kind: quest.Dungeon, Species: "lich", Count: 1, Target: d.Region}) || q.State != quest.Active {
-		t.Errorf("quête: %+v", q)
+		t.Errorf("quest: %+v", q)
 	}
 	if !r.p.discovered[d.Region] || len(dungeons) != 1 || dungeons[0].New != d.ID {
-		t.Errorf("l'entrée devait être révélée à l'acceptation: découvert=%v, messages %+v", r.p.discovered[d.Region], dungeons)
+		t.Errorf("the entrance should be revealed on acceptance: discovered=%v, messages %+v", r.p.discovered[d.Region], dungeons)
 	}
-	// Le même donjon n'est pas confié deux fois.
+	// The same dungeon is not entrusted twice.
 	r.act(protocol.NPCBack)
 	for _, dd := range r.g.dungeonsFor(r.p, r.npc) {
 		if dd == d {
-			t.Error("le donjon en cours est encore offert")
+			t.Error("the dungeon in progress is still offered")
 		}
 	}
 }
@@ -90,16 +92,16 @@ func TestNoWorkForALowLevelHero(t *testing.T) {
 	r, d := workRig(t)
 	r.p.stats.Level = quest.DungeonLevel(d.Tier) - 1
 	if r.g.hasWork(r.p, r.npc) {
-		t.Fatal("du travail pour un joueur trop faible")
+		t.Fatal("work for a player who is too weak")
 	}
 	r.g.sendTalk(r.p, r.npc.Kind, nil, false)
 	if offered(r.last(), protocol.NPCAskWork) {
-		t.Error("l'offre de travail ne devrait pas apparaître")
+		t.Error("the work offer should not appear")
 	}
-	// Même en forçant l'action, rien n'est proposé.
+	// Even when forcing the action, nothing is offered.
 	r.act(protocol.NPCAskWork)
 	if r.last().Proposal != nil || r.last().Mode == protocol.NPCModeQuest {
-		t.Errorf("quête proposée à un joueur trop faible: %+v", r.last())
+		t.Errorf("quest offered to a player who is too weak: %+v", r.last())
 	}
 }
 
@@ -131,57 +133,58 @@ func TestDungeonQuestIsFinishedByKillingItsLich(t *testing.T) {
 		g.act(p, 1, 0)
 	}
 	if p.fight != nil {
-		t.Fatal("combat non terminé")
+		t.Fatal("fight not finished")
 	}
 	if p.quests[0].State != quest.Ready || p.quests[0].Progress != 1 {
-		t.Errorf("la quête de ce donjon devrait être prête: %+v", p.quests[0])
+		t.Errorf("this dungeon's quest should be ready: %+v", p.quests[0])
 	}
 	if elsewhere != (world.RegionPos{}) && p.quests[1].State != quest.Active {
-		t.Errorf("la quête d'un autre donjon a avancé: %+v", p.quests[1])
+		t.Errorf("another dungeon's quest advanced: %+v", p.quests[1])
 	}
 	if p.quests[2].State != quest.Active {
-		t.Errorf("la quête de seigneur de guerre a avancé: %+v", p.quests[2])
+		t.Errorf("the warlord quest advanced: %+v", p.quests[2])
 	}
 }
 
 func TestTheModelMayProposeADungeonFromTheAllowedList(t *testing.T) {
 	r, ft := giverRig(t)
+	r.p.lang = i18n.FR // dungeon names (d.Name) are the French ones
 	r.g.Dungeons = true
 	ds := r.g.dungeonsFor(r.p, r.npc)
 	if len(ds) == 0 {
-		t.Skip("aucun donjon à portée")
+		t.Skip("no dungeon within range")
 	}
 	d := ds[0]
 	r.act(protocol.NPCTalk)
 	ctx := ft.req(ft.count() - 1).Offer
 	if ctx == nil {
-		t.Fatal("pas de contexte d'offre")
+		t.Fatal("no offer context")
 	}
 	ref, ok := ctx.Quest.Dungeons[strings.ToLower(d.Name)]
 	if !ok || ref.Region != d.Region || ref.Tier != d.Tier {
-		t.Fatalf("le donjon n'est pas autorisé: %+v", ctx.Quest.Dungeons)
+		t.Fatalf("the dungeon is not allowed: %+v", ctx.Quest.Dungeons)
 	}
-	// Une proposition hors liste ou au-dessus de son niveau est refusée.
+	// A proposal outside the list or above one's level is refused.
 	for name, p := range map[string]quest.Proposal{
-		"inconnu":  {Title: "t", Story: "s", Type: "dungeon", Place: "Donjon Imaginaire"},
-		"un lieu":  {Title: "t", Story: "s", Type: "dungeon", Place: ""},
-		"niveau 1": {Title: "t", Story: "s", Type: "dungeon", Place: d.Name},
+		"unknown": {Title: "t", Story: "s", Type: "dungeon", Place: "Donjon Imaginaire"},
+		"a place": {Title: "t", Story: "s", Type: "dungeon", Place: ""},
+		"level 1": {Title: "t", Story: "s", Type: "dungeon", Place: d.Name},
 	} {
 		c := ctx.Quest
-		if name == "niveau 1" {
+		if name == "level 1" {
 			c.Level = 1
 		}
 		if _, err := quest.Validate(p, c); err == nil {
-			t.Errorf("%s: proposition acceptée", name)
+			t.Errorf("%s: proposal accepted", name)
 		}
 	}
-	q, err := quest.Validate(quest.Proposal{Title: "Le maître", Story: "Allez-y.", Type: "dungeon", Place: d.Name, Gold: 999999, XP: 999999, Potions: 99}, ctx.Quest)
+	q, err := quest.Validate(quest.Proposal{Title: "The master", Story: "Go.", Type: "dungeon", Place: d.Name, Gold: 999999, XP: 999999, Potions: 99}, ctx.Quest)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lo, hi := quest.RewardBounds(150+50*d.Tier, true)
 	if q.Reward.Gold > hi.Gold || q.Reward.XP > hi.XP || q.Reward.Potions > hi.Potions || q.Reward.Gold < lo.Gold {
-		t.Errorf("récompense hors bornes: %+v", q.Reward)
+		t.Errorf("reward out of bounds: %+v", q.Reward)
 	}
 }
 
@@ -192,7 +195,7 @@ func TestADungeonOnCooldownIsNotOfferedForWork(t *testing.T) {
 	killTheLich(t, r.g, other)
 	for _, dd := range r.g.dungeonsFor(r.p, r.npc) {
 		if dd == d {
-			t.Fatal("un donjon dont le boss vient de tomber ne peut pas être confié")
+			t.Fatal("a dungeon whose boss has just fallen cannot be entrusted")
 		}
 	}
 	r.g.tick += dungeonResetTicks
@@ -201,6 +204,6 @@ func TestADungeonOnCooldownIsNotOfferedForWork(t *testing.T) {
 		found = found || dd == d
 	}
 	if !found {
-		t.Error("le donjon, revenu, devrait de nouveau pouvoir être confié")
+		t.Error("the dungeon, returned, should be entrustable again")
 	}
 }

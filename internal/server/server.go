@@ -1,4 +1,4 @@
-// Package server gère le transport WebSocket, les sessions et la diffusion.
+// Package server handles the WebSocket transport, sessions and broadcasting.
 package server
 
 import (
@@ -31,30 +31,30 @@ const (
 	sendBuffer   = 64
 	readLimit    = 4096
 
-	// Détection des connexions mortes: sans cela, un client dont le réseau a
-	// disparu garderait son compte « connecté » et bloquerait sa reconnexion.
+	// Dead connection detection: without it, a client whose network
+	// disappeared would keep its account "connected" and block its reconnection.
 	pingEvery   = 25 * time.Second
 	pingTimeout = 10 * time.Second
 
-	// Quotas par adresse IP.
-	maxFailedLogins    = 8  // échecs d'authentification par minute
-	maxRegistrations   = 10 // créations de compte par heure
+	// Per-IP-address quotas.
+	maxFailedLogins    = 8  // authentication failures per minute
+	maxRegistrations   = 10 // account creations per hour
 	failedLoginWindow  = time.Minute
 	registrationWindow = time.Hour
 )
 
-// Backend fournit les comptes et la persistance des personnages.
+// Backend provides the accounts and the persistence of characters.
 type Backend interface {
-	// CreateAccount et Authenticate renvoient le pseudo tel qu'enregistré.
+	// CreateAccount and Authenticate return the name as stored.
 	CreateAccount(name, password string) (string, error)
 	Authenticate(name, password string) (string, error)
-	// LoadCharacter renvoie l'état le plus récent, ou nil pour un nouveau personnage.
+	// LoadCharacter returns the most recent state, or nil for a new character.
 	LoadCharacter(name string) (*store.Character, error)
-	// SaveCharacter ne doit pas bloquer.
+	// SaveCharacter must not block.
 	SaveCharacter(name string, c store.Character)
 }
 
-// Server accepte les connexions WebSocket et tient la liste des joueurs connectés.
+// Server accepts WebSocket connections and keeps the list of connected players.
 type Server struct {
 	Game *game.Game
 	Log  *slog.Logger
@@ -65,12 +65,12 @@ type Server struct {
 
 	mu       sync.Mutex
 	sessions map[int]*session
-	// reserved contient les pseudos (en minuscules) en cours de connexion: ils
-	// sont pris le temps que la boucle de jeu traite Join, sans garder s.mu.
+	// reserved holds the names (lowercase) being connected: they
+	// are taken while the game loop processes Join, without holding s.mu.
 	reserved map[string]bool
 }
 
-// New crée un serveur pour le monde donné. Appeler Run pour démarrer la boucle de jeu.
+// New creates a server for the given world. Call Run to start the game loop.
 func New(w *world.World, log *slog.Logger, be Backend) *Server {
 	if log == nil {
 		log = slog.Default()
@@ -89,8 +89,8 @@ func New(w *world.World, log *slog.Logger, be Backend) *Server {
 	return s
 }
 
-// SetRegistrationLimit règle le nombre de comptes créables par heure et par
-// adresse IP. Zéro ou moins: pas de limite (tests de charge, développement).
+// SetRegistrationLimit sets the number of accounts that can be created per hour and per
+// IP address. Zero or less: no limit (load tests, development).
 func (s *Server) SetRegistrationLimit(perHour int) {
 	if perHour <= 0 {
 		perHour = int(^uint(0) >> 1)
@@ -98,7 +98,7 @@ func (s *Server) SetRegistrationLimit(perHour int) {
 	s.registrations = newLimiter(perHour, registrationWindow)
 }
 
-// fromSaved et toSaved convertissent entre l'état du jeu et l'état stocké.
+// fromSaved and toSaved convert between the game state and the stored state.
 func fromSaved(sv game.Saved) store.Character {
 	c := store.Character{
 		Level: sv.Stats.Level, XP: sv.Stats.XP, Potions: sv.Stats.Potions, Gold: sv.Stats.Gold,
@@ -137,14 +137,14 @@ func toSaved(c store.Character) *game.Saved {
 	return sv
 }
 
-// SetTalker branche le service qui fait parler les PNJ (nil: pas de discussion libre).
-// À appeler avant Run.
+// SetTalker plugs in the service that makes NPCs talk (nil: no free discussion).
+// To be called before Run.
 func (s *Server) SetTalker(t game.Talker) { s.Game.Talker = t }
 
-// Run exécute la boucle de jeu (bloquant) jusqu'à l'annulation de ctx.
+// Run executes the game loop (blocking) until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) { s.Game.Run(ctx) }
 
-// Handler renvoie le handler HTTP: /ws (jeu), /healthz (sonde) et /stats (métriques).
+// Handler returns the HTTP handler: /ws (game), /healthz (probe) and /stats (metrics).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
@@ -156,7 +156,7 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// Stats est la forme JSON de /stats.
+// Stats is the JSON shape of /stats.
 type Stats struct {
 	Players     int     `json:"players"`
 	Monsters    int     `json:"monsters"`
@@ -164,11 +164,11 @@ type Stats struct {
 	SlowTicks   uint64  `json:"slow_ticks"`
 	TickTotalMS float64 `json:"tick_total_ms"`
 	TickMaxMS   float64 `json:"tick_max_ms"`
-	// Régime établi: les 60 dernières secondes.
+	// Steady state: the last 60 seconds.
 	TickP99MS       float64 `json:"tick_p99_ms"`
 	TickRecentMaxMS float64 `json:"tick_recent_max_ms"`
 
-	// LLM décrit le service de dialogue des PNJ (absent s'il n'est pas branché).
+	// LLM describes the NPC dialogue service (absent if not plugged in).
 	LLM *npcai.Stats `json:"llm,omitempty"`
 }
 
@@ -186,7 +186,7 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 		TickP99MS:       float64(m.RecentP99) / float64(time.Millisecond),
 		TickRecentMaxMS: float64(m.RecentMax) / float64(time.Millisecond),
 	}
-	// Le service de dialogue n'est branché qu'avant Run : Talker ne change plus ensuite.
+	// The dialogue service is only plugged in before Run: Talker does not change afterwards.
 	if sv, ok := s.Game.Talker.(interface{ Stats() npcai.Stats }); ok {
 		st := sv.Stats()
 		out.LLM = &st
@@ -197,28 +197,28 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 type session struct {
 	id   int
 	name string
-	lang i18n.Lang // langue du client, choisie à la connexion
+	lang i18n.Lang // client language, chosen at login
 	conn *websocket.Conn
 	srv  *Server
 
-	// send porte les messages fiables (chat, combat, bienvenue, erreurs): tous
-	// doivent arriver, dans l'ordre. Une file pleine signale un client trop lent.
+	// send carries the reliable messages (chat, combat, welcome, errors): all
+	// must arrive, in order. A full queue signals a client that is too slow.
 	send chan []byte
 
-	// Les instantanés sont un état, pas un événement: seul le dernier compte.
-	// On en garde un seul, qui écrase le précédent s'il n'a pas encore été
-	// envoyé. Un client momentanément lent saute des images au lieu d'être
-	// déconnecté, et l'encodage JSON se fait dans sa goroutine d'écriture, pas
-	// dans la boucle de jeu.
+	// Snapshots are a state, not an event: only the latest counts.
+	// Only one is kept, which overwrites the previous one if it has not yet been
+	// sent. A momentarily slow client skips frames instead of being
+	// disconnected, and the JSON encoding happens in its write goroutine, not
+	// in the game loop.
 	snapMu  sync.Mutex
 	snap    *protocol.Snapshot
-	snapSig chan struct{} // capacité 1: « un instantané est en attente »
+	snapSig chan struct{} // capacity 1: "a snapshot is pending"
 
-	// Limitation du débit de chat (touchés seulement par readLoop).
+	// Chat rate limiting (touched only by readLoop).
 	tokens   float64
 	lastChat time.Time
 
-	// Idem pour les répliques adressées aux PNJ.
+	// Same for the lines addressed to NPCs.
 	sayTokens float64
 	lastSay   time.Time
 }
@@ -245,12 +245,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	sess.readLoop(ctx)
 }
 
-// login attend le message de connexion, valide le pseudo et enregistre la session.
+// login waits for the login message, validates the name and registers the session.
 func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*session, error) {
 	lctx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
 
-	lang := i18n.FR // la langue du client n'est connue qu'après lecture du login
+	lang := i18n.EN // the client language is only known after reading the login
 	fail := func(key string, args ...any) (*session, error) {
 		msg := i18n.T(lang, key, args...)
 		data, _ := protocol.Encode(protocol.TError, protocol.Error{Msg: msg})
@@ -279,7 +279,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		return fail("srv.err.bad_name")
 	}
 	if s.failedLogins.blocked(ip) {
-		s.Log.Warn("trop d'échecs de connexion", "ip", ip)
+		s.Log.Warn("too many login failures", "ip", ip)
 		return fail("srv.err.too_many_attempts")
 	}
 
@@ -289,7 +289,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 			return fail("srv.err.pass_len", protocol.MinPassLen, protocol.MaxPassLen)
 		}
 		if s.registrations.blocked(ip) {
-			s.Log.Warn("trop de créations de compte", "ip", ip)
+			s.Log.Warn("too many account creations", "ip", ip)
 			return fail("srv.err.too_many_accounts")
 		}
 		canonical, err = s.be.CreateAccount(name, lg.Password)
@@ -299,11 +299,11 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		case errors.Is(err, store.ErrWeakPassword):
 			return fail("srv.err.weak_password")
 		case err != nil:
-			s.Log.Error("création de compte", "err", err)
+			s.Log.Error("account creation", "err", err)
 			return fail("srv.err.server")
 		}
 		s.registrations.add(ip)
-		s.Log.Info("compte créé", "name", canonical)
+		s.Log.Info("account created", "name", canonical)
 	} else {
 		canonical, err = s.be.Authenticate(name, lg.Password)
 		switch {
@@ -311,7 +311,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 			s.failedLogins.add(ip)
 			return fail("srv.err.bad_credentials")
 		case err != nil:
-			s.Log.Error("authentification", "err", err)
+			s.Log.Error("authentication", "err", err)
 			return fail("srv.err.server")
 		}
 	}
@@ -320,7 +320,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 	var saved *game.Saved
 	ch, err := s.be.LoadCharacter(name)
 	if err != nil {
-		s.Log.Error("chargement du personnage", "name", name, "err", err)
+		s.Log.Error("loading character", "name", name, "err", err)
 		return fail("srv.err.server")
 	}
 	if needsCreation(ch) {
@@ -328,7 +328,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 			return nil, err
 		}
 	} else {
-		// Personnage créé avant les armes à dés: il reçoit son arme de départ s'il n'en a aucune.
+		// Character created before dice weapons: it gets its starting weapon if it has none.
 		ensureStarter(ch, lang)
 	}
 	saved = toSaved(*ch)
@@ -342,9 +342,9 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		lang:    lang,
 	}
 
-	// On réserve le pseudo sous verrou, puis on relâche le verrou avant Join:
-	// Join attend la boucle de jeu (jusqu'à la fin du tick en cours), et le
-	// garder serait sérialiser toutes les connexions derrière cette latence.
+	// The name is reserved under lock, then the lock is released before Join:
+	// Join waits for the game loop (up to the end of the current tick), and
+	// holding it would serialize all connections behind that latency.
 	key := strings.ToLower(name)
 	s.mu.Lock()
 	taken := s.reserved[key]
@@ -389,32 +389,32 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		return fail("srv.err.unavailable")
 	}
 
-	s.Log.Info("joueur connecté", "id", sess.id, "name", name)
+	s.Log.Info("player connected", "id", sess.id, "name", name)
 	s.announce("srv.joined", name)
 	return sess, nil
 }
 
 func (s *Server) remove(sess *session) {
-	// Leave attend que la boucle de jeu ait traité le départ (et donc mis la
-	// sauvegarde en file) avant de libérer le pseudo: une reconnexion immédiate
-	// ne peut ainsi jamais charger un état périmé.
+	// Leave waits for the game loop to have processed the departure (and thus queued
+	// the save) before releasing the name: an immediate reconnection
+	// can thus never load a stale state.
 	s.Game.Leave(sess.id)
 	s.mu.Lock()
 	delete(s.sessions, sess.id)
 	s.mu.Unlock()
-	s.Log.Info("joueur déconnecté", "id", sess.id, "name", sess.name)
+	s.Log.Info("player disconnected", "id", sess.id, "name", sess.name)
 	s.announce("srv.left", sess.name)
 }
 
-// broadcast envoie un message à tous les joueurs connectés.
+// broadcast sends a message to all connected players.
 func (s *Server) broadcast(t string, payload any) { s.broadcastWith(t, payload, false) }
 
-// announce diffuse une annonce système (arrivée, départ). Elle est perdue pour
-// un client dont la file est chargée: ces annonces sont proportionnelles au
-// nombre de joueurs au carré lors d'une vague de connexions.
+// announce broadcasts a system announcement (arrival, departure). It is dropped for
+// a client whose queue is loaded: these announcements grow with the
+// square of the number of players during a connection wave.
 //
-// Le texte est rédigé dans la langue de chaque destinataire: key et args sont
-// passés à i18n.T, et l'encodage n'est fait qu'une fois par langue.
+// The text is written in each recipient's language: key and args are
+// passed to i18n.T, and encoding is done only once per language.
 func (s *Server) announce(key string, args ...any) {
 	encoded := make(map[i18n.Lang][]byte, len(i18n.Langs))
 	for _, l := range i18n.Langs {
@@ -449,9 +449,9 @@ func (s *Server) broadcastWith(t string, payload any, bestEffort bool) {
 	}
 }
 
-// enqueueBestEffort place un message non essentiel dans la file, sauf si elle
-// est déjà à moitié pleine: mieux vaut perdre une annonce que déconnecter un
-// client lent, ou saturer tout le monde lors d'une vague de connexions.
+// enqueueBestEffort puts a non-essential message in the queue, unless it
+// is already half full: better to lose an announcement than to disconnect a
+// slow client, or to saturate everyone during a connection wave.
 func (sess *session) enqueueBestEffort(data []byte) {
 	if len(sess.send) > sendBuffer/2 {
 		return
@@ -459,14 +459,14 @@ func (sess *session) enqueueBestEffort(data []byte) {
 	sess.enqueue(data)
 }
 
-// enqueue place un message dans la file; si elle est pleine (client trop lent),
-// la connexion est fermée plutôt que de bloquer le serveur.
+// enqueue puts a message in the queue; if it is full (client too slow),
+// the connection is closed rather than blocking the server.
 func (sess *session) enqueue(data []byte) {
 	select {
 	case sess.send <- data:
 	default:
-		sess.srv.Log.Warn("file d'envoi pleine, fermeture", "id", sess.id)
-		go sess.conn.Close(websocket.StatusPolicyViolation, "client trop lent")
+		sess.srv.Log.Warn("send queue full, closing", "id", sess.id)
+		go sess.conn.Close(websocket.StatusPolicyViolation, "client too slow")
 	}
 }
 
@@ -479,16 +479,16 @@ func (sess *session) sendMsg(t string, payload any) {
 	sess.enqueue(data)
 }
 
-// setSnapshot remplace l'instantané en attente. Appelé depuis la boucle de
-// jeu: ne bloque jamais. Les tranches de snap ne sont plus modifiées par la
-// boucle de jeu après cet appel, on peut donc les lire depuis une autre goroutine.
+// setSnapshot replaces the pending snapshot. Called from the game loop:
+// never blocks. The snap slices are no longer modified by the game
+// loop after this call, so they can be read from another goroutine.
 func (sess *session) setSnapshot(snap protocol.Snapshot) {
 	sess.snapMu.Lock()
 	sess.snap = &snap
 	sess.snapMu.Unlock()
 	select {
 	case sess.snapSig <- struct{}{}:
-	default: // un signal est déjà en attente
+	default: // a signal is already pending
 	}
 }
 
@@ -518,8 +518,8 @@ func (sess *session) writeLoop(ctx context.Context, cancel context.CancelFunc) {
 				return
 			}
 		case <-sess.snapSig:
-			// Les messages fiables déjà en file passent d'abord: la bienvenue
-			// doit précéder le premier instantané.
+			// Reliable messages already in the queue go first: the welcome
+			// must precede the first snapshot.
 			for drained := false; !drained; {
 				select {
 				case data := <-sess.send:
@@ -539,7 +539,7 @@ func (sess *session) writeLoop(ctx context.Context, cancel context.CancelFunc) {
 			}
 			data, err := protocol.Encode(protocol.TSnapshot, snap)
 			if err != nil {
-				sess.srv.Log.Error("encodage de l'instantané", "err", err)
+				sess.srv.Log.Error("snapshot encoding", "err", err)
 				continue
 			}
 			if sess.write(ctx, data) != nil {
@@ -586,8 +586,8 @@ func (sess *session) readLoop(ctx context.Context) {
 				sess.sendErr("srv.err.unknown_dialog_action", a.Action)
 				continue
 			}
-			// Le texte vient d'un client: nettoyé et borné ici, avant qu'il n'atteigne le jeu
-			// ou un modèle de langage (séquences d'échappement, marques bidirectionnelles…).
+			// The text comes from a client: cleaned and bounded here, before it reaches the game
+			// or a language model (escape sequences, bidirectional marks...).
 			text := textsafe.Clean(a.Text, protocol.MaxSayLen)
 			if a.Action == protocol.NPCSay {
 				if text == "" {

@@ -19,32 +19,32 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// testPass est le mot de passe de tous les comptes de test.
+// testPass is the password of all test accounts.
 const testPass = storetest.Password
 
-// reg construit un login qui crée le compte.
+// reg builds a login that creates the account.
 func reg(name string) protocol.Login {
-	return protocol.Login{Name: name, Password: testPass, Register: true}
+	return protocol.Login{Name: name, Password: testPass, Register: true, Lang: "fr"}
 }
 
-// signIn construit un login sur un compte existant.
+// signIn builds a login on an existing account.
 func signIn(name, pass string) protocol.Login {
-	return protocol.Login{Name: name, Password: pass}
+	return protocol.Login{Name: name, Password: pass, Lang: "fr"}
 }
 
-// startServer lance un serveur sur une base temporaire et renvoie son adresse,
-// son backend et le serveur (pour ajuster les quotas).
+// startServer starts a server on a temporary database and returns its address,
+// its backend and the server (to adjust the quotas).
 func startServer(t *testing.T, flushEvery time.Duration) (string, store.Backend, *Server) {
 	t.Helper()
 	be := storetest.NewBackend(t, flushEvery)
 	srv := New(world.New(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
-	srv.SetRegistrationLimit(0) // les tests créent beaucoup de comptes
+	srv.SetRegistrationLimit(0) // the tests create many accounts
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { srv.Run(ctx); close(done) }()
 	ts := httptest.NewServer(srv.Handler())
-	// La boucle de jeu sauvegarde les joueurs en s'arrêtant: on l'attend avant
-	// que le nettoyage de la base (enregistré plus tôt, donc exécuté après) ne ferme l'écrivain.
+	// The game loop saves players as it stops: wait for it before
+	// the database cleanup (registered earlier, hence run later) closes the writer.
 	t.Cleanup(func() { ts.Close(); cancel(); <-done })
 	return "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws", be, srv
 }
@@ -77,8 +77,8 @@ func send(t *testing.T, c *websocket.Conn, typ string, payload any) {
 	}
 }
 
-// recv lit un message. Les tests qui ne s'intéressent pas à la création du personnage la
-// laissent à ce helper: il valide le premier tirage en guerrier. Voir recvRaw pour la voir passer.
+// recv reads a message. Tests that do not care about character creation leave it
+// to this helper: it confirms the first roll as a warrior. See recvRaw to see it go by.
 func recv(t *testing.T, c *websocket.Conn) protocol.Envelope {
 	t.Helper()
 	env := recvRaw(t, c)
@@ -89,14 +89,14 @@ func recv(t *testing.T, c *websocket.Conn) protocol.Envelope {
 	return env
 }
 
-// recvRaw lit un message sans rien interpréter.
+// recvRaw reads a message without interpreting anything.
 func recvRaw(t *testing.T, c *websocket.Conn) protocol.Envelope {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_, data, err := c.Read(ctx)
 	if err != nil {
-		t.Fatalf("lecture: %v", err)
+		t.Fatalf("read: %v", err)
 	}
 	env, err := protocol.Decode(data)
 	if err != nil {
@@ -105,8 +105,8 @@ func recvRaw(t *testing.T, c *websocket.Conn) protocol.Envelope {
 	return env
 }
 
-// recvType lit jusqu'à recevoir un message du type voulu (30 au plus: la connexion en envoie déjà une demi-douzaine,
-// bienvenue, quêtes, donjons, sac, puis des instantanés et l'écho du chat).
+// recvType reads until a message of the wanted type is received (at most 30: the connection already sends half a dozen,
+// welcome, quests, dungeons, bag, then snapshots and the chat echo).
 func recvType(t *testing.T, c *websocket.Conn, typ string) protocol.Envelope {
 	t.Helper()
 	for range 30 {
@@ -114,7 +114,7 @@ func recvType(t *testing.T, c *websocket.Conn, typ string) protocol.Envelope {
 			return env
 		}
 	}
-	t.Fatalf("message %q non reçu", typ)
+	t.Fatalf("message %q not received", typ)
 	return protocol.Envelope{}
 }
 
@@ -128,7 +128,7 @@ func TestLoginAndChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	if w.Name != "alice" || w.ID == 0 || w.Seed != 1 {
-		t.Fatalf("welcome inattendu: %+v", w)
+		t.Fatalf("unexpected welcome: %+v", w)
 	}
 
 	bob := dial(t, url)
@@ -144,7 +144,7 @@ func TestLoginAndChat(t *testing.T) {
 			}
 			if ch.From == "alice" {
 				if ch.Text != "salut" {
-					t.Fatalf("texte: %q", ch.Text)
+					t.Fatalf("text: %q", ch.Text)
 				}
 				break
 			}
@@ -157,9 +157,9 @@ func TestMoveAndSnapshots(t *testing.T) {
 
 	alice := dial(t, url)
 	send(t, alice, protocol.TLogin, reg("alice"))
-	// Le welcome doit précéder tout snapshot.
+	// The welcome must precede any snapshot.
 	if env := recv(t, alice); env.T != protocol.TWelcome {
-		t.Fatalf("premier message: %q, attendu welcome", env.T)
+		t.Fatalf("first message: %q, expected welcome", env.T)
 	}
 	var first protocol.Snapshot
 	if err := recvType(t, alice, protocol.TSnapshot).Payload(&first); err != nil {
@@ -170,7 +170,7 @@ func TestMoveAndSnapshots(t *testing.T) {
 	send(t, bob, protocol.TLogin, reg("bob"))
 	recvType(t, bob, protocol.TWelcome)
 
-	// alice voit bob arriver.
+	// alice sees bob arrive.
 	var snap protocol.Snapshot
 	for {
 		if err := recvType(t, alice, protocol.TSnapshot).Payload(&snap); err != nil {
@@ -182,13 +182,13 @@ func TestMoveAndSnapshots(t *testing.T) {
 	}
 	bobStart := snap.Others[0]
 
-	// bob essaie les 4 directions; l'une au moins est franchissable.
+	// bob tries the 4 directions; at least one is walkable.
 	for _, d := range [][2]int{{1, 0}, {0, 1}, {-1, 0}, {0, -1}} {
 		send(t, bob, protocol.TMove, protocol.Move{DX: d[0], DY: d[1]})
 		time.Sleep(3 * 100 * time.Millisecond) // > cooldown
 	}
 
-	// alice finit par voir bob ailleurs.
+	// alice eventually sees bob elsewhere.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := recvType(t, alice, protocol.TSnapshot).Payload(&snap); err != nil {
@@ -198,10 +198,10 @@ func TestMoveAndSnapshots(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("alice n'a pas vu bob bouger")
+	t.Fatal("alice did not see bob move")
 }
 
-// login connecte un client et consomme son welcome.
+// login connects a client and consumes its welcome.
 func login(t *testing.T, url, name string) *websocket.Conn {
 	t.Helper()
 	c := dial(t, url)
@@ -210,7 +210,7 @@ func login(t *testing.T, url, name string) *websocket.Conn {
 	return c
 }
 
-// chatFrom lit jusqu'au premier chat non système.
+// chatFrom reads until the first non-system chat.
 func chatFrom(t *testing.T, c *websocket.Conn) protocol.Chat {
 	t.Helper()
 	for range 20 {
@@ -222,11 +222,11 @@ func chatFrom(t *testing.T, c *websocket.Conn) protocol.Chat {
 			return ch
 		}
 	}
-	t.Fatal("aucun chat non système reçu")
+	t.Fatal("no non-system chat received")
 	return protocol.Chat{}
 }
 
-// expectNoChat vérifie qu'aucun chat non système n'arrive pendant d.
+// expectNoChat checks that no non-system chat arrives during d.
 func expectNoChat(t *testing.T, c *websocket.Conn, d time.Duration) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), d)
@@ -234,7 +234,7 @@ func expectNoChat(t *testing.T, c *websocket.Conn, d time.Duration) {
 	for {
 		_, data, err := c.Read(ctx)
 		if err != nil {
-			return // délai écoulé: rien reçu
+			return // time elapsed: nothing received
 		}
 		env, _ := protocol.Decode(data)
 		if env.T != protocol.TChat {
@@ -243,7 +243,7 @@ func expectNoChat(t *testing.T, c *websocket.Conn, d time.Duration) {
 		var ch protocol.Chat
 		_ = env.Payload(&ch)
 		if ch.Channel != protocol.ChanSystem {
-			t.Fatalf("chat inattendu: %+v", ch)
+			t.Fatalf("unexpected chat: %+v", ch)
 		}
 	}
 }
@@ -254,7 +254,7 @@ func TestChatChannels(t *testing.T) {
 	bob := login(t, url, "bob")
 	carol := login(t, url, "carol")
 
-	// Local par défaut (les trois apparaissent côte à côte).
+	// Local by default (the three appear side by side).
 	send(t, alice, protocol.TChatSend, protocol.ChatSend{Text: "coucou"})
 	for _, c := range []*websocket.Conn{alice, bob, carol} {
 		if ch := chatFrom(t, c); ch.Channel != protocol.ChanLocal || ch.From != "alice" || ch.Text != "coucou" {
@@ -270,7 +270,7 @@ func TestChatChannels(t *testing.T) {
 		}
 	}
 
-	// Émote.
+	// Emote.
 	send(t, carol, protocol.TChatSend, protocol.ChatSend{Text: "/me danse"})
 	if ch := chatFrom(t, alice); ch.Channel != protocol.ChanEmote || ch.From != "carol" || ch.Text != "danse" {
 		t.Fatalf("emote: %+v", ch)
@@ -278,7 +278,7 @@ func TestChatChannels(t *testing.T) {
 	chatFrom(t, bob)
 	chatFrom(t, carol)
 
-	// Privé: destinataire et émetteur reçoivent, le tiers non.
+	// Private: recipient and sender receive, the third party does not.
 	send(t, alice, protocol.TChatSend, protocol.ChatSend{Text: "/w BOB psst"})
 	for _, c := range []*websocket.Conn{alice, bob} {
 		ch := chatFrom(t, c)
@@ -307,9 +307,9 @@ func TestChatCommandErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !strings.Contains(e.Msg, want) {
-			t.Errorf("%q: erreur %q, attendu %q", text, e.Msg, want)
+			t.Errorf("%q: error %q, expected %q", text, e.Msg, want)
 		}
-		time.Sleep(250 * time.Millisecond) // ne pas déclencher la limitation de débit
+		time.Sleep(250 * time.Millisecond) // do not trigger the rate limit
 	}
 }
 
@@ -326,7 +326,7 @@ func TestChatHelp(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("aide non reçue")
+	t.Fatal("help not received")
 }
 
 func TestChatRateLimit(t *testing.T) {
@@ -337,10 +337,10 @@ func TestChatRateLimit(t *testing.T) {
 	}
 	var e protocol.Error
 	if err := recvType(t, alice, protocol.TError).Payload(&e); err != nil {
-		t.Fatalf("aucune limitation de débit: %v", err)
+		t.Fatalf("no rate limit: %v", err)
 	}
 	if !strings.Contains(e.Msg, "trop de messages") {
-		t.Fatalf("erreur: %q", e.Msg)
+		t.Fatalf("error: %q", e.Msg)
 	}
 }
 
@@ -348,25 +348,25 @@ func TestCombatActionValidation(t *testing.T) {
 	url := newTestServer(t)
 	alice := login(t, url, "alice")
 
-	// Action inconnue: erreur explicite.
+	// Unknown action: explicit error.
 	send(t, alice, protocol.TCombatAction, protocol.CombatAction{Action: "dance"})
 	var e protocol.Error
 	if err := recvType(t, alice, protocol.TError).Payload(&e); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(e.Msg, "dance") {
-		t.Fatalf("erreur: %q", e.Msg)
+		t.Fatalf("error: %q", e.Msg)
 	}
 
-	// Action valide hors combat: ignorée. Les messages d'une session étant
-	// ordonnés, le chat envoyé ensuite doit arriver sans combat ni erreur avant lui.
+	// Valid action outside a fight: ignored. Since the messages of a session are
+	// ordered, the chat sent afterwards must arrive with no fight or error before it.
 	send(t, alice, protocol.TCombatAction, protocol.CombatAction{Action: "attack"})
 	send(t, alice, protocol.TChatSend, protocol.ChatSend{Text: "toujours là"})
 	for range 30 {
 		env := recv(t, alice)
 		switch env.T {
 		case protocol.TCombat, protocol.TError:
-			t.Fatalf("réponse inattendue à une action hors combat: %s", env.T)
+			t.Fatalf("unexpected response to an action outside a fight: %s", env.T)
 		case protocol.TChat:
 			var ch protocol.Chat
 			if err := env.Payload(&ch); err != nil {
@@ -380,7 +380,7 @@ func TestCombatActionValidation(t *testing.T) {
 			}
 		}
 	}
-	t.Fatal("chat non reçu")
+	t.Fatal("chat not received")
 }
 
 func TestRejectsBadAndDuplicateNames(t *testing.T) {
@@ -389,7 +389,7 @@ func TestRejectsBadAndDuplicateNames(t *testing.T) {
 	bad := dial(t, url)
 	send(t, bad, protocol.TLogin, reg("x"))
 	if env := recv(t, bad); env.T != protocol.TError {
-		t.Fatalf("attendu error, reçu %q", env.T)
+		t.Fatalf("expected error, got %q", env.T)
 	}
 
 	a := dial(t, url)
@@ -399,7 +399,7 @@ func TestRejectsBadAndDuplicateNames(t *testing.T) {
 	dup := dial(t, url)
 	send(t, dup, protocol.TLogin, reg("carol"))
 	if env := recv(t, dup); env.T != protocol.TError {
-		t.Fatalf("doublon accepté: %q", env.T)
+		t.Fatalf("duplicate accepted: %q", env.T)
 	}
 }
 
@@ -408,7 +408,7 @@ func TestFirstMessageMustBeLogin(t *testing.T) {
 	c := dial(t, url)
 	send(t, c, protocol.TChatSend, protocol.ChatSend{Text: "hi"})
 	if env := recv(t, c); env.T != protocol.TError {
-		t.Fatalf("attendu error, reçu %q", env.T)
+		t.Fatalf("expected error, got %q", env.T)
 	}
 }
 
@@ -436,7 +436,7 @@ func TestHealthAndStatsEndpoints(t *testing.T) {
 	login(t, url, "bob")
 
 	var st Stats
-	waitUntil(t, "joueurs comptés dans /stats", func() bool {
+	waitUntil(t, "players counted in /stats", func() bool {
 		r, err := http.Get(ts.URL + "/stats")
 		if err != nil {
 			return false
@@ -448,7 +448,7 @@ func TestHealthAndStatsEndpoints(t *testing.T) {
 		return json.NewDecoder(r.Body).Decode(&st) == nil && st.Players == 2 && st.Ticks > 0
 	})
 	if st.TickMaxMS < 0 || st.TickTotalMS < st.TickMaxMS {
-		t.Fatalf("durées incohérentes: %+v", st)
+		t.Fatalf("inconsistent durations: %+v", st)
 	}
 }
 
@@ -462,12 +462,12 @@ func TestNPCActionValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(e.Msg, "voler") {
-		t.Fatalf("erreur: %q", e.Msg)
+		t.Fatalf("error: %q", e.Msg)
 	}
 
-	// Action valide hors dialogue: ignorée, sans réponse. L'ordre des messages
-	// d'une session étant garanti, le chat envoyé ensuite doit arriver sans
-	// dialogue ni erreur avant lui.
+	// Valid action outside a dialogue: ignored, no response. Since the message order
+	// of a session is guaranteed, the chat sent afterwards must arrive with no
+	// dialogue or error before it.
 	for _, a := range []string{"buy", "sell", "heal", "leave"} {
 		send(t, alice, protocol.TNPCAction, protocol.NPCAction{Action: a})
 	}
@@ -476,7 +476,7 @@ func TestNPCActionValidation(t *testing.T) {
 		env := recv(t, alice)
 		switch env.T {
 		case protocol.TNPC, protocol.TError:
-			t.Fatalf("réponse inattendue à une action hors dialogue: %s", env.T)
+			t.Fatalf("unexpected response to an action outside a dialogue: %s", env.T)
 		case protocol.TChat:
 			var ch protocol.Chat
 			if err := env.Payload(&ch); err != nil {
@@ -490,7 +490,7 @@ func TestNPCActionValidation(t *testing.T) {
 			}
 		}
 	}
-	t.Fatal("chat non reçu")
+	t.Fatal("chat not received")
 }
 
 func TestPingGetsPongAndSnapshotCountsOnline(t *testing.T) {
@@ -510,10 +510,10 @@ func TestPingGetsPongAndSnapshotCountsOnline(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("le compteur de joueurs en ligne n'a jamais atteint 2")
+	t.Fatal("the online players counter never reached 2")
 }
 
-// loginLang ouvre une session avec la langue donnée.
+// loginLang opens a session with the given language.
 func loginLang(t *testing.T, url, name, lang string) *websocket.Conn {
 	t.Helper()
 	c := dial(t, url)
@@ -527,8 +527,8 @@ func loginLang(t *testing.T, url, name, lang string) *websocket.Conn {
 func TestServerSpeaksTheClientsLanguage(t *testing.T) {
 	url := newTestServer(t)
 
-	// Erreurs de connexion: anglais, français par défaut et pour une langue inconnue.
-	for lang, want := range map[string]string{"en": "invalid username", "": "pseudo invalide", "tlh": "pseudo invalide"} {
+	// Login errors: French on request, English by default and for an unknown language.
+	for lang, want := range map[string]string{"fr": "pseudo invalide", "": "invalid username", "tlh": "invalid username"} {
 		c := dial(t, url)
 		lg := reg("x")
 		lg.Lang = lang
@@ -538,11 +538,11 @@ func TestServerSpeaksTheClientsLanguage(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !strings.Contains(e.Msg, want) {
-			t.Errorf("langue %q: %q, attendu %q", lang, e.Msg, want)
+			t.Errorf("language %q: %q, expected %q", lang, e.Msg, want)
 		}
 	}
 
-	// Erreurs de chat et aide.
+	// Chat errors and help.
 	en := loginLang(t, url, "alice", "en")
 	send(t, en, protocol.TChatSend, protocol.ChatSend{Text: "/w nobody hi"})
 	var e protocol.Error
@@ -550,7 +550,7 @@ func TestServerSpeaksTheClientsLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(e.Msg, "player not found") {
-		t.Errorf("erreur de chuchotement: %q", e.Msg)
+		t.Errorf("whisper error: %q", e.Msg)
 	}
 	time.Sleep(250 * time.Millisecond)
 	send(t, en, protocol.TChatSend, protocol.ChatSend{Text: "/help"})
@@ -563,10 +563,10 @@ func TestServerSpeaksTheClientsLanguage(t *testing.T) {
 			goto helpOK
 		}
 	}
-	t.Fatal("aide anglaise non reçue")
+	t.Fatal("English help not received")
 helpOK:
 
-	// Les annonces suivent la langue de chaque destinataire.
+	// Announcements follow each recipient's language.
 	fr := loginLang(t, url, "bernard", "fr")
 	for range 10 {
 		var ch protocol.Chat
@@ -575,7 +575,7 @@ helpOK:
 		}
 		if ch.Channel == protocol.ChanSystem && strings.Contains(ch.Text, "bernard") {
 			if ch.Text != "bernard has joined the world" {
-				t.Fatalf("annonce anglaise: %q", ch.Text)
+				t.Fatalf("English announcement: %q", ch.Text)
 			}
 			break
 		}
@@ -588,16 +588,16 @@ helpOK:
 		}
 		if ch.Channel == protocol.ChanSystem && strings.Contains(ch.Text, "carole") {
 			if ch.Text != "carole a rejoint le monde" {
-				t.Fatalf("annonce française: %q", ch.Text)
+				t.Fatalf("French announcement: %q", ch.Text)
 			}
 			return
 		}
 	}
-	t.Fatal("annonce non reçue")
+	t.Fatal("announcement not received")
 }
 
-// sheet complète un personnage de test avec une fiche neutre (guerrier, caractéristiques à 10) pour
-// qu'il ne repasse pas par la création ; ses PV maximaux restent calculés d'après son niveau.
+// sheet completes a test character with a neutral sheet (warrior, abilities at 10) so
+// that it does not go through creation again; its max HP stay computed from its level.
 func sheet(c store.Character) store.Character {
 	if c.Scores == [6]int{} {
 		c.Class, c.Scores = "warrior", [6]int{10, 10, 10, 10, 10, 10}

@@ -1,4 +1,4 @@
-// Commande server : lance le serveur de jeu.
+// Command server: runs the game server.
 package main
 
 import (
@@ -23,41 +23,41 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "erreur:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
-	addr := flag.String("addr", ":8080", "adresse d'écoute")
-	seedFlag := flag.Int64("seed", 1, "seed du monde (à la création de la base; ensuite elle est fixée)")
-	dbPath := flag.String("db", "sudo-dragon.db", "fichier de base de données SQLite")
-	tlsCert := flag.String("tls-cert", "", "certificat TLS (active wss://)")
-	tlsKey := flag.String("tls-key", "", "clé privée TLS")
-	loginWorkers := flag.Int("login-workers", 0, "hachages de mot de passe simultanés (0 = moitié des cœurs); borne le débit de connexion")
-	pprofAddr := flag.String("pprof", "", "adresse d'écoute du profilage (ex. 127.0.0.1:6060); vide = désactivé")
-	maxReg := flag.Int("max-registrations", 10, "créations de compte par heure et par adresse IP (0 = illimité)")
+	addr := flag.String("addr", ":8080", "listen address")
+	seedFlag := flag.Int64("seed", 1, "world seed (when the database is created; it is fixed afterwards)")
+	dbPath := flag.String("db", "sudo-dragon.db", "SQLite database file")
+	tlsCert := flag.String("tls-cert", "", "TLS certificate (enables wss://)")
+	tlsKey := flag.String("tls-key", "", "TLS private key")
+	loginWorkers := flag.Int("login-workers", 0, "concurrent password hashes (0 = half the cores); caps the login throughput")
+	pprofAddr := flag.String("pprof", "", "profiling listen address (e.g. 127.0.0.1:6060); empty = disabled")
+	maxReg := flag.Int("max-registrations", 10, "account creations per hour and per IP address (0 = unlimited)")
 
-	// Dialogues de PNJ par modèle de langage. La clé d'API se donne par la variable
-	// d'environnement MISTRAL_API_KEY, jamais en option.
+	// NPC dialogues through a language model. The API key is given through the
+	// MISTRAL_API_KEY environment variable, never as an option.
 	var lo llmOptions
-	flag.StringVar(&lo.Mode, "llm", "auto", "dialogues de PNJ par modèle de langage : auto (si MISTRAL_API_KEY est définie), on (exige la clé) ou off")
-	flag.StringVar(&lo.Model, "llm-model", "", "modèle de chat (défaut : "+llm.DefaultModel+") ; les noms changent, voir la documentation du fournisseur")
-	flag.StringVar(&lo.ModerationModel, "llm-moderation-model", "", "modèle de modération (défaut : "+llm.DefaultModerationModel+")")
-	flag.StringVar(&lo.BaseURL, "llm-base-url", "", "adresse de l'API (développement : faux serveur local) ; vide = API officielle")
-	flag.IntVar(&lo.DailyTokens, "llm-daily-tokens", 0, "budget de jetons par jour UTC (0 = défaut : 1 000 000)")
-	flag.IntVar(&lo.Workers, "llm-workers", 0, "appels simultanés au fournisseur (0 = défaut : 4)")
+	flag.StringVar(&lo.Mode, "llm", "auto", "NPC dialogues through a language model: auto (if MISTRAL_API_KEY is set), on (requires the key) or off")
+	flag.StringVar(&lo.Model, "llm-model", "", "chat model (default: "+llm.DefaultModel+"); names change, see the provider's documentation")
+	flag.StringVar(&lo.ModerationModel, "llm-moderation-model", "", "moderation model (default: "+llm.DefaultModerationModel+")")
+	flag.StringVar(&lo.BaseURL, "llm-base-url", "", "API address (development: local fake server); empty = official API")
+	flag.IntVar(&lo.DailyTokens, "llm-daily-tokens", 0, "token budget per UTC day (0 = default: 1,000,000)")
+	flag.IntVar(&lo.Workers, "llm-workers", 0, "concurrent calls to the provider (0 = default: 4)")
 
-	// Commandes de l'opérateur sur la mémoire des PNJ ; le serveur n'est pas lancé.
-	loreList := flag.Bool("lore-list", false, "affiche les présentations de joueurs enregistrées, puis quitte")
-	loreAccount := flag.String("lore-account", "", "avec -lore-list : se limite à ce compte")
-	lorePurge := flag.String("lore-purge", "", "supprime présentations et souvenirs : account:NOM ou place:RX,RY, puis quitte")
-	waresList := flag.Bool("wares-list", false, "affiche les étalages générés des forgerons et armuriers, puis quitte")
-	waresReset := flag.String("wares-reset", "", "efface l'étalage d'un vendeur (RX,RY,RANG ; voir -wares-list) pour qu'il soit régénéré, puis quitte")
+	// Operator commands on NPC memory; the server is not started.
+	loreList := flag.Bool("lore-list", false, "print the recorded player introductions, then exit")
+	loreAccount := flag.String("lore-account", "", "with -lore-list: restrict to this account")
+	lorePurge := flag.String("lore-purge", "", "delete introductions and memories: account:NAME or place:RX,RY, then exit")
+	waresList := flag.Bool("wares-list", false, "print the generated wares of blacksmiths and armorers, then exit")
+	waresReset := flag.String("wares-reset", "", "delete a vendor's wares (RX,RY,RANK; see -wares-list) so they are regenerated, then exit")
 	flag.Parse()
 
 	if (*tlsCert == "") != (*tlsKey == "") {
-		return errors.New("-tls-cert et -tls-key vont ensemble")
+		return errors.New("-tls-cert and -tls-key go together")
 	}
 	seedSet := false
 	flag.Visit(func(f *flag.Flag) { seedSet = seedSet || f.Name == "seed" })
@@ -70,7 +70,7 @@ func run() error {
 	}
 	st, err := store.Open(*dbPath, storeOpts...)
 	if err != nil {
-		return fmt.Errorf("ouverture de %s: %w", *dbPath, err)
+		return fmt.Errorf("opening %s: %w", *dbPath, err)
 	}
 	defer st.Close()
 
@@ -100,8 +100,8 @@ func run() error {
 	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}
 
 	if *pprofAddr != "" {
-		// Serveur séparé et à part: le profilage ne doit jamais être exposé sur
-		// l'adresse publique du jeu. À lier à localhost.
+		// Separate, standalone server: profiling must never be exposed on
+		// the game's public address. Bind it to localhost.
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
 		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
@@ -110,16 +110,16 @@ func run() error {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 		go func() {
 			if err := http.ListenAndServe(*pprofAddr, mux); err != nil {
-				log.Error("profilage", "err", err)
+				log.Error("profiling", "err", err)
 			}
 		}()
-		log.Info("profilage actif", "addr", *pprofAddr)
+		log.Info("profiling enabled", "addr", *pprofAddr)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Dialogues de PNJ : branchés avant le démarrage de la boucle de jeu.
+	// NPC dialogues: wired in before the game loop starts.
 	talker, err := setupTalker(ctx, lo, st, wld, log, os.Getenv)
 	if err != nil {
 		return err
@@ -128,8 +128,8 @@ func run() error {
 		srv.SetTalker(talker)
 	}
 
-	// Arrêt en trois temps: plus de nouvelles connexions, la boucle de jeu
-	// sauvegarde tous les joueurs en s'arrêtant, puis l'écrivain vide sa file.
+	// Shutdown in three steps: no more new connections, the game loop
+	// saves all players as it stops, then the writer drains its queue.
 	gameDone := make(chan struct{})
 	go func() { srv.Run(ctx); close(gameDone) }()
 	go func() {
@@ -139,7 +139,7 @@ func run() error {
 		_ = hs.Shutdown(sctx)
 	}()
 
-	log.Info("serveur démarré", "addr", *addr, "seed", seed, "db", *dbPath, "tls", *tlsCert != "")
+	log.Info("server started", "addr", *addr, "seed", seed, "db", *dbPath, "tls", *tlsCert != "")
 	if *tlsCert != "" {
 		err = hs.ListenAndServeTLS(*tlsCert, *tlsKey)
 	} else {
@@ -157,19 +157,19 @@ func run() error {
 
 	<-gameDone
 	if talker != nil {
-		talker.Wait() // les demandes en cours se terminent avant la fermeture de la base
+		talker.Wait() // in-flight requests finish before the database is closed
 	}
 	if err := persister.Close(); err != nil {
-		return fmt.Errorf("des sauvegardes n'ont pas pu être écrites: %w", err)
+		return fmt.Errorf("some saves could not be written: %w", err)
 	}
-	log.Info("arrêt propre, données enregistrées")
+	log.Info("clean shutdown, data saved")
 	return nil
 }
 
-// resolveSeed détermine la seed et la version du générateur du monde, et les fixe dans la
-// base. Changer de seed sur une base existante est refusé: les positions sauvegardées
-// pointeraient vers un autre terrain (eau, montagne…). Une base sans version de générateur
-// est un monde d'avant le versionnage: elle reste en v1; un nouveau monde prend la dernière.
+// resolveSeed determines the world seed and generator version, and pins them in the
+// database. Changing the seed on an existing database is refused: saved positions
+// would point to different terrain (water, mountain...). A database without a generator version
+// is a pre-versioning world: it stays on v1; a new world takes the latest.
 func resolveSeed(st *store.Store, flagSeed int64, flagSet bool) (seed int64, gen int, err error) {
 	stored, ok, err := st.Meta("seed")
 	if err != nil {
@@ -186,18 +186,18 @@ func resolveSeed(st *store.Store, flagSeed int64, flagSet bool) (seed int64, gen
 	}
 	seed, err = strconv.ParseInt(stored, 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("seed corrompue dans la base (%q): %w", stored, err)
+		return 0, 0, fmt.Errorf("corrupted seed in the database (%q): %w", stored, err)
 	}
 	if flagSet && flagSeed != seed {
-		return 0, 0, fmt.Errorf("la base a été créée avec la seed %d; refus de démarrer avec -seed %d "+
-			"(les positions sauvegardées seraient incohérentes). Utilisez une autre base (-db) pour un nouveau monde", seed, flagSeed)
+		return 0, 0, fmt.Errorf("the database was created with seed %d; refusing to start with -seed %d "+
+			"(saved positions would be inconsistent). Use another database (-db) for a new world", seed, flagSeed)
 	}
 	gen = world.GenV1
 	if g, ok, err := st.Meta("gen"); err != nil {
 		return 0, 0, err
 	} else if ok {
 		if gen, err = strconv.Atoi(g); err != nil {
-			return 0, 0, fmt.Errorf("version de générateur corrompue dans la base (%q): %w", g, err)
+			return 0, 0, fmt.Errorf("corrupted generator version in the database (%q): %w", g, err)
 		}
 	}
 	return seed, gen, nil

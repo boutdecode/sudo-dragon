@@ -33,7 +33,7 @@ func TestValidKillQuest(t *testing.T) {
 		t.Fatalf("%+v", q)
 	}
 	if q.Reward.Gold != 60 || q.Reward.XP != 10 || q.Reward.Potions != 1 || q.Reward.Note != "Mes remerciements" {
-		t.Fatalf("récompense: %+v", q.Reward)
+		t.Fatalf("reward: %+v", q.Reward)
 	}
 }
 
@@ -47,37 +47,37 @@ func TestRewardIsClampedWhateverTheModelSays(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lo, hi := RewardBounds(50, false) // 5 loups × 10 XP
+		lo, hi := RewardBounds(50, false) // 5 wolves × 10 XP
 		r := q.Reward
 		if r.Gold < lo.Gold || r.Gold > hi.Gold || r.XP > hi.XP || r.Potions > hi.Potions || r.XP < 0 || r.Potions < 0 {
-			t.Errorf("%+v → %+v hors bornes [%+v, %+v]", tc, r, lo, hi)
+			t.Errorf("%+v → %+v out of bounds [%+v, %+v]", tc, r, lo, hi)
 		}
 	}
 }
 
 func TestRejectedProposals(t *testing.T) {
 	bad := map[string]func(*Proposal, *Context){
-		"espèce inventée":      func(p *Proposal, _ *Context) { p.Species = "dragon" },
-		"espèce de garnison":   func(p *Proposal, _ *Context) { p.Species = "warlord" },
-		"trop peu":             func(p *Proposal, _ *Context) { p.Count = 2 },
-		"trop":                 func(p *Proposal, _ *Context) { p.Count = 9999 },
-		"négatif":              func(p *Proposal, _ *Context) { p.Count = -3 },
-		"type inconnu":         func(p *Proposal, _ *Context) { p.Type = "livrer" },
-		"titre vide":           func(p *Proposal, _ *Context) { p.Title = "  " },
-		"histoire vide":        func(p *Proposal, _ *Context) { p.Story = "" },
-		"lien":                 func(p *Proposal, _ *Context) { p.Story = "Allez sur http://exemple.net" },
-		"adresse dans la note": func(p *Proposal, _ *Context) { p.Note = "écrivez à moi@exemple.fr" },
-		"boss niveau 1":        func(p *Proposal, c *Context) { p.Type = "boss"; c.BossAround = true; c.Level = 1 },
-		"boss sans forteresse": func(p *Proposal, c *Context) { p.Type = "boss"; c.Level = 20 },
-		"lieu inconnu":         func(p *Proposal, _ *Context) { p.Type = "reach"; p.Place = "Atlantide" },
-		"lieu du donneur":      func(p *Proposal, _ *Context) { p.Type = "reach"; p.Place = "Tourelle" },
-		"type vide":            func(p *Proposal, _ *Context) { p.Type = "" },
+		"made-up species":       func(p *Proposal, _ *Context) { p.Species = "dragon" },
+		"garrison species":      func(p *Proposal, _ *Context) { p.Species = "warlord" },
+		"too few":               func(p *Proposal, _ *Context) { p.Count = 2 },
+		"too many":              func(p *Proposal, _ *Context) { p.Count = 9999 },
+		"negative":              func(p *Proposal, _ *Context) { p.Count = -3 },
+		"unknown type":          func(p *Proposal, _ *Context) { p.Type = "livrer" },
+		"empty title":           func(p *Proposal, _ *Context) { p.Title = "  " },
+		"empty story":           func(p *Proposal, _ *Context) { p.Story = "" },
+		"link":                  func(p *Proposal, _ *Context) { p.Story = "Allez sur http://exemple.net" },
+		"address in the note":   func(p *Proposal, _ *Context) { p.Note = "écrivez à moi@exemple.fr" },
+		"boss level 1":          func(p *Proposal, c *Context) { p.Type = "boss"; c.BossAround = true; c.Level = 1 },
+		"boss without fortress": func(p *Proposal, c *Context) { p.Type = "boss"; c.Level = 20 },
+		"unknown place":         func(p *Proposal, _ *Context) { p.Type = "reach"; p.Place = "Atlantide" },
+		"giver's place":         func(p *Proposal, _ *Context) { p.Type = "reach"; p.Place = "Tourelle" },
+		"empty type":            func(p *Proposal, _ *Context) { p.Type = "" },
 	}
 	for name, mutate := range bad {
 		p, c := killProposal(), ctx()
 		mutate(&p, &c)
 		if _, err := Validate(p, c); err == nil {
-			t.Errorf("%s : proposition acceptée", name)
+			t.Errorf("%s: proposal accepted", name)
 		}
 	}
 }
@@ -106,7 +106,7 @@ func TestTextIsSanitized(t *testing.T) {
 	}
 	for _, s := range []string{q.Title, q.Story} {
 		if strings.ContainsAny(s, "\x1b\x00\t‮​") {
-			t.Errorf("texte non nettoyé : %q", s)
+			t.Errorf("text not cleaned: %q", s)
 		}
 	}
 }
@@ -118,55 +118,55 @@ func TestAdvanceReadyAndExpiry(t *testing.T) {
 	}
 	q.Advance(10)
 	if q.State != Ready || q.Progress != 5 {
-		t.Fatalf("la progression doit s'arrêter à l'objectif : %+v", q)
+		t.Fatalf("progress must stop at the objective: %+v", q)
 	}
 	if q.Advance(1) {
-		t.Fatal("une quête prête ne progresse plus")
+		t.Fatal("a ready quest no longer progresses")
 	}
 	if q.Expired(q.CreatedAt.Add(Lifetime-time.Minute)) || !q.Expired(q.CreatedAt.Add(Lifetime+time.Minute)) {
-		t.Fatal("expiration")
+		t.Fatal("expiry")
 	}
 	q.State = Done
 	if q.Expired(q.CreatedAt.Add(2 * Lifetime)) {
-		t.Fatal("une quête rendue n'expire pas")
+		t.Fatal("a completed quest does not expire")
 	}
 }
 
 func TestReputationTiersAndDiscount(t *testing.T) {
 	for pts, want := range map[int]string{0: "Inconnu", 2: "Inconnu", 3: "Connu", 8: "Estimé", 15: "Honoré", 99: "Honoré"} {
 		if TierName(pts) != want {
-			t.Errorf("%d points → %s, attendu %s", pts, TierName(pts), want)
+			t.Errorf("%d points → %s, want %s", pts, TierName(pts), want)
 		}
 	}
 	if NextTier(0) != 3 || NextTier(7) != 1 || NextTier(15) != 0 {
 		t.Error("NextTier")
 	}
 	if Discount(100, 0) != 100 || Discount(100, 8) != 80 || Discount(100, 15) != 60 || Discount(1, 15) != 1 || Discount(0, 15) != 0 {
-		t.Errorf("remises: %d %d %d", Discount(100, 0), Discount(100, 8), Discount(100, 15))
+		t.Errorf("discounts: %d %d %d", Discount(100, 0), Discount(100, 8), Discount(100, 15))
 	}
 	q := Quest{Tier: 3}
 	if q.ReputationGain() != 4 || (Quest{Tier: 0}).ReputationGain() != 2 {
-		t.Error("gain de réputation")
+		t.Error("reputation gain")
 	}
 }
 
 func TestNegativeReputationTiers(t *testing.T) {
 	for pts, want := range map[int]string{-1: "Inconnu", -4: "Inconnu", -5: "Suspect", -9: "Suspect", -10: "Recherché", -20: "Recherché"} {
 		if TierName(pts) != want {
-			t.Errorf("%d points → %s, attendu %s", pts, TierName(pts), want)
+			t.Errorf("%d points → %s, want %s", pts, TierName(pts), want)
 		}
 	}
 	if IsWanted(-9) || !IsWanted(-10) || !IsWanted(MinReputation) || IsWanted(0) {
 		t.Error("IsWanted")
 	}
 	if NextTier(-3) != 0 {
-		t.Error("pas de palier suivant pour une réputation négative")
+		t.Error("no next tier for a negative reputation")
 	}
 	if Discount(100, -15) != 100 {
-		t.Error("pas de remise pour un hors-la-loi")
+		t.Error("no discount for an outlaw")
 	}
 	if TierLabel(i18n.FR, -12) == TierLabel(i18n.FR, 0) || TierLabel(i18n.EN, -12) == TierLabel(i18n.FR, -12) {
-		t.Error("libellés des paliers négatifs")
+		t.Error("negative tier labels")
 	}
 }
 
@@ -179,13 +179,13 @@ func FuzzValidate(f *testing.F) {
 			return
 		}
 		if q.Title == "" || q.Story == "" || strings.ContainsAny(q.Title+q.Story+q.Reward.Note, "\x1b\x00") {
-			t.Fatalf("quête incohérente : %+v", q)
+			t.Fatalf("inconsistent quest: %+v", q)
 		}
 		if q.Reward.Gold < 0 || q.Reward.XP < 0 || q.Reward.Potions < 0 || q.Reward.Potions > 3 || q.Reward.Gold > 2000 {
-			t.Fatalf("récompense hors bornes : %+v", q.Reward)
+			t.Fatalf("reward out of bounds: %+v", q.Reward)
 		}
 		if q.Need() < 1 || q.Need() > MaxCount {
-			t.Fatalf("objectif incohérent : %+v", q.Objective)
+			t.Fatalf("inconsistent objective: %+v", q.Objective)
 		}
 	})
 }
@@ -202,33 +202,33 @@ func TestDungeonQuests(t *testing.T) {
 		t.Fatal(err)
 	}
 	if q.Objective != (Objective{Kind: Dungeon, Species: "lich", Count: 1, Target: target}) || q.State != Active || q.Need() != 1 {
-		t.Errorf("objectif: %+v", q)
+		t.Errorf("objective: %+v", q)
 	}
 	diff := 150 + 50*2
 	lo, hi := RewardBounds(diff, true)
 	if q.Reward.Gold != hi.Gold || q.Reward.XP != hi.XP || q.Reward.Potions != hi.Potions || hi.Potions != 3 || lo.Gold != diff/2 {
-		t.Errorf("récompense %+v, bornes %+v / %+v", q.Reward, lo, hi)
+		t.Errorf("reward %+v, bounds %+v / %+v", q.Reward, lo, hi)
 	}
 	if q.Tier != 3 {
-		t.Errorf("palier de quête %d", q.Tier)
+		t.Errorf("quest tier %d", q.Tier)
 	}
 
 	for name, mutate := range map[string]func(*Proposal, *Context){
-		"nom inconnu":     func(p *Proposal, _ *Context) { p.Place = "autre" },
-		"sans nom":        func(p *Proposal, _ *Context) { p.Place = "" },
-		"niveau trop bas": func(_ *Proposal, c *Context) { c.Level = DungeonLevel(2) - 1 },
-		"aucun donjon":    func(_ *Proposal, c *Context) { c.Dungeons = nil },
+		"unknown name":  func(p *Proposal, _ *Context) { p.Place = "autre" },
+		"no name":       func(p *Proposal, _ *Context) { p.Place = "" },
+		"level too low": func(_ *Proposal, c *Context) { c.Level = DungeonLevel(2) - 1 },
+		"no dungeon":    func(_ *Proposal, c *Context) { c.Dungeons = nil },
 	} {
 		pp, cc := p, c
 		mutate(&pp, &cc)
 		if _, err := Validate(pp, cc); err == nil {
-			t.Errorf("%s: acceptée", name)
+			t.Errorf("%s: accepted", name)
 		}
 	}
-	// Un lieu ordinaire n'est pas un donjon, et inversement.
+	// An ordinary place is not a dungeon, and vice versa.
 	reach := Proposal{Title: "t", Story: "s", Type: "reach", Place: "crypte de test"}
 	if _, err := Validate(reach, c); err == nil {
-		t.Error("un donjon ne se rejoint pas comme un lieu")
+		t.Error("a dungeon is not reached like a place")
 	}
 }
 
@@ -236,12 +236,12 @@ func TestDungeonLevelGrowsWithTier(t *testing.T) {
 	prev := 0
 	for tier := 1; tier <= 5; tier++ {
 		if l := DungeonLevel(tier); l <= prev {
-			t.Errorf("palier %d: niveau %d", tier, l)
+			t.Errorf("tier %d: level %d", tier, l)
 		} else {
 			prev = l
 		}
 	}
 	if DungeonLevel(0) != DungeonLevel(1) || DungeonLevel(9) != DungeonLevel(5) {
-		t.Error("les paliers hors bornes devraient être ramenés dans [1, 5]")
+		t.Error("out-of-range tiers should be brought back into [1, 5]")
 	}
 }

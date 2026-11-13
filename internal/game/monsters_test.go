@@ -9,18 +9,18 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// testRat est le vrai rat du jeu: les tests suivent ainsi son équilibrage.
+// testRat is the game's real rat: the tests thus follow its balancing.
 var testRat = func() species {
 	for _, s := range speciesList {
 		if s.Kind == "rat" {
 			return s
 		}
 	}
-	panic("espèce rat introuvable")
+	panic("rat species not found")
 }()
 
-// freeWalkable renvoie la case praticable et libre la plus proche de from parmi
-// celles à au moins d tuiles (recherche en anneaux de rayon croissant).
+// freeWalkable returns the closest walkable, free tile to from among
+// those at least d tiles away (search in rings of growing radius).
 func freeWalkable(t *testing.T, g *Game, from world.Pos, d int) world.Pos {
 	t.Helper()
 	for r := d; r <= d+80; r++ {
@@ -36,7 +36,7 @@ func freeWalkable(t *testing.T, g *Game, from world.Pos, d int) world.Pos {
 			}
 		}
 	}
-	t.Fatal("aucune case libre")
+	t.Fatal("no free tile")
 	return world.Pos{}
 }
 
@@ -44,36 +44,36 @@ func TestSpeciesTable(t *testing.T) {
 	seen := map[string]bool{}
 	for _, s := range speciesList {
 		if seen[s.Kind] {
-			t.Errorf("espèce en double: %s", s.Kind)
+			t.Errorf("duplicate species: %s", s.Kind)
 		}
 		seen[s.Kind] = true
-		if !s.Garrison && !s.Dungeon && !s.Habitat.Walkable() { // une garnison ou un monstre de donjon n'a pas d'habitat: il a un poste
-			t.Errorf("%s: habitat non praticable", s.Kind)
+		if !s.Garrison && !s.Dungeon && !s.Habitat.Walkable() { // a garrison or dungeon monster has no habitat: it has a post
+			t.Errorf("%s: habitat not walkable", s.Kind)
 		}
 		if (s.Garrison || s.Dungeon) && s.Habitat != 0 {
-			t.Errorf("%s: une espèce de garnison ou de donjon ne doit pas avoir d'habitat", s.Kind)
+			t.Errorf("%s: a garrison or dungeon species must not have a habitat", s.Kind)
 		}
 		if s.Garrison && s.Dungeon {
-			t.Errorf("%s: garnison ou donjon, pas les deux", s.Kind)
+			t.Errorf("%s: garrison or dungeon, not both", s.Kind)
 		}
 		if s.Boss && !s.Garrison && !s.Dungeon {
-			t.Errorf("%s: un boss est forcément une espèce de garnison ou de donjon", s.Kind)
+			t.Errorf("%s: a boss is necessarily a garrison or dungeon species", s.Kind)
 		}
 		if s.MoveEvery <= MoveCooldown {
-			t.Errorf("%s: doit être plus lent qu'un joueur (MoveEvery=%d)", s.Kind, s.MoveEvery)
+			t.Errorf("%s: must be slower than a player (MoveEvery=%d)", s.Kind, s.MoveEvery)
 		}
 		if s.Aggro < 0 {
-			t.Errorf("%s: aggro négatif", s.Kind)
+			t.Errorf("%s: negative aggro", s.Kind)
 		}
 		if s.name(i18n.FR) == "" || s.HP <= 0 || s.Dmg.Max() <= 0 || s.fighter().Def < 8 || s.Hit < 0 || s.XP <= 0 {
-			t.Errorf("%s: caractéristiques de combat invalides: %+v", s.Kind, s)
+			t.Errorf("%s: invalid combat stats: %+v", s.Kind, s)
 		}
 		if SpeciesName(i18n.FR, s.Kind) != s.name(i18n.FR) {
-			t.Errorf("%s: SpeciesName incohérent", s.Kind)
+			t.Errorf("%s: inconsistent SpeciesName", s.Kind)
 		}
 	}
 	if spawnHalfW > keepHalfW || spawnHalfH > keepHalfH {
-		t.Error("la zone d'apparition doit être dans la zone de conservation")
+		t.Error("the spawn area must be within the retention area")
 	}
 }
 
@@ -84,21 +84,21 @@ func TestSpawnOutsideViewOnHabitat(t *testing.T) {
 		g.spawnMonsters()
 	}
 	if len(g.monsters) == 0 {
-		t.Fatal("aucun monstre n'est apparu")
+		t.Fatal("no monster spawned")
 	}
 	for _, m := range g.monsters {
 		if inBox(m.pos, p.pos, protocol.ViewHalfW+spawnViewMargin, protocol.ViewHalfH+spawnViewMargin) {
-			t.Errorf("%s apparu dans la vue: %v (joueur %v)", m.sp.Kind, m.pos, p.pos)
+			t.Errorf("%s spawned in view: %v (player %v)", m.sp.Kind, m.pos, p.pos)
 		}
 		if tile := g.World.At(m.pos.X, m.pos.Y); tile != m.sp.Habitat {
-			t.Errorf("%s apparu sur %v, habitat %v", m.sp.Kind, tile, m.sp.Habitat)
+			t.Errorf("%s spawned on %v, habitat %v", m.sp.Kind, tile, m.sp.Habitat)
 		}
 		if g.monsterAt[m.pos] != m.id {
-			t.Errorf("index monsterAt incohérent pour %d", m.id)
+			t.Errorf("inconsistent monsterAt index for %d", m.id)
 		}
 	}
 	if len(g.monsterAt) != len(g.monsters) {
-		t.Errorf("monsterAt=%d, monsters=%d (deux monstres sur une case ?)", len(g.monsterAt), len(g.monsters))
+		t.Errorf("monsterAt=%d, monsters=%d (two monsters on one tile?)", len(g.monsterAt), len(g.monsters))
 	}
 }
 
@@ -109,7 +109,7 @@ func TestSpawnCapPerPlayer(t *testing.T) {
 		g.spawnMonsters()
 	}
 	if n := g.monstersAround(p.pos); n > maxPerPlayer {
-		t.Fatalf("%d monstres autour d'un joueur, maximum %d", n, maxPerPlayer)
+		t.Fatalf("%d monsters around a player, maximum %d", n, maxPerPlayer)
 	}
 }
 
@@ -129,11 +129,11 @@ func TestSpawnDeterministicWithSeededRng(t *testing.T) {
 	}
 	a, b := run(), run()
 	if len(a) != len(b) {
-		t.Fatalf("%d vs %d monstres", len(a), len(b))
+		t.Fatalf("%d vs %d monsters", len(a), len(b))
 	}
 	for i := range a {
 		if a[i] != b[i] {
-			t.Fatalf("divergence au monstre %d: %v vs %v", i, a[i], b[i])
+			t.Fatalf("divergence at monster %d: %v vs %v", i, a[i], b[i])
 		}
 	}
 }
@@ -142,7 +142,7 @@ func TestMonsterChasesPlayerAndStopsAdjacent(t *testing.T) {
 	g := newGame()
 	p, _ := joinRec(g, "a")
 	start := world.Pos{X: p.pos.X, Y: p.pos.Y}
-	// Place le monstre à 4 cases sur une ligne libre si possible, sinon cherche.
+	// Place the monster 4 tiles away on a free line if possible, otherwise search.
 	var mpos world.Pos
 	found := false
 	for dx := 4; dx >= 2 && !found; dx-- {
@@ -158,7 +158,7 @@ func TestMonsterChasesPlayerAndStopsAdjacent(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Skip("pas de ligne libre à l'est du spawn")
+		t.Skip("no free line east of the spawn")
 	}
 	m := g.addMonster(testRat, mpos)
 
@@ -167,15 +167,15 @@ func TestMonsterChasesPlayerAndStopsAdjacent(t *testing.T) {
 		g.stepMonsters(g.sortedMonsterIDs())
 		d := cheb(m.pos, p.pos)
 		if d > last {
-			t.Fatalf("le monstre s'éloigne (%d -> %d)", last, d)
+			t.Fatalf("the monster moves away (%d -> %d)", last, d)
 		}
 		last = d
 		if m.pos == p.pos {
-			t.Fatal("le monstre est entré sur la case du joueur")
+			t.Fatal("the monster entered the player's tile")
 		}
 	}
 	if last != 1 {
-		t.Fatalf("distance finale %d, attendu 1 (au contact)", last)
+		t.Fatalf("final distance %d, expected 1 (in contact)", last)
 	}
 }
 
@@ -187,7 +187,7 @@ func TestMonsterIgnoresPlayerOutOfAggro(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		g.stepMonsters(g.sortedMonsterIDs())
 		if cheb(m.pos, m.home) > wanderLeash {
-			t.Fatalf("le monstre a quitté sa laisse: %v (origine %v)", m.pos, m.home)
+			t.Fatalf("the monster left its leash: %v (origin %v)", m.pos, m.home)
 		}
 	}
 }
@@ -203,17 +203,17 @@ func TestWanderMovesAndRespectsLeash(t *testing.T) {
 			moved = true
 		}
 		if cheb(m.pos, m.home) > wanderLeash {
-			t.Fatalf("hors laisse: %v", m.pos)
+			t.Fatalf("off leash: %v", m.pos)
 		}
 		if !g.World.At(m.pos.X, m.pos.Y).Walkable() {
-			t.Fatalf("monstre sur terrain infranchissable: %v", m.pos)
+			t.Fatalf("monster on impassable terrain: %v", m.pos)
 		}
 	}
 	if !moved {
-		t.Fatal("le monstre n'a jamais bougé")
+		t.Fatal("the monster never moved")
 	}
 	if g.monsterAt[m.pos] != m.id || len(g.monsterAt) != 1 {
-		t.Fatalf("index monsterAt incohérent: %v", g.monsterAt)
+		t.Fatalf("inconsistent monsterAt index: %v", g.monsterAt)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestMonsterSpeed(t *testing.T) {
 	g := newGame()
 	pos := g.World.FindSpawn()
 	m := g.addMonster(testRat, pos)
-	// Sur N ticks, il ne peut pas faire plus de N/MoveEvery+1 pas.
+	// Over N ticks, it cannot take more than N/MoveEvery+1 steps.
 	steps, prev := 0, m.pos
 	const ticks = 600
 	for i := 0; i < ticks; i++ {
@@ -232,7 +232,7 @@ func TestMonsterSpeed(t *testing.T) {
 		}
 	}
 	if max := ticks/testRat.MoveEvery + 1; steps > max {
-		t.Fatalf("%d pas en %d ticks, maximum %d", steps, ticks, max)
+		t.Fatalf("%d steps in %d ticks, maximum %d", steps, ticks, max)
 	}
 }
 
@@ -242,18 +242,18 @@ func TestDespawnFar(t *testing.T) {
 	near := g.addMonster(testRat, freeWalkable(t, g, p.pos, 3))
 	far := g.addMonster(testRat, freeWalkable(t, g, world.Pos{X: p.pos.X + keepHalfW + 10, Y: p.pos.Y}, 0))
 	if inBox(far.pos, p.pos, keepHalfW, keepHalfH) {
-		t.Skip("case lointaine introuvable")
+		t.Skip("distant tile not found")
 	}
 	farID, nearID := far.id, near.id
 	g.despawnFar()
 	if _, ok := g.monsters[farID]; ok {
-		t.Error("le monstre lointain devrait avoir disparu")
+		t.Error("the distant monster should have disappeared")
 	}
 	if _, ok := g.monsters[nearID]; !ok {
-		t.Error("le monstre proche ne devrait pas avoir disparu")
+		t.Error("the nearby monster should not have disappeared")
 	}
 	if len(g.monsterAt) != 1 {
-		t.Errorf("monsterAt=%d, attendu 1", len(g.monsterAt))
+		t.Errorf("monsterAt=%d, expected 1", len(g.monsterAt))
 	}
 }
 
@@ -262,7 +262,7 @@ func TestDespawnAllWhenNoPlayers(t *testing.T) {
 	g.addMonster(testRat, g.World.FindSpawn())
 	g.despawnFar()
 	if len(g.monsters) != 0 || len(g.monsterAt) != 0 {
-		t.Fatal("sans joueur, tous les monstres doivent disparaître")
+		t.Fatal("without a player, all monsters must disappear")
 	}
 }
 
@@ -277,7 +277,7 @@ func TestMonsterBlocksPlayer(t *testing.T) {
 	g.move(p.id, dx, dy)
 	g.step()
 	if p.pos != before {
-		t.Fatalf("le joueur a traversé un monstre: %v", p.pos)
+		t.Fatalf("the player walked through a monster: %v", p.pos)
 	}
 }
 
@@ -286,14 +286,14 @@ func TestSnapshotContainsOnlyVisibleMonsters(t *testing.T) {
 	p, r := joinRec(g, "a")
 	near := g.addMonster(testRat, freeWalkable(t, g, p.pos, 3))
 	if !inBox(near.pos, p.pos, protocol.ViewHalfW, protocol.ViewHalfH) {
-		t.Skip("case proche hors vue")
+		t.Skip("nearby tile out of view")
 	}
 	g.addMonster(testRat, freeWalkable(t, g, world.Pos{X: p.pos.X + protocol.ViewHalfW + 5, Y: p.pos.Y}, 0))
 
 	g.step()
 	snap := r.last()
 	if len(snap.Monsters) != 1 || snap.Monsters[0].ID != near.id || snap.Monsters[0].Kind != "rat" {
-		t.Fatalf("monstres du snapshot: %+v", snap.Monsters)
+		t.Fatalf("snapshot monsters: %+v", snap.Monsters)
 	}
 }
 
@@ -305,7 +305,7 @@ func TestMonsterMoveTriggersSnapshot(t *testing.T) {
 	g.step()
 	n := len(r.snaps)
 
-	// Force un déplacement du monstre.
+	// Force a monster move.
 	var moved bool
 	for _, d := range dirs8 {
 		if g.moveMonster(m, d[0], d[1]) {
@@ -314,11 +314,11 @@ func TestMonsterMoveTriggersSnapshot(t *testing.T) {
 		}
 	}
 	if !moved {
-		t.Skip("monstre coincé")
+		t.Skip("monster stuck")
 	}
 	g.sendSnapshot(p, g.sortedMonsterIDs())
 	if len(r.snaps) != n+1 {
-		t.Fatal("le déplacement d'un monstre visible devrait produire un instantané")
+		t.Fatal("the move of a visible monster should produce a snapshot")
 	}
 }
 
@@ -329,6 +329,6 @@ func TestStepRunsMonsterLoopPeriodically(t *testing.T) {
 		g.step()
 	}
 	if len(g.monsters) == 0 {
-		t.Fatal("la boucle de jeu n'a fait apparaître aucun monstre")
+		t.Fatal("the game loop spawned no monster")
 	}
 }

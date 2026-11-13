@@ -1,8 +1,8 @@
-// Code généré à partir des catalogues de travail; à éditer à la main ensuite.
+// Code generated from the working catalogues; to be edited by hand afterwards.
 
 package i18n
 
-// fr est le catalogue français (langue source).
+// fr is the French catalogue.
 var fr = map[string]string{
 	"bag.potions":              "Potions : %d",
 	"bag.worn":                 "Équipé",

@@ -16,18 +16,18 @@ import (
 	"github.com/kevin/ascii-adventure/internal/store"
 )
 
-// Création du personnage : tant qu'un compte n'a pas de caractéristiques, la connexion reste dans
-// cette phase, avant la boucle de jeu. Le serveur lance les dés ; le client choisit quelle
-// caractéristique relancer (3 relances en tout) et la classe. Rien n'est enregistré avant la
-// validation : une déconnexion donne un nouveau tirage à la connexion suivante.
+// Character creation: as long as an account has no abilities, the connection stays in
+// this phase, before the game loop. The server rolls the dice; the client chooses which
+// ability to reroll (3 rerolls in total) and the class. Nothing is saved before
+// confirmation: a disconnection gives a new roll at the next login.
 
 const (
-	createIdle     = 10 * time.Minute // inactivité tolérée pendant la création
-	createMaxExcha = 40               // messages lus au plus (bornes le travail d'un client bavard)
+	createIdle     = 10 * time.Minute // inactivity tolerated during creation
+	createMaxExcha = 40               // messages read at most (bounds the work of a chatty client)
 )
 
-// ensureStarter donne l'arme de départ de la classe (équipée) à un personnage qui n'a encore aucune arme
-// dans son sac. Sans effet sinon, ni pour un personnage sans classe.
+// ensureStarter gives the class's starting weapon (equipped) to a character who has no weapon yet
+// in their bag. No effect otherwise, nor for a character without a class.
 func ensureStarter(c *store.Character, lang i18n.Lang) {
 	class := hero.Class(c.Class)
 	if !class.Valid() {
@@ -40,7 +40,7 @@ func ensureStarter(c *store.Character, lang i18n.Lang) {
 	}
 	w, err := c.Gear.Add(gear.Starter(lang, class))
 	if err != nil {
-		return // sac plein d'autres objets: le joueur s'équipera chez le forgeron
+		return // bag full of other items: the player will equip something at the blacksmith
 	}
 	if c.Gear.Worn == nil {
 		c.Gear.Worn = map[gear.Slot]int64{}
@@ -49,9 +49,9 @@ func ensureStarter(c *store.Character, lang i18n.Lang) {
 	c.GearDirty = true
 }
 
-var errCreateAborted = errors.New("création abandonnée")
+var errCreateAborted = errors.New("creation aborted")
 
-// needsCreation indique si le personnage chargé doit passer par la création.
+// needsCreation tells whether the loaded character must go through creation.
 func needsCreation(ch *store.Character) bool {
 	return ch == nil || !hero.Scores(ch.Scores).Set()
 }
@@ -64,15 +64,15 @@ func createView(c hero.Creation, level int) protocol.Create {
 	return out
 }
 
-// runCreation mène la création jusqu'à la validation et renvoie le personnage complété (déjà
-// enregistré). Un personnage existant garde tout sauf ses PV, sa classe et ses caractéristiques.
+// runCreation drives the creation up to confirmation and returns the completed character (already
+// saved). An existing character keeps everything except their HP, class and abilities.
 func (s *Server) runCreation(ctx context.Context, conn *websocket.Conn, name string, lang i18n.Lang, ch *store.Character) (*store.Character, error) {
 	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	cr := hero.NewCreation(rng)
 	var c store.Character
 	if ch != nil {
 		c = *ch
-	} else { // nouveau compte: mêmes débuts qu'avant la création (potions de départ, point d'apparition)
+	} else { // new account: same start as before creation existed (starting potions, spawn point)
 		spawn := s.Game.World.FindSpawn()
 		c = store.Character{Potions: combat.NewStats().Potions, X: spawn.X, Y: spawn.Y}
 	}
@@ -107,14 +107,14 @@ func (s *Server) runCreation(ctx context.Context, conn *websocket.Conn, name str
 		}
 		switch a.Action {
 		case protocol.CreateReroll:
-			cr.Reroll(hero.Ability(a.Index), rng) // indice invalide ou relances épuisées: sans effet
+			cr.Reroll(hero.Ability(a.Index), rng) // invalid index or rerolls exhausted: no effect
 			if err := send(); err != nil {
 				return nil, err
 			}
 		case protocol.CreateConfirm:
 			class := hero.Class(a.Class)
 			if !class.Valid() {
-				if err := send(); err != nil { // classe inconnue: on redonne le tirage
+				if err := send(); err != nil { // unknown class: send the roll again
 					return nil, err
 				}
 				continue
@@ -125,7 +125,7 @@ func (s *Server) runCreation(ctx context.Context, conn *websocket.Conn, name str
 			c.Mana = hero.MaxMana(class, cr.Scores, level)
 			c.HP = c.MaxHP
 			ensureStarter(&c, lang)
-			s.Log.Info("personnage créé", "name", name, "class", c.Class, "scores", c.Scores)
+			s.Log.Info("character created", "name", name, "class", c.Class, "scores", c.Scores)
 			return &c, nil
 		}
 	}

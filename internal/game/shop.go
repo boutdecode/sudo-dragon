@@ -16,22 +16,22 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Équipement : boutique des forgerons et armuriers, sac, équipement porté.
-// Le modèle de langage n'invente que l'étalage (voir npcai.Stock, validé par gear.Validate) ; achats,
-// reventes, niveau requis et bonus de combat sont décidés ici.
+// Equipment: shop of blacksmiths and armourers, bag, worn equipment.
+// The language model only invents the stock display (see npcai.Stock, validated by gear.Validate); purchases,
+// resales, required level and combat bonuses are decided here.
 
-// Stocker est l'interface facultative d'un Talker capable de fournir l'assortiment d'un vendeur.
+// Stocker is the optional interface of a Talker able to supply a vendor's assortment.
 type Stocker interface {
 	Stock(req npcai.StockRequest, done func(npcai.StockReply))
 }
 
 const (
-	maxShopLines    = 9   // les achats se choisissent par un chiffre de 1 à 9
-	stockRetryTicks = 600 // 60 s avant de redemander un étalage qui a échoué
+	maxShopLines    = 9   // purchases are chosen with a digit from 1 to 9
+	stockRetryTicks = 600 // 60 s before asking again for a stock that failed
 	maxStockedWares = 256
 )
 
-// shopWares est l'étalage généré (ou relu) d'un vendeur, avec un numéro de révision.
+// shopWares is a vendor's generated (or re-read) stock, with a revision number.
 type shopWares struct {
 	wares gear.Wares
 	rev   int
@@ -39,14 +39,14 @@ type shopWares struct {
 
 func isVendor(k world.NPCKind) bool { return k == world.NPCSmith || k == world.NPCArmorer }
 
-// vendorContext donne ce que le serveur autorise à vendre à ce vendeur dans son lieu.
+// vendorContext gives what the server allows this vendor to sell in its place.
 func (g *Game) vendorContext(npc world.NPC) gear.Context {
 	c := gear.Context{Slots: gear.SlotsOfSmith, MaxTier: 3, Origin: npc.Key()}
 	if npc.Kind == world.NPCArmorer {
 		c.Slots = gear.SlotsOfArmorer
 	}
-	// Plus la région est lointaine, plus l'assortiment monte en rang: le plancher suit la tranche de niveaux.
-	// La tranche de départ garde son plafond d'avant (3).
+	// The further the region, the higher the assortment rank: the floor follows the level bracket.
+	// The starting bracket keeps its previous ceiling (3).
 	rp := npc.Region
 	band := world.LevelBand(world.LevelAt(rp.X*world.RegionSize+world.RegionSize/2, rp.Y*world.RegionSize+world.RegionSize/2))
 	c.MaxTier = min(c.MaxTier+band, gear.MaxTier)
@@ -57,10 +57,10 @@ func (g *Game) vendorContext(npc world.NPC) gear.Context {
 	return c
 }
 
-// waresFor renvoie l'étalage à montrer au joueur : celui généré s'il existe, sinon le repli déterministe,
-// en demandant (une fois) la génération au modèle si possible. rev vaut 0 pour le repli.
+// waresFor returns the stock to show the player: the generated one if it exists, otherwise the deterministic fallback,
+// asking (once) the model for generation if possible. rev is 0 for the fallback.
 func (g *Game) waresFor(p *player, npc world.NPC) (w gear.Wares, rev int) {
-	if npc.Index >= world.CaravanIndexBase && npc.Index < world.CaravanIndexBase+2 { // marchand ambulant
+	if npc.Index >= world.CaravanIndexBase && npc.Index < world.CaravanIndexBase+2 { // travelling merchant
 		return g.caravanWares(p, npc)
 	}
 	key := npc.Key()
@@ -71,7 +71,7 @@ func (g *Game) waresFor(p *player, npc world.NPC) (w gear.Wares, rev int) {
 	return gear.Fallback(key, g.vendorContext(npc), p.lang), 0
 }
 
-// requestStock demande l'étalage au service de langage (jamais bloquant, une demande à la fois par vendeur).
+// requestStock asks the language service for the stock (never blocking, one request at a time per vendor).
 func (g *Game) requestStock(p *player, npc world.NPC) {
 	st, ok := g.Talker.(Stocker)
 	key := npc.Key()
@@ -96,7 +96,7 @@ func (g *Game) requestStock(p *player, npc world.NPC) {
 	})
 }
 
-// stockArrived enregistre l'étalage reçu et met à jour les joueurs qui regardent ce vendeur.
+// stockArrived records the received stock and updates the players looking at this vendor.
 func (g *Game) stockArrived(key world.NPCKey, rep npcai.StockReply) {
 	delete(g.stockPending, key)
 	if rep.Failure != npcai.OK || len(rep.Wares.Items) == 0 {
@@ -117,9 +117,9 @@ func (g *Game) stockArrived(key world.NPCKey, rep npcai.StockReply) {
 	}
 }
 
-// ---------------------------------------------------------------- calculs et présentation
+// ---------------------------------------------------------------- computations and presentation
 
-// weaponKind est le style d'attaque de l'arme portée (mêlée à mains nues).
+// weaponKind is the attack style of the worn weapon (melee when bare-handed).
 func (p *player) weaponKind() hero.Kind {
 	if w := p.inv.Equipped().Weapon; w != nil {
 		return w.Kind.OrMelee()
@@ -144,7 +144,7 @@ func (g *Game) itemInfo(l i18n.Lang, p *player, it gear.Item) protocol.ItemInfo 
 	return info
 }
 
-// sendBag envoie le sac complet (et les notifications en attente).
+// sendBag sends the complete bag (and pending notifications).
 func (g *Game) sendBag(p *player) {
 	if p.sendBagMsg == nil {
 		return
@@ -168,13 +168,13 @@ func (g *Game) sendBag(p *player) {
 	p.sendBagMsg(b)
 }
 
-// gearChanged note un changement durable et met le sac à jour.
+// gearChanged records a durable change and updates the bag.
 func (g *Game) gearChanged(p *player) {
 	p.gearDirty = true
 	g.sendBag(p)
 }
 
-// itemDetail décrit un objet à vendre : bonus (avec la différence par rapport à l'objet porté) et niveau requis.
+// itemDetail describes an item for sale: bonuses (with the difference from the worn item) and required level.
 func (g *Game) itemDetail(l i18n.Lang, p *player, it gear.Item) string {
 	cur := p.inv.Equipped().Get(it.Slot)
 	if it.Slot == gear.Weapon {
@@ -197,7 +197,7 @@ func (g *Game) itemDetail(l i18n.Lang, p *player, it gear.Item) string {
 	return i18n.T(l, "gear.detail.def", i18n.T(l, "gear.slot."+string(it.Slot)), it.Def, delta, red, it.MinLevel())
 }
 
-// shopOffers construit les offres d'un vendeur : l'étalage, puis la revente.
+// shopOffers builds a vendor's offers: the stock, then resale.
 func (g *Game) shopOffers(p *player, npc world.NPC) []protocol.NPCOffer {
 	w, rev := g.waresFor(p, npc)
 	var offers []protocol.NPCOffer
@@ -219,7 +219,7 @@ func (g *Game) shopOffers(p *player, npc world.NPC) []protocol.NPCOffer {
 	return offers
 }
 
-// sellable renvoie les objets du sac qui peuvent être revendus (non portés), les plus chers d'abord.
+// sellable returns the bag items that can be resold (not worn), most expensive first.
 func (g *Game) sellable(p *player) []gear.Item {
 	var out []gear.Item
 	for _, it := range p.inv.Items {
@@ -247,9 +247,9 @@ func (g *Game) sellOffers(p *player) []protocol.NPCOffer {
 	return offers
 }
 
-// ---------------------------------------------------------------- achats et reventes
+// ---------------------------------------------------------------- purchases and resales
 
-// buyItem achète l'objet de l'étalage désigné par arg ("révision.identifiant").
+// buyItem buys the stock item designated by arg ("revision.identifier").
 func (g *Game) buyItem(p *player, npc world.NPC, arg string) []string {
 	revStr, idStr, ok := strings.Cut(arg, ".")
 	rev, errR := strconv.Atoi(revStr)
@@ -259,7 +259,7 @@ func (g *Game) buyItem(p *player, npc world.NPC, arg string) []string {
 	}
 	w, curRev := g.waresFor(p, npc)
 	if rev != curRev {
-		return []string{i18n.T(p.lang, "shop.changed")} // l'étalage a été renouvelé pendant la visite
+		return []string{i18n.T(p.lang, "shop.changed")} // the stock was renewed during the visit
 	}
 	var item *gear.Item
 	for i := range w.Items {
@@ -280,7 +280,7 @@ func (g *Game) buyItem(p *player, npc world.NPC, arg string) []string {
 	bought := *item
 	bought.Origin = npc.Key()
 	added, err := p.inv.Add(bought)
-	if err != nil { // ne devrait pas arriver : la place a été vérifiée
+	if err != nil { // should not happen: space was checked
 		p.stats.AddGold(price)
 		return []string{i18n.T(p.lang, "shop.bag_full")}
 	}
@@ -289,7 +289,7 @@ func (g *Game) buyItem(p *player, npc world.NPC, arg string) []string {
 	return []string{i18n.T(p.lang, "shop.bought", added.Name, price)}
 }
 
-// sellItem revend un objet non porté du sac.
+// sellItem resells an unworn item from the bag.
 func (g *Game) sellItem(p *player, arg string) []string {
 	id, err := strconv.ParseInt(arg, 10, 64)
 	it := p.inv.Find(id)
@@ -308,9 +308,9 @@ func (g *Game) sellItem(p *player, arg string) []string {
 	return []string{i18n.T(p.lang, "shop.sold", gone.Name, gone.SellPrice())}
 }
 
-// ---------------------------------------------------------------- équiper
+// ---------------------------------------------------------------- equipping
 
-// GearAct applique une action sur le sac (appelée depuis la session réseau).
+// GearAct applies an action on the bag (called from the network session).
 func (g *Game) GearAct(id int, action string, itemID int64, slot string) {
 	g.do(func() { g.gearAct(id, action, itemID, slot) })
 }
@@ -358,7 +358,7 @@ func (g *Game) gearAct(id int, action string, itemID int64, slot string) {
 	}
 }
 
-// GearActNow est GearAct appliqué directement (goroutine de jeu, tests).
+// GearActNow is GearAct applied directly (game goroutine, tests).
 func (g *Game) GearActNow(p *player, action string, itemID int64, slot string) {
 	g.gearAct(p.id, action, itemID, slot)
 }

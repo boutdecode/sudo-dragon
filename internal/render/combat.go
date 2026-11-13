@@ -8,8 +8,8 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// monsterArt contient les sprites de l'écran de combat: ASCII pur, chaque
-// sprite a des lignes de même largeur (vérifié par un test).
+// monsterArt holds the sprites of the combat screen: pure ASCII, each
+// sprite has lines of equal width (checked by a test).
 var monsterArt = map[string][]string{
 	"rat": {
 		`   _    __ `,
@@ -126,7 +126,7 @@ var monsterArt = map[string][]string{
 	},
 }
 
-// npcArt contient les portraits des PNJ pour l'écran de dialogue.
+// npcArt holds the NPC portraits for the dialogue screen.
 var npcArt = map[world.NPCKind][]string{
 	world.NPCMerchant: {
 		`   ,---.   `,
@@ -194,7 +194,7 @@ var unknownNPCArt = []string{
 	`    / \    `,
 }
 
-// NPCArt renvoie le portrait d'un PNJ, en lignes de même largeur.
+// NPCArt returns the portrait of an NPC, as lines of equal width.
 func NPCArt(kind world.NPCKind) []string {
 	art, ok := npcArt[kind]
 	if !ok {
@@ -203,7 +203,7 @@ func NPCArt(kind world.NPCKind) []string {
 	return padArt(art)
 }
 
-// NPCArtStyle renvoie le style de couleur d'un PNJ.
+// NPCArtStyle returns the colour style of an NPC.
 func NPCArtStyle(kind world.NPCKind) lipgloss.Style { return npcLookOf(kind).style }
 
 var unknownArt = []string{
@@ -214,7 +214,7 @@ var unknownArt = []string{
 	`   ?     `,
 }
 
-// MonsterArt renvoie le sprite de combat d'une espèce, en lignes de même largeur.
+// MonsterArt returns the combat sprite of a species, as lines of equal width.
 func MonsterArt(kind string) []string {
 	art, ok := monsterArt[kind]
 	if !ok {
@@ -223,7 +223,7 @@ func MonsterArt(kind string) []string {
 	return padArt(art)
 }
 
-// padArt complète les lignes d'un sprite à la largeur de la plus longue.
+// padArt pads the lines of a sprite to the width of the longest one.
 func padArt(art []string) []string {
 	width := 0
 	for _, l := range art {
@@ -236,5 +236,5 @@ func padArt(art []string) []string {
 	return out
 }
 
-// ArtStyle renvoie le style de couleur d'une espèce.
+// ArtStyle returns the colour style of a species.
 func ArtStyle(kind string) lipgloss.Style { return lookOf(kind).style }

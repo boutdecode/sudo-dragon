@@ -1,4 +1,4 @@
-// Commande client : lance le client TUI.
+// Command client: runs the TUI client.
 package main
 
 import (
@@ -13,8 +13,8 @@ import (
 )
 
 func main() {
-	// La langue du système (LC_ALL, LC_MESSAGES, LANGUAGE, LANG) sert aussi à rédiger
-	// l'aide des options; -lang la remplace pour la partie.
+	// The system language (LC_ALL, LC_MESSAGES, LANGUAGE, LANG) is also used to write
+	// the option help; -lang overrides it for the game.
 	sys := i18n.Detect()
 	addr := flag.String("addr", "ws://localhost:8080/ws", i18n.T(sys, "cli.addr"))
 	name := flag.String("name", "", i18n.T(sys, "cli.name"))

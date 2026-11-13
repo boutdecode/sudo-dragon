@@ -1,12 +1,11 @@
-// Package textsafe nettoie les textes écrits par des joueurs ou par un modèle
-// de langage avant de les afficher dans un terminal ou de les stocker.
+// Package textsafe cleans texts written by players or by a language model
+// before they are displayed in a terminal or stored.
 //
-// Un terminal interprète certains caractères comme des commandes: séquences
-// d'échappement (déplacer le curseur, effacer l'écran, changer le titre de la
-// fenêtre, écrire dans le presse-papiers…), marques bidirectionnelles qui
-// inversent l'ordre d'affichage, caractères invisibles qui cachent du texte.
-// Un texte non nettoyé permettrait à un joueur d'abîmer l'écran des autres ou
-// de falsifier ce qu'ils lisent.
+// A terminal interprets some characters as commands: escape sequences
+// (move the cursor, clear the screen, change the window title, write to the
+// clipboard...), bidirectional marks that reverse the display order,
+// invisible characters that hide text. An uncleaned text would let a player
+// mess up other players' screens or falsify what they read.
 package textsafe
 
 import (
@@ -15,21 +14,21 @@ import (
 	"unicode/utf8"
 )
 
-// maxCombining est le nombre maximal de signes combinants consécutifs conservés
-// après un caractère de base: au-delà, c'est du « zalgo » qui déborde sur les
-// lignes voisines.
+// maxCombining is the maximum number of consecutive combining marks kept
+// after a base character: beyond that it is "zalgo" text that spills onto
+// neighboring lines.
 const maxCombining = 2
 
-// Clean renvoie s en une seule ligne de texte affichable sans risque:
-//   - séquences d'échappement ANSI (CSI, OSC…) entièrement retirées;
-//   - caractères de contrôle supprimés, tabulations et retours à la ligne
-//     (et séparateurs de ligne Unicode) remplacés par une espace;
-//   - caractères de mise en forme Unicode (bidirectionnels, largeur nulle,
-//     BOM…), usage privé et octets invalides UTF-8 supprimés;
-//   - signes combinants limités, espaces multiples réduites, bords rognés;
-//   - tronqué à maxRunes caractères si maxRunes > 0.
+// Clean returns s as a single line of text that is safe to display:
+//   - ANSI escape sequences (CSI, OSC...) removed entirely;
+//   - control characters removed, tabs and line breaks
+//     (and Unicode line separators) replaced by a space;
+//   - Unicode formatting characters (bidirectional, zero width,
+//     BOM...), private use and invalid UTF-8 bytes removed;
+//   - combining marks limited, multiple spaces collapsed, edges trimmed;
+//   - truncated to maxRunes characters if maxRunes > 0.
 //
-// Clean est idempotent: Clean(Clean(s, n), n) == Clean(s, n).
+// Clean is idempotent: Clean(Clean(s, n), n) == Clean(s, n).
 func Clean(s string, maxRunes int) string {
 	s = stripEscapes(s)
 
@@ -42,7 +41,7 @@ func Clean(s string, maxRunes int) string {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		i += size
 		if r == utf8.RuneError && size <= 1 {
-			continue // octet invalide
+			continue // invalid byte
 		}
 
 		switch {
@@ -78,7 +77,7 @@ func Clean(s string, maxRunes int) string {
 	return b.String()
 }
 
-// isSpace indique si r doit devenir une espace simple.
+// isSpace reports whether r must become a plain space.
 func isSpace(r rune) bool {
 	switch r {
 	case '\t', '\n', '\v', '\f', '\r', 0x85, '\u2028', '\u2029':
@@ -87,8 +86,8 @@ func isSpace(r rune) bool {
 	return unicode.Is(unicode.Zs, r)
 }
 
-// stripEscapes retire les séquences d'échappement ANSI complètes (ESC suivi de
-// CSI, OSC, DCS…), pour ne pas laisser de « [31m » visible une fois l'ESC supprimé.
+// stripEscapes removes complete ANSI escape sequences (ESC followed by
+// CSI, OSC, DCS...), so as not to leave a visible "[31m" once the ESC is removed.
 func stripEscapes(s string) string {
 	if !strings.ContainsAny(s, "\x1b\u0090\u009b\u009d\u009e\u009f") {
 		return s
@@ -103,7 +102,7 @@ func stripEscapes(s string) string {
 			i++
 		default:
 			r, size := utf8.DecodeRuneInString(s[i:])
-			if r == '\u009b' { // CSI sur 8 bits
+			if r == '\u009b' { // 8-bit CSI
 				i = skipCSI(s, i+size)
 				continue
 			}
@@ -114,12 +113,12 @@ func stripEscapes(s string) string {
 	return b.String()
 }
 
-// skipEscape renvoie l'index qui suit la séquence commençant par ESC en s[i].
+// skipEscape returns the index following the sequence starting with ESC at s[i].
 func skipEscape(s string, i int) int {
 	switch s[i+1] {
-	case '[': // CSI: paramètres, intermédiaires, octet final
+	case '[': // CSI: parameters, intermediates, final byte
 		return skipCSI(s, i+2)
-	case ']', 'P', 'X', '^', '_': // OSC, DCS, SOS, PM, APC: jusqu'à BEL ou ST (ESC \)
+	case ']', 'P', 'X', '^', '_': // OSC, DCS, SOS, PM, APC: up to BEL or ST (ESC \)
 		for j := i + 2; j < len(s); j++ {
 			if s[j] == 0x07 {
 				return j + 1
@@ -129,24 +128,24 @@ func skipEscape(s string, i int) int {
 			}
 		}
 		return len(s)
-	default: // séquence à deux octets (ESC c, ESC 7…)
+	default: // two-byte sequence (ESC c, ESC 7...)
 		return i + 2
 	}
 }
 
-// skipCSI saute les octets d'une séquence CSI à partir de s[i] (après « ESC [ »).
+// skipCSI skips the bytes of a CSI sequence starting at s[i] (after "ESC [").
 func skipCSI(s string, i int) int {
-	for i < len(s) && s[i] >= 0x30 && s[i] <= 0x3f { // paramètres
+	for i < len(s) && s[i] >= 0x30 && s[i] <= 0x3f { // parameters
 		i++
 	}
-	for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f { // intermédiaires
+	for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f { // intermediates
 		i++
 	}
-	if i < len(s) && s[i] >= 0x40 && s[i] <= 0x7e { // octet final
+	if i < len(s) && s[i] >= 0x40 && s[i] <= 0x7e { // final byte
 		i++
 	}
 	return i
 }
 
-// Valid indique si s est déjà propre pour la limite donnée (Clean ne change rien).
+// Valid reports whether s is already clean for the given limit (Clean changes nothing).
 func Valid(s string, maxRunes int) bool { return Clean(s, maxRunes) == s }

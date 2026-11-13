@@ -1,25 +1,25 @@
 package resource
 
-// Métiers de récolte: un par catégorie de ressource (bois: bûcheron, minerais: mineur, plantes: herboriste,
-// poissons: pêcheur). Le métier fixe la taille du sac de la catégorie et la chance de réussir une récolte, et
-// progresse à chaque réussite. L'expérience est stockée cumulée: le niveau s'en déduit.
+// Gathering jobs: one per resource category (wood: lumberjack, ore: miner, herbs: herbalist,
+// fish: fisherman). The job sets the bag size of the category and the chance of a successful gather, and
+// progresses with each success. Experience is stored cumulatively: the level is derived from it.
 
-// Réglages d'équilibrage.
+// Balancing settings.
 const (
-	MaxJobLevel  = 10 // niveau maximal d'un métier
-	baseCapacity = 5  // unités portées par catégorie au niveau 1
-	capPerLevel  = 3  // unités gagnées par niveau
-	baseChance   = 40 // pourcentage de réussite au niveau 1
-	chancePerLvl = 6  // pourcentage gagné par niveau
+	MaxJobLevel  = 10 // maximum level of a job
+	baseCapacity = 5  // units carried per category at level 1
+	capPerLevel  = 3  // units gained per level
+	baseChance   = 40 // success percentage at level 1
+	chancePerLvl = 6  // percentage gained per level
 	maxChance    = 95
-	xpPerTier    = 5  // XP par palier de la ressource récoltée
-	xpCurve      = 25 // XPToNext = xpCurve × niveau²
+	xpPerTier    = 5  // XP per tier of the gathered resource
+	xpCurve      = 25 // XPToNext = xpCurve × level²
 )
 
-// XPToNext est l'expérience à accumuler dans le niveau donné pour passer au suivant.
+// XPToNext is the experience to accumulate within the given level to reach the next one.
 func XPToNext(level int) int { return xpCurve * level * level }
 
-// LevelOf renvoie le niveau (1 à MaxJobLevel) d'un métier qui a cumulé xp points.
+// LevelOf returns the level (1 to MaxJobLevel) of a job that has accumulated xp points.
 func LevelOf(xp int) int {
 	level := 1
 	for level < MaxJobLevel && xp >= XPToNext(level) {
@@ -29,8 +29,8 @@ func LevelOf(xp int) int {
 	return level
 }
 
-// Progress renvoie le niveau, l'expérience acquise dans ce niveau et celle qu'il faut pour le suivant (0 au
-// niveau maximal).
+// Progress returns the level, the experience gained within that level and the amount needed for the next (0 at
+// max level).
 func Progress(xp int) (level, inLevel, next int) {
 	level = 1
 	for level < MaxJobLevel && xp >= XPToNext(level) {
@@ -43,13 +43,13 @@ func Progress(xp int) (level, inLevel, next int) {
 	return level, xp, XPToNext(level)
 }
 
-// Capacity est le nombre d'unités que le sac peut contenir pour une catégorie, au niveau donné.
+// Capacity is the number of units the bag can hold for a category, at the given level.
 func Capacity(level int) int { return baseCapacity + capPerLevel*(clampLevel(level)-1) }
 
-// Chance est la chance (en pourcentage) de réussir une récolte au niveau donné.
+// Chance is the chance (as a percentage) of a successful gather at the given level.
 func Chance(level int) int { return min(baseChance+chancePerLvl*(clampLevel(level)-1), maxChance) }
 
-// GainXP est l'expérience d'une récolte réussie sur une ressource du palier donné.
+// GainXP is the experience of a successful gather on a resource of the given tier.
 func GainXP(tier int) int { return xpPerTier * max(tier, 1) }
 
 func clampLevel(l int) int { return max(1, min(l, MaxJobLevel)) }

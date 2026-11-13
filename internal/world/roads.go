@@ -5,33 +5,33 @@ import (
 	"fmt"
 )
 
-// Routes entre lieux.
+// Roads between places.
 //
-// Deux régions voisines (côte à côte, pas en diagonale) qui contiennent chacune
-// une structure sont reliées par une route. Le tracé est un A* sur le terrain
-// brut (terrainAt), confiné aux deux régions: ainsi une région ne dépend que de
-// ses quatre voisines, et le lien A↔B est le même quel que soit l'ordre de
-// génération. Les routes ne touchent jamais l'emprise d'une structure (les
-// structures restent figées); elles s'arrêtent à son bord, sur le terrain dégagé
-// qui l'entoure, et rejoignent son chemin intérieur.
+// Two neighbouring regions (side by side, not diagonal) that each contain
+// a structure are linked by a road. The route is an A* over the raw terrain
+// (terrainAt), confined to the two regions: so a region depends only on
+// its four neighbours, and the A<->B link is the same whatever the generation
+// order. Roads never touch the footprint of a structure (structures
+// stay frozen); they stop at its edge, on the clear terrain
+// around it, and join its inner path.
 //
-// Une route traverse l'eau peu profonde (un pont: la tuile est simplement Road),
-// mais jamais l'eau profonde ni les montagnes.
+// A road crosses shallow water (a bridge: the tile is simply Road),
+// but never deep water or mountains.
 
-// roadKey identifie un lien; a est toujours la région ouest ou nord.
+// roadKey identifies a link; a is always the west or north region.
 type roadKey struct{ a, b RegionPos }
 
-// roadLink est le tracé d'un lien (nil s'il n'y en a pas).
+// roadLink is the route of a link (nil if there is none).
 type roadLink struct {
 	tiles map[Pos]struct{}
-	path  []Pos // les mêmes tuiles dans l'ordre, de la région a vers la région b (voir RoadRoutesNear)
+	path  []Pos // the same tiles in order, from region a to region b (see RoadRoutesNear)
 	key   roadKey
 }
 
-// roadCacheMax borne le cache de routes; au-delà, il est vidé et se reconstruit.
+// roadCacheMax bounds the road cache; beyond it, it is emptied and rebuilt.
 const roadCacheMax = 2048
 
-// roadCost est le coût d'une tuile de terrain pour le tracé (0: infranchissable).
+// roadCost is the cost of a terrain tile for the route (0: impassable).
 func roadCost(t Tile) int {
 	switch t {
 	case Plain, Sand:
@@ -56,9 +56,9 @@ func roadCost(t Tile) int {
 	return 0
 }
 
-// roadCostOf est roadCost pour ce monde. À partir de la v2, une route ne traverse plus l'eau (mer, lacs, mares):
-// seules les rivières se franchissent, par un pont (on fera des ports plus tard). En v1, les routes existantes
-// gardent leur pont sur l'eau peu profonde.
+// roadCostOf is roadCost for this world. From v2 onwards, a road no longer crosses water (sea, lakes, ponds):
+// only rivers can be crossed, by a bridge (ports will come later). In v1, the existing roads
+// keep their bridge over shallow water.
 func (w *World) roadCostOf(t Tile) int {
 	if t == Water && w.GenVersion >= GenV2 {
 		return 0
@@ -66,7 +66,7 @@ func (w *World) roadCostOf(t Tile) int {
 	return roadCost(t)
 }
 
-// roadsAround renvoie les liens touchant la région rp (au plus quatre).
+// roadsAround returns the links touching region rp (at most four).
 func (w *World) roadsAround(rp RegionPos) []*roadLink {
 	w.rmu.Lock()
 	defer w.rmu.Unlock()
@@ -93,7 +93,7 @@ func (w *World) roadsAround(rp RegionPos) []*roadLink {
 	return out
 }
 
-// onRoad indique si (x, y) appartient à l'un des liens.
+// onRoad tells whether (x, y) belongs to one of the links.
 func onRoad(links []*roadLink, x, y int) bool {
 	p := Pos{x, y}
 	for _, l := range links {
@@ -104,10 +104,10 @@ func onRoad(links []*roadLink, x, y int) bool {
 	return false
 }
 
-// outsideReach renvoie les tuiles de l'emprise accessibles depuis l'extérieur
-// (en passant par des tuiles Plain ou Road), et les points d'accroche possibles:
-// les chemins pour un village ou une ville, les cases devant une porte pour une
-// forteresse.
+// outsideReach returns the footprint tiles reachable from the outside
+// (through Plain or Road tiles), and the possible anchor points:
+// the paths for a village or a town, the tiles in front of a door for a
+// fortress.
 func (s *Structure) outsideReach() (reach map[Pos]bool, anchors []Pos) {
 	reach = make(map[Pos]bool)
 	open := func(p Pos) bool {
@@ -161,8 +161,8 @@ func (s *Structure) outsideReach() (reach map[Pos]bool, anchors []Pos) {
 	return reach, anchors
 }
 
-// pickAnchor choisit, parmi les points d'accroche, celui le plus proche de to
-// (et, à égalité, le plus petit, pour rester déterministe).
+// pickAnchor chooses, among the anchor points, the one closest to to
+// (and, on a tie, the smallest, to stay deterministic).
 func pickAnchor(reach map[Pos]bool, anchors []Pos, to Pos) (Pos, bool) {
 	if len(anchors) == 0 {
 		for p := range reach {
@@ -179,8 +179,8 @@ func pickAnchor(reach map[Pos]bool, anchors []Pos, to Pos) (Pos, bool) {
 	return best, ok
 }
 
-// buildRoad trace le lien entre deux régions voisines, ou renvoie nil. Appelée
-// avec rmu pris.
+// buildRoad draws the link between two neighbouring regions, or returns nil. Called
+// with rmu held.
 func (w *World) buildRoad(key roadKey) *roadLink {
 	sa, sb := w.structureForRegion(key.a), w.structureForRegion(key.b)
 	if sa == nil || sb == nil {
@@ -194,7 +194,7 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 		return nil
 	}
 
-	// Boîte de recherche: les deux régions.
+	// Search box: the two regions.
 	x0, y0 := key.a.X*RegionSize, key.a.Y*RegionSize
 	bw, bh := RegionSize, RegionSize
 	if key.b.X != key.a.X {
@@ -203,14 +203,14 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 		bh *= 2
 	}
 
-	// Une route ne traverse pas la case d'un point d'intérêt (voir poi.go) : elle la contournerait de toute façon à l'écran.
+	// A road does not cross the tile of a point of interest (see poi.go): it would go around it on screen anyway.
 	poiTiles := map[Pos]bool{}
 	for _, rp := range [2]RegionPos{key.a, key.b} {
 		for _, p := range w.POIsOfRegion(rp) {
 			poiTiles[p.Pos] = true
 		}
 	}
-	terrain := make([]int8, bw*bh) // 0: pas encore calculé, -1: infranchissable
+	terrain := make([]int8, bw*bh) // 0: not computed yet, -1: impassable
 	cost := func(x, y int) int {
 		p := Pos{x, y}
 		switch {
@@ -265,7 +265,7 @@ func (h roadHeap) Less(i, j int) bool {
 	if h[i].f != h[j].f {
 		return h[i].f < h[j].f
 	}
-	return h[i].g > h[j].g // à f égal, privilégier le plus avancé
+	return h[i].g > h[j].g // on equal f, favour the most advanced
 }
 func (h roadHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 func (h *roadHeap) Push(x any)   { *h = append(*h, x.(roadNode)) }
@@ -276,8 +276,8 @@ func (h *roadHeap) Pop() any {
 	return n
 }
 
-// astarRoad cherche le chemin de moindre coût (4 directions) de from à to dans
-// la boîte (x0, y0, bw, bh). cost renvoie 0 pour une tuile infranchissable.
+// astarRoad looks for the least-cost path (4 directions) from from to to within
+// the box (x0, y0, bw, bh). cost returns 0 for an impassable tile.
 func astarRoad(from, to Pos, x0, y0, bw, bh int, cost func(x, y int) int) []Pos {
 	idx := func(p Pos) int { return (p.Y-y0)*bw + (p.X - x0) }
 	inBox := func(p Pos) bool { return p.X >= x0 && p.X < x0+bw && p.Y >= y0 && p.Y < y0+bh }
@@ -335,9 +335,9 @@ func astarRoad(from, to Pos, x0, y0, bw, bh int, cost func(x, y int) int) []Pos 
 	return nil
 }
 
-// RoadTilesIn appelle fn pour chaque tuile de route entre régions dont les
-// coordonnées sont dans [x0, x1] x [y0, y1]. Sert à la carte du monde, où un
-// échantillonnage clairsemé raterait des routes larges d'une tuile.
+// RoadTilesIn calls fn for each road tile between regions whose
+// coordinates are within [x0, x1] x [y0, y1]. Used by the world map, where sparse
+// sampling would miss roads one tile wide.
 func (w *World) RoadTilesIn(x0, y0, x1, y1 int, fn func(Pos)) {
 	seen := make(map[*roadLink]bool)
 	a, b := RegionOf(x0, y0), RegionOf(x1, y1)
@@ -358,18 +358,18 @@ func (w *World) RoadTilesIn(x0, y0, x1, y1 int, fn func(Pos)) {
 	}
 }
 
-// RoadRoute est un lien routier entre deux lieux voisins, avec son tracé dans l'ordre.
+// RoadRoute is a road link between two neighbouring places, with its route in order.
 type RoadRoute struct {
-	ID   string    // identifiant stable « ax,ay>bx,by »
-	A, B RegionPos // A est la région ouest ou nord
-	Path []Pos     // cases de la route hors de l'emprise des lieux, de A vers B ; à ne pas modifier
+	ID   string    // stable identifier "ax,ay>bx,by"
+	A, B RegionPos // A is the west or north region
+	Path []Pos     // route tiles outside the footprint of the places, from A to B; do not modify
 
-	// Orient vaut 0 pour une liaison est-ouest et 1 pour une liaison nord-sud : avec A, il distingue les deux
-	// liaisons qui partent d'une même région.
+	// Orient is 0 for an east-west link and 1 for a north-south link: with A, it tells apart the two
+	// links leaving the same region.
 	Orient int
 }
 
-// RoadRoutesNear renvoie les liens routiers dont une case est à au plus r cases (Chebyshev) de (x, y).
+// RoadRoutesNear returns the road links one of whose tiles is at most r tiles (Chebyshev) from (x, y).
 func (w *World) RoadRoutesNear(x, y, r int) []RoadRoute {
 	seen := make(map[*roadLink]bool)
 	lo, hi := RegionOf(x-r, y-r), RegionOf(x+r, y+r)

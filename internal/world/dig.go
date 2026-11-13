@@ -2,19 +2,19 @@ package world
 
 import "slices"
 
-// Cases à creuser des cartes au trésor. Comme le reste du monde, elles sont ordinaires : rien n'indique la case sur la
-// carte. C'est la carte du joueur (voir game/treasure.go) qui en retient les coordonnées.
+// Dig spots of treasure maps. Like the rest of the world, they are ordinary: nothing on the map shows the
+// tile. It is the player's map (see game/treasure.go) that keeps its coordinates.
 
 const (
 	digSalt      = 8500
-	digMargin    = 6 // distance minimale de la case au bord de sa région
+	digMargin    = 6 // minimum distance from the tile to the edge of its region
 	digTries     = 32
-	digClearance = 3 // distance minimale à un point d'intérêt ou à une entrée de donjon
+	digClearance = 3 // minimum distance to a point of interest or to a dungeon entrance
 )
 
-// DigSpot cherche une case à creuser dans la région rp, tirée de nonce : du terrain naturel praticable sur 3×3, hors
-// de l'emprise d'un lieu (zone sûre comprise), du point de départ, d'un point d'intérêt et d'une entrée de donjon.
-// Seul le terrain brut compte, comme pour les points d'intérêt : la case peut se trouver sur une route.
+// DigSpot looks for a dig spot in region rp, drawn from nonce: natural walkable terrain over 3x3, outside
+// the footprint of a place (safe zone included), of the starting point, of a point of interest and of a dungeon entrance.
+// Only the raw terrain counts, as for points of interest: the tile may lie on a road.
 func (w *World) DigSpot(rp RegionPos, nonce uint64) (Pos, bool) {
 	rng := identityRNG(w.Seed, rp, digSalt+nonce%1_000_003)
 	anchor := w.spawnAnchor()

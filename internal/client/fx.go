@@ -13,38 +13,38 @@ import (
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
 
-// Effets visuels du combat: secousse de la zone de combat quand on est touché, de la colonne ennemie quand on
-// touche. L'animation est pilotée par des ticks et ne dépend que de l'état du modèle (donc testable).
+// Combat visual effects: shaking of the combat area when we are hit, of the enemy column when we
+// hit. The animation is driven by ticks and depends only on the model state (hence testable).
 const (
 	fxFrameEvery = 60 * time.Millisecond
-	fxFrames     = 6 // durée d'une secousse normale, en images
-	fxCritFrames = 9 // durée d'une secousse sur coup critique
+	fxFrames     = 6 // duration of a normal shake, in frames
+	fxCritFrames = 9 // duration of a shake on a critical hit
 	fxEnvOff     = "SUDO_DRAGON_NO_FX"
 )
 
-// fxState est l'animation en cours. frame >= frames: terminée.
+// fxState is the animation in progress. frame >= frames: finished.
 type fxState struct {
 	gen, frame, frames int
-	allAmp             int         // amplitude de la secousse de toute la zone (coup reçu), 0 = aucune
-	foeAmp             int         // amplitude de la secousse de la colonne ennemie (coup donné)
-	flashHP            bool        // les PV du joueur clignotent en rouge
-	hits               map[int]int // dégâts affichés par monstre touché
+	allAmp             int         // amplitude of the whole-area shake (hit received), 0 = none
+	foeAmp             int         // amplitude of the enemy column shake (hit dealt)
+	flashHP            bool        // the player's HP blink red
+	hits               map[int]int // damage shown per monster hit
 	crits              map[int]bool
 }
 
 func (f fxState) active() bool { return f.frame < f.frames }
 
-// shakeTickMsg avance l'animation; gen écarte les ticks d'une animation remplacée.
+// shakeTickMsg advances the animation; gen discards ticks from a replaced animation.
 type shakeTickMsg struct{ gen int }
 
 func shakeTick(gen int) tea.Cmd {
 	return tea.Tick(fxFrameEvery, func(time.Time) tea.Msg { return shakeTickMsg{gen} })
 }
 
-// fxDisabled dit si les effets sont coupés par l'environnement.
+// fxDisabled tells whether effects are turned off by the environment.
 func fxDisabled() bool { return os.Getenv(fxEnvOff) != "" }
 
-// startFx lance l'animation d'un tour de combat et renvoie la commande du premier tick (nil: rien à animer).
+// startFx starts the animation of a combat turn and returns the command for the first tick (nil: nothing to animate).
 func (m *Model) startFx(c protocol.Combat) tea.Cmd {
 	if m.noFX {
 		return nil
@@ -69,7 +69,7 @@ func (m *Model) startFx(c protocol.Combat) tea.Cmd {
 		}
 	}
 	if fx.allAmp == 0 && fx.foeAmp == 0 {
-		m.fx = fxState{gen: fx.gen, frame: 1, frames: 1} // rien à animer, mais les anciens ticks deviennent périmés
+		m.fx = fxState{gen: fx.gen, frame: 1, frames: 1} // nothing to animate, but the old ticks become stale
 		return nil
 	}
 	fx.frames = fxFrames
@@ -80,7 +80,7 @@ func (m *Model) startFx(c protocol.Combat) tea.Cmd {
 	return shakeTick(fx.gen)
 }
 
-// updateShake fait avancer l'animation d'un cran.
+// updateShake advances the animation by one step.
 func (m Model) updateShake(msg shakeTickMsg) (tea.Model, tea.Cmd) {
 	if msg.gen != m.fx.gen || !m.fx.active() {
 		return m, nil
@@ -92,8 +92,8 @@ func (m Model) updateShake(msg shakeTickMsg) (tea.Model, tea.Cmd) {
 	return m, shakeTick(m.fx.gen)
 }
 
-// shakeOffset donne le décalage (colonnes, lignes) à l'image frame d'une secousse d'amplitude amp qui dure frames
-// images: il alterne de signe et décroît jusqu'à 0.
+// shakeOffset gives the offset (columns, lines) at frame frame of a shake of amplitude amp lasting frames
+// frames: it alternates in sign and decays down to 0.
 func shakeOffset(frame, frames, amp int) (dx, dy int) {
 	if amp == 0 || frame >= frames {
 		return 0, 0
@@ -105,17 +105,17 @@ func shakeOffset(frame, frames, amp int) (dx, dy int) {
 	return mag, mag / 2
 }
 
-// allShake est le décalage courant de toute la zone de combat.
+// allShake is the current offset of the whole combat area.
 func (m Model) allShake() (dx, dy int) {
 	return shakeOffset(m.fx.frame, m.fx.frames, m.fx.allAmp)
 }
 
-// foeShake est le décalage courant de la colonne ennemie.
+// foeShake is the current offset of the enemy column.
 func (m Model) foeShake() (dx, dy int) {
 	return shakeOffset(m.fx.frame, m.fx.frames, m.fx.foeAmp)
 }
 
-// foeHitText est le texte de dégâts à afficher à côté d'un monstre touché ("-7", "-12 !").
+// foeHitText is the damage text to show next to a monster that was hit ("-7", "-12 !").
 func (m Model) foeHitText(i int) string {
 	if !m.fx.active() || m.fx.hits[i] == 0 {
 		return ""
@@ -126,11 +126,11 @@ func (m Model) foeHitText(i int) string {
 	return fmt.Sprintf(" -%d", m.fx.hits[i])
 }
 
-// flashing: les éléments touchés clignotent une image sur deux.
+// flashing: hit elements blink every other frame.
 func (m Model) flashing() bool { return m.fx.active() && m.fx.frame%2 == 0 }
 
-// shiftBlock décale un bloc de lignes (ANSI compris) de dx colonnes et dy lignes en gardant exactement w x h:
-// ce qui sort est coupé, ce qui entre est vide.
+// shiftBlock shifts a block of lines (ANSI included) by dx columns and dy lines while keeping exactly w x h:
+// what goes out is cut, what comes in is empty.
 func shiftBlock(s string, dx, dy, w, h int) string {
 	if dx == 0 && dy == 0 {
 		return s

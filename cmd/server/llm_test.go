@@ -25,12 +25,12 @@ type apiCall struct {
 	Body       map[string]any
 }
 
-// fakeMistral est un faux serveur Mistral : chat, modération, et pannes pilotables.
+// fakeMistral is a fake Mistral server: chat, moderation, and controllable failures.
 type fakeMistral struct {
 	srv      *httptest.Server
 	mu       sync.Mutex
 	calls    []apiCall
-	chatCode atomic.Int32 // code HTTP du chat (0 = 200)
+	chatCode atomic.Int32 // HTTP code of the chat (0 = 200)
 	modCode  atomic.Int32
 }
 
@@ -51,7 +51,7 @@ func newFakeMistral(t *testing.T) *fakeMistral {
 		}
 		if c := int(code.Load()); c != 0 {
 			w.WriteHeader(c)
-			_, _ = io.WriteString(w, `{"message":"refusé"}`)
+			_, _ = io.WriteString(w, `{"message":"refused"}`)
 			return
 		}
 		switch r.URL.Path {
@@ -110,7 +110,7 @@ func TestModeOffNeverTouchesTheNetwork(t *testing.T) {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
 	if len(f.paths()) != 0 {
-		t.Fatalf("appels réseau en mode off: %v", f.paths())
+		t.Fatalf("network calls in off mode: %v", f.paths())
 	}
 }
 
@@ -122,11 +122,11 @@ func TestAutoModeWithoutKeyIsSilentlyDisabled(t *testing.T) {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
 	if !strings.Contains(s.log.String(), apiKeyEnv) {
-		t.Fatalf("le journal devrait expliquer pourquoi les dialogues sont désactivés: %q", s.log.String())
+		t.Fatalf("the log should explain why dialogues are disabled: %q", s.log.String())
 	}
-	// Mode vide = auto.
+	// Empty mode = auto.
 	if svc, err := setupTalker(s.ctx, llmOptions{}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: "   "})); err != nil || svc != nil {
-		t.Fatalf("clé faite d'espaces: svc=%v err=%v", svc, err)
+		t.Fatalf("whitespace-only key: svc=%v err=%v", svc, err)
 	}
 }
 
@@ -142,8 +142,8 @@ func TestOnModeRequiresTheKey(t *testing.T) {
 func TestUnknownModeIsRejected(t *testing.T) {
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	if _, err := setupTalker(s.ctx, llmOptions{Mode: "peut-être"}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey})); err == nil {
-		t.Fatal("un mode inconnu a été accepté")
+	if _, err := setupTalker(s.ctx, llmOptions{Mode: "maybe"}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey})); err == nil {
+		t.Fatal("an unknown mode was accepted")
 	}
 }
 
@@ -158,33 +158,33 @@ func TestHealthyStartupProbesAndEnables(t *testing.T) {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
 	if !svc.Available() {
-		t.Fatal("le service devrait être disponible")
+		t.Fatal("the service should be available")
 	}
 	chat, ok := f.call("/v1/chat/completions")
 	if !ok || chat.Auth != "Bearer "+secretKey || chat.Body["model"] != "mon-modele-de-chat" {
-		t.Fatalf("sonde de chat: %+v", chat)
+		t.Fatalf("chat probe: %+v", chat)
 	}
 	mod, ok := f.call("/v1/moderations")
 	if !ok || mod.Auth != "Bearer "+secretKey || mod.Body["model"] != "ma-moderation" {
-		t.Fatalf("sonde de modération: %+v", mod)
+		t.Fatalf("moderation probe: %+v", mod)
 	}
-	if !strings.Contains(s.log.String(), "dialogues de PNJ activés") {
-		t.Fatalf("journal: %q", s.log.String())
+	if !strings.Contains(s.log.String(), "NPC dialogues enabled") {
+		t.Fatalf("log: %q", s.log.String())
 	}
 	if st := svc.Stats(); !st.Available || !st.Guardrails || !st.Moderation {
-		t.Fatalf("état: %+v", st)
+		t.Fatalf("state: %+v", st)
 	}
 }
 
-// La clé ne doit jamais se retrouver dans un journal, quoi qu'il arrive.
+// The key must never end up in a log, whatever happens.
 func TestAPIKeyNeverAppearsInLogs(t *testing.T) {
 	for name, setupFake := range map[string]func(*fakeMistral){
-		"succès":                   func(*fakeMistral) {},
-		"clé refusée":              func(f *fakeMistral) { f.chatCode.Store(401); f.modCode.Store(401) },
-		"panne du chat":            func(f *fakeMistral) { f.chatCode.Store(503) },
-		"modération en panne":      func(f *fakeMistral) { f.modCode.Store(500) },
-		"requête refusée (400)":    func(f *fakeMistral) { f.chatCode.Store(400) },
-		"bloqué par la modération": func(f *fakeMistral) { f.chatCode.Store(403) },
+		"success":                func(*fakeMistral) {},
+		"key rejected":           func(f *fakeMistral) { f.chatCode.Store(401); f.modCode.Store(401) },
+		"chat outage":            func(f *fakeMistral) { f.chatCode.Store(503) },
+		"moderation outage":      func(f *fakeMistral) { f.modCode.Store(500) },
+		"request rejected (400)": func(f *fakeMistral) { f.chatCode.Store(400) },
+		"blocked by moderation":  func(f *fakeMistral) { f.chatCode.Store(403) },
 	} {
 		f := newFakeMistral(t)
 		setupFake(f)
@@ -195,7 +195,7 @@ func TestAPIKeyNeverAppearsInLogs(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if strings.Contains(s.log.String(), secretKey) {
-			t.Errorf("%s : la clé d'API apparaît dans le journal :\n%s", name, s.log.String())
+			t.Errorf("%s: the API key appears in the log:\n%s", name, s.log.String())
 		}
 	}
 }
@@ -207,13 +207,13 @@ func TestRejectedKeyDoesNotBlockStartup(t *testing.T) {
 	s, log := newSetup(t)
 	svc, err := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if err != nil || svc == nil {
-		t.Fatalf("un échec de sonde ne doit pas empêcher le démarrage : svc=%v err=%v", svc, err)
+		t.Fatalf("a probe failure must not prevent startup: svc=%v err=%v", svc, err)
 	}
 	if svc.Available() {
-		t.Fatal("le service ne doit pas se déclarer disponible avec une clé refusée")
+		t.Fatal("the service must not declare itself available with a rejected key")
 	}
-	if !strings.Contains(s.log.String(), "indisponibles") {
-		t.Fatalf("journal : %q", s.log.String())
+	if !strings.Contains(s.log.String(), "unavailable") {
+		t.Fatalf("log: %q", s.log.String())
 	}
 }
 
@@ -224,13 +224,13 @@ func TestModerationOutageKeepsTalkingButWarns(t *testing.T) {
 	s, log := newSetup(t)
 	svc, _ := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if svc == nil || !svc.Available() {
-		t.Fatal("le chat fonctionne : le service doit être disponible")
+		t.Fatal("chat works: the service must be available")
 	}
-	if !strings.Contains(s.log.String(), "modération indisponible") {
-		t.Fatalf("avertissement attendu : %q", s.log.String())
+	if !strings.Contains(s.log.String(), "moderation unavailable") {
+		t.Fatalf("expected warning: %q", s.log.String())
 	}
 	if svc.Stats().Moderation {
-		t.Fatal("la modération est annoncée disponible")
+		t.Fatal("moderation is announced as available")
 	}
 }
 
@@ -245,15 +245,15 @@ func TestServiceRecoversOnItsOwnWhenTheAPIComesBack(t *testing.T) {
 	s, log := newSetup(t)
 	svc, _ := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if svc == nil || svc.Available() {
-		t.Fatal("le service devrait démarrer indisponible")
+		t.Fatal("the service should start unavailable")
 	}
 
-	f.chatCode.Store(0) // l'API revient
+	f.chatCode.Store(0) // the API comes back
 	deadline := time.Now().Add(3 * time.Second)
 	for !svc.Available() && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !svc.Available() {
-		t.Fatal("le service ne s'est pas rétabli tout seul après le retour de l'API")
+		t.Fatal("the service did not recover by itself after the API came back")
 	}
 }

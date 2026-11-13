@@ -14,7 +14,7 @@ import (
 )
 
 func sheetModel(lang i18n.Lang, w, h int) Model {
-	m := New("ws://x/ws", "alice")
+	m := NewLang("ws://x/ws", "alice", i18n.FR)
 	m.lang, m.width, m.height = lang, w, h
 	m.state, m.hasSnap = statePlaying, true
 	m.world = world.New(1)
@@ -33,13 +33,13 @@ func TestSheetShowsEverythingAndInventoryNoLongerShowsAbilities(t *testing.T) {
 		out := ansi.Strip(m.sheetView(116, 30))
 		for _, want := range []string{"alice", "d6", "20/30", "3/8", "17 (+3)", "6 (-2)", "12, -3", "Valdurne", "Bâton de chêne", "31", "65 %", "+4 %"} {
 			if !strings.Contains(out, want) {
-				t.Errorf("%s: fiche sans %q", lang, want)
+				t.Errorf("%s: sheet without %q", lang, want)
 			}
 		}
 		inv := ansi.Strip(m.inventoryView(116, 30))
 		for _, bad := range []string{"FOR", "STR", "(+3)", "Palmarès", "Record"} {
 			if strings.Contains(inv, bad) {
-				t.Errorf("%s: l'inventaire montre encore %q", lang, bad)
+				t.Errorf("%s: the inventory still shows %q", lang, bad)
 			}
 		}
 	}
@@ -50,11 +50,11 @@ func TestSheetKeyOpensAndClosesAndFitsEverySize(t *testing.T) {
 	tm, _ := m.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	m = tm.(Model)
 	if !m.sheet {
-		t.Fatal("la touche p devrait ouvrir la fiche")
+		t.Fatal("the p key should open the sheet")
 	}
 	tm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if tm.(Model).sheet {
-		t.Fatal("Échap devrait fermer la fiche")
+		t.Fatal("Escape should close the sheet")
 	}
 	for _, lang := range []i18n.Lang{i18n.FR, i18n.EN} {
 		for _, sz := range [][2]int{{80, 24}, {110, 34}, {200, 60}} {
@@ -62,11 +62,11 @@ func TestSheetKeyOpensAndClosesAndFitsEverySize(t *testing.T) {
 			m.sheet = true
 			lines := strings.Split(ansi.Strip(m.View().Content), "\n")
 			if len(lines) > sz[1] {
-				t.Errorf("%s %v: %d lignes", lang, sz, len(lines))
+				t.Errorf("%s %v: %d lines", lang, sz, len(lines))
 			}
 			for _, l := range lines {
 				if ansi.StringWidth(l) > sz[0] {
-					t.Errorf("%s %v: ligne trop large", lang, sz)
+					t.Errorf("%s %v: line too wide", lang, sz)
 					break
 				}
 			}
@@ -79,24 +79,24 @@ func TestSheetShowsSanctuaryBlessings(t *testing.T) {
 		m := sheetModel(lang, 120, 40)
 		m.sheet = true
 		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, m.t("sheet.blessings")) {
-			t.Errorf("%s: section des bénédictions affichée sans bénédiction", lang)
+			t.Errorf("%s: blessings section shown without a blessing", lang)
 		}
 		m.bagAt = time.Now()
 		m.bag.Blessings = []protocol.Blessing{{Kind: protocol.BlessDef, Bonus: 2, Secs: 125}, {Kind: protocol.BlessXP, Bonus: 50, Secs: 30}}
 		out := ansi.Strip(m.sheetView(116, 30))
 		for _, want := range []string{m.t("sheet.blessings"), "+2 DEF", "(2:05)", "+50 %", "(0:30)"} {
 			if !strings.Contains(out, want) {
-				t.Errorf("%s: fiche sans %q\n%s", lang, want, out)
+				t.Errorf("%s: sheet without %q\n%s", lang, want, out)
 			}
 		}
-		// La DEF de la bénédiction ne doit pas être comptée dans la base du détail « base + AGI + équipement ».
+		// The blessing's DEF must not be counted in the base of the "base + AGI + equipment" detail.
 		if got, want := m.blessingDef(), 2; got != want {
-			t.Errorf("%s: DEF de bénédiction %d, attendu %d", lang, got, want)
+			t.Errorf("%s: blessing DEF %d, expected %d", lang, got, want)
 		}
-		// Un bonus échu disparaît de la fiche sans nouveau message du serveur.
+		// An expired bonus disappears from the sheet without a new server message.
 		m.bagAt = time.Now().Add(-time.Minute)
 		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, "+50 %") || !strings.Contains(out, "+2 DEF") {
-			t.Errorf("%s: les bonus échus ne disparaissent pas:\n%s", lang, out)
+			t.Errorf("%s: expired bonuses do not disappear:\n%s", lang, out)
 		}
 	}
 }
@@ -106,13 +106,13 @@ func TestSheetShowsTreasureMaps(t *testing.T) {
 		m := sheetModel(lang, 120, 40)
 		m.sheet = true
 		if out := ansi.Strip(m.sheetView(116, 30)); strings.Contains(out, m.t("sheet.maps")) {
-			t.Errorf("%s: section des cartes affichée sans carte", lang)
+			t.Errorf("%s: maps section shown without a map", lang)
 		}
 		m.bag.Maps = []protocol.TreasureMap{{X: 112, Y: -3}}
 		out := ansi.Strip(m.sheetView(116, 30))
-		for _, want := range []string{m.t("sheet.maps"), "(112, -3)", "100"} { // la fiche est en (12, -3)
+		for _, want := range []string{m.t("sheet.maps"), "(112, -3)", "100"} { // the sheet is at (12, -3)
 			if !strings.Contains(out, want) {
-				t.Errorf("%s: fiche sans %q\n%s", lang, want, out)
+				t.Errorf("%s: sheet without %q\n%s", lang, want, out)
 			}
 		}
 	}

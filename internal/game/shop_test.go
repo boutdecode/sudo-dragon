@@ -35,18 +35,18 @@ func TestVendorMenuShowsFallbackWaresWithoutAModel(t *testing.T) {
 	d := r.last()
 	offers := buyOffers(d)
 	if len(offers) < 6 || d.Specialty == "" {
-		t.Fatalf("étalage de repli: %d offres, spécialité %q", len(offers), d.Specialty)
+		t.Fatalf("fallback stock: %d offers, specialty %q", len(offers), d.Specialty)
 	}
 	for _, o := range offers {
 		if o.Price <= 0 || o.Arg == "" || !strings.Contains(o.Detail, "Dégâts") || !o.Available {
-			t.Errorf("offre incomplète: %+v", o)
+			t.Errorf("incomplete offer: %+v", o)
 		}
 		if !strings.HasPrefix(o.Arg, "0.") {
-			t.Errorf("le repli porte la révision 0: %q", o.Arg)
+			t.Errorf("the fallback carries revision 0: %q", o.Arg)
 		}
 	}
 	if _, has := r.offer(protocol.NPCSellMenu); has {
-		t.Fatal("rien à revendre avec un sac vide")
+		t.Fatal("nothing to resell with an empty bag")
 	}
 }
 
@@ -61,30 +61,30 @@ func TestBuyEquipAndFightBonus(t *testing.T) {
 	gold := r.p.stats.Gold
 	r.g.talkAct(r.p, protocol.NPCBuyItem, o.Arg)
 	if len(r.p.inv.Items) != 1 || r.p.stats.Gold != gold-o.Price {
-		t.Fatalf("sac %d objets, or %d → %d (prix %d)", len(r.p.inv.Items), gold, r.p.stats.Gold, o.Price)
+		t.Fatalf("bag %d items, gold %d -> %d (price %d)", len(r.p.inv.Items), gold, r.p.stats.Gold, o.Price)
 	}
 	item := r.p.inv.Items[0]
 	if item.ID != 1 || item.Origin != r.npc.Key() || item.Slot != gear.Weapon {
 		t.Fatalf("%+v", item)
 	}
 	if n := len(saved); n == 0 || !saved[n-1].GearDirty || len(saved[n-1].Gear.Items) != 1 {
-		t.Fatalf("l'achat doit être sauvegardé tout de suite: %+v", saved)
+		t.Fatalf("the purchase must be saved right away: %+v", saved)
 	}
 	if len(bags) == 0 || len(bags[len(bags)-1].Items) != 1 {
-		t.Fatal("sac non envoyé")
+		t.Fatal("bag not sent")
 	}
 
-	// Pas de bonus tant que l'objet n'est pas équipé.
+	// No bonus as long as the item is not equipped.
 	if statsOf(r.p).Dmg != "1d4" || r.p.fighter().Dmg != combat.BareHands {
-		t.Fatalf("à mains nues: %s", statsOf(r.p).Dmg)
+		t.Fatalf("bare-handed: %s", statsOf(r.p).Dmg)
 	}
 	r.g.GearActNow(r.p, protocol.GearEquip, item.ID, "")
 	if f := r.p.fighter(); f.Dmg != item.Damage() || statsOf(r.p).Dmg != item.Damage().WithBonus(f.DmgMod).String() || f.Dmg.IsZero() {
-		t.Fatalf("dégâts %s, attendus %s", statsOf(r.p).Dmg, item.Damage())
+		t.Fatalf("damage %s, expected %s", statsOf(r.p).Dmg, item.Damage())
 	}
 	r.g.GearActNow(r.p, protocol.GearUnequip, 0, string(gear.Weapon))
 	if statsOf(r.p).Dmg != "1d4" {
-		t.Fatal("retrait sans effet")
+		t.Fatal("removal without effect")
 	}
 }
 
@@ -96,33 +96,33 @@ func TestBuyRules(t *testing.T) {
 	r.p.stats.Gold = o.Price - 1
 	r.g.talkAct(r.p, protocol.NPCBuyItem, o.Arg)
 	if len(r.p.inv.Items) != 0 || r.p.stats.Gold != o.Price-1 {
-		t.Fatal("achat sans or suffisant")
+		t.Fatal("purchase without enough gold")
 	}
 	r.p.stats.Gold = 100000
 	for _, bad := range []string{"", "x", "0.99", "7.1", "0.", ".1", "0.-1"} {
 		r.g.talkAct(r.p, protocol.NPCBuyItem, bad)
 	}
 	if len(r.p.inv.Items) != 0 || r.p.stats.Gold != 100000 {
-		t.Fatal("un argument invalide a eu un effet")
+		t.Fatal("an invalid argument had an effect")
 	}
 	for i := 0; i < gear.BagCapacity; i++ {
 		r.g.talkAct(r.p, protocol.NPCBuyItem, o.Arg)
 	}
 	if len(r.p.inv.Items) != gear.BagCapacity {
-		t.Fatalf("%d objets", len(r.p.inv.Items))
+		t.Fatalf("%d items", len(r.p.inv.Items))
 	}
 	gold := r.p.stats.Gold
 	r.g.talkAct(r.p, protocol.NPCBuyItem, o.Arg)
 	if len(r.p.inv.Items) != gear.BagCapacity || r.p.stats.Gold != gold {
-		t.Fatal("sac plein : achat accepté")
+		t.Fatal("full bag: purchase accepted")
 	}
-	// Un marchand ne vend pas d'équipement.
+	// A merchant does not sell equipment.
 	m := newNPCRig(t, world.NPCMerchant)
 	m.p.stats.Gold = 1000
 	m.talk()
 	m.g.talkAct(m.p, protocol.NPCBuyItem, "0.1")
 	if len(m.p.inv.Items) != 0 || m.p.stats.Gold != 1000 {
-		t.Fatal("un marchand a vendu de l'équipement")
+		t.Fatal("a merchant sold equipment")
 	}
 }
 
@@ -133,12 +133,12 @@ func TestReputationDiscountsEquipmentAndMenuAgrees(t *testing.T) {
 	o := buyOffers(r.last())[0]
 	w, _ := r.g.waresFor(r.p, r.npc)
 	if o.Price >= w.Items[0].Price {
-		t.Fatalf("pas de remise: %d pour %d", o.Price, w.Items[0].Price)
+		t.Fatalf("no discount: %d for %d", o.Price, w.Items[0].Price)
 	}
 	gold := r.p.stats.Gold
 	r.g.talkAct(r.p, protocol.NPCBuyItem, o.Arg)
 	if gold-r.p.stats.Gold != o.Price {
-		t.Fatalf("débité %d, annoncé %d", gold-r.p.stats.Gold, o.Price)
+		t.Fatalf("debited %d, announced %d", gold-r.p.stats.Gold, o.Price)
 	}
 }
 
@@ -162,20 +162,20 @@ func TestSellFlow(t *testing.T) {
 		}
 	}
 	if len(sells) != 1 || sells[0].Arg == "1" {
-		t.Fatalf("seul l'objet non porté se revend: %+v", sells)
+		t.Fatalf("only the unworn item resells: %+v", sells)
 	}
-	// L'objet porté ne se vend pas, même avec son identifiant.
+	// The worn item cannot be sold, even with its identifier.
 	gold := r.p.stats.Gold
 	r.g.talkAct(r.p, protocol.NPCSellItem, "1")
 	if len(r.p.inv.Items) != 2 || r.p.stats.Gold != gold {
-		t.Fatal("objet porté revendu")
+		t.Fatal("worn item resold")
 	}
 	r.g.talkAct(r.p, protocol.NPCSellItem, sells[0].Arg)
 	if len(r.p.inv.Items) != 1 || r.p.stats.Gold != gold+sells[0].Price {
-		t.Fatalf("revente: %d objets, or %d (+%d attendu)", len(r.p.inv.Items), r.p.stats.Gold-gold, sells[0].Price)
+		t.Fatalf("resale: %d items, or %d (+%d expected)", len(r.p.inv.Items), r.p.stats.Gold-gold, sells[0].Price)
 	}
 	if r.last().Mode != protocol.NPCModeMenu {
-		t.Fatalf("plus rien à revendre: retour au menu, mode %q", r.last().Mode)
+		t.Fatalf("nothing left to resell: back to the menu, mode %q", r.last().Mode)
 	}
 }
 
@@ -187,24 +187,24 @@ func TestEquipRules(t *testing.T) {
 	var bags []protocol.Bag
 	r.p.sendBagMsg = func(b protocol.Bag) { bags = append(bags, b) }
 
-	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // palier 5 : niveau 20 requis
+	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // tier 5: level 20 required
 	if r.p.inv.IsWorn(1) || len(bags) == 0 || len(bags[len(bags)-1].Notice) == 0 {
-		t.Fatalf("niveau insuffisant ignoré: %+v", bags)
+		t.Fatalf("insufficient level ignored: %+v", bags)
 	}
 	r.g.GearActNow(r.p, protocol.GearEquip, 2, "")
 	r.p.stats.Level = 20
-	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // remplace la petite lame
+	r.g.GearActNow(r.p, protocol.GearEquip, 1, "") // replaces the small blade
 	if r.p.inv.IsWorn(2) || !r.p.inv.IsWorn(1) {
-		t.Fatal("un objet par emplacement")
+		t.Fatal("one item per slot")
 	}
-	// Pas de changement d'équipement en plein combat.
+	// No equipment change in the middle of a fight.
 	r.p.fight = &fight{}
 	r.g.GearActNow(r.p, protocol.GearEquip, 2, "")
 	if !r.p.inv.IsWorn(1) {
-		t.Fatal("équipement changé en combat")
+		t.Fatal("equipment changed in a fight")
 	}
 	r.p.fight = nil
-	r.g.GearActNow(r.p, protocol.GearEquip, 999, "") // inconnu : sans effet
+	r.g.GearActNow(r.p, protocol.GearEquip, 999, "") // unknown: no effect
 	r.g.GearActNow(r.p, protocol.GearUnequip, 0, "ring")
 }
 
@@ -219,20 +219,20 @@ func TestGearSurvivesReconnectionAndCorruptionIsCleaned(t *testing.T) {
 
 	p2 := r.g.joinWith("hero2", func(protocol.Snapshot) {}, &saved)
 	if len(p2.inv.Items) != 1 || !p2.inv.IsWorn(p2.inv.Items[0].ID) {
-		t.Fatalf("après reconnexion: %+v", p2.inv)
+		t.Fatalf("after reconnection: %+v", p2.inv)
 	}
-	// Une sauvegarde trafiquée est ramenée dans les bornes.
+	// A tampered save is brought back within bounds.
 	bad := Saved{Stats: r.p.stats, Gear: gear.Inventory{
 		Items: []gear.Item{{ID: 1, Name: "Dieu", Slot: gear.Weapon, Tier: 99, Family: "greataxe", Quality: 1 << 30, Price: 1 << 40}, {ID: 1, Name: "Doublon", Slot: gear.Helm}},
 		Worn:  map[gear.Slot]int64{gear.Weapon: 1, gear.Armor: 1},
 	}}
 	p3 := r.g.joinWith("hero3", func(protocol.Snapshot) {}, &bad)
 	if w := p3.inv.Equipped().Weapon; len(p3.inv.Items) != 1 || w == nil || w.Tier != gear.MaxTier || w.Quality != gear.MaxTier || p3.inv.Equipped().Defense() != 0 {
-		t.Fatalf("objet mal ramené: %+v", p3.inv)
+		t.Fatalf("item badly brought back: %+v", p3.inv)
 	}
 }
 
-// fakeStocker est un Talker qui fournit aussi les étalages.
+// fakeStocker is a Talker that also supplies the stocks.
 type fakeStocker struct {
 	*fakeTalker
 	reqs  []npcai.StockRequest
@@ -250,13 +250,13 @@ func TestGeneratedWaresReplaceTheFallbackOnce(t *testing.T) {
 	r.g.Talker = st
 	r.talk()
 	r.act(protocol.NPCLeave)
-	r.talk() // une seule demande tant que la première n'est pas revenue
+	r.talk() // only one request until the first one has come back
 	if len(st.reqs) != 1 {
-		t.Fatalf("%d demandes d'étalage", len(st.reqs))
+		t.Fatalf("%d stock requests", len(st.reqs))
 	}
 	req := st.reqs[0]
 	if len(req.Context.Slots) != 1 || req.Context.Slots[0] != gear.Weapon || req.Context.MaxTier < 1 || req.Region == "" {
-		t.Fatalf("demande: %+v", req)
+		t.Fatalf("request: %+v", req)
 	}
 	nb := len(r.msgs)
 	items := []gear.Item{}
@@ -266,27 +266,27 @@ func TestGeneratedWaresReplaceTheFallbackOnce(t *testing.T) {
 	st.dones[0](npcai.StockReply{Wares: gear.Wares{NPC: r.npc.Key(), Specialty: "lames courtes", Items: items}})
 	r.pump()
 	if len(r.msgs) <= nb {
-		t.Fatal("le joueur qui regarde l'étalage n'a pas été mis à jour")
+		t.Fatal("the player looking at the stock was not updated")
 	}
 	d := r.last()
 	offers := buyOffers(d)
 	if d.Specialty != "lames courtes" || len(offers) != 5 || offers[0].Label != "Lame 1" || !strings.HasPrefix(offers[0].Arg, "1.") {
-		t.Fatalf("étalage généré: %+v", d)
+		t.Fatalf("generated stock: %+v", d)
 	}
-	// Une offre du repli (révision 0) n'achète rien sur l'étalage renouvelé.
+	// A fallback offer (revision 0) buys nothing on the renewed stock.
 	gold := r.p.stats.Gold
 	r.g.talkAct(r.p, protocol.NPCBuyItem, "0.1")
 	if len(r.p.inv.Items) != 0 || r.p.stats.Gold != gold {
-		t.Fatal("achat avec une révision périmée")
+		t.Fatal("purchase with a stale revision")
 	}
 	r.g.talkAct(r.p, protocol.NPCBuyItem, offers[0].Arg)
 	if len(r.p.inv.Items) != 1 || r.p.inv.Items[0].Name != "Lame 1" {
-		t.Fatal("achat de l'étalage généré")
+		t.Fatal("purchase from the generated stock")
 	}
 	r.act(protocol.NPCLeave)
 	r.talk()
 	if len(st.reqs) != 1 {
-		t.Fatal("étalage redemandé alors qu'il est connu")
+		t.Fatal("stock requested again although it is known")
 	}
 }
 
@@ -300,17 +300,17 @@ func TestFailedStockRetriesLaterNotImmediately(t *testing.T) {
 	r.act(protocol.NPCLeave)
 	r.talk()
 	if len(st.reqs) != 1 {
-		t.Fatalf("redemandé tout de suite après un échec: %d", len(st.reqs))
+		t.Fatalf("requested again right after a failure: %d", len(st.reqs))
 	}
 	r.g.tick += stockRetryTicks + 1
 	r.act(protocol.NPCLeave)
 	r.talk()
 	if len(st.reqs) != 2 {
-		t.Fatalf("la demande aurait dû être refaite: %d", len(st.reqs))
+		t.Fatalf("the request should have been made again: %d", len(st.reqs))
 	}
 }
 
-// L'assortiment monte en rang avec la tranche de niveaux de la région du vendeur.
+// The assortment rises in rank with the level bracket of the vendor's region.
 func TestVendorTiersFollowRegionLevelBand(t *testing.T) {
 	g := newGame()
 	cases := []struct {
@@ -325,15 +325,15 @@ func TestVendorTiersFollowRegionLevelBand(t *testing.T) {
 	for _, c := range cases {
 		npc := world.NPC{Kind: world.NPCSmith, Region: c.rp}
 		if g.World.StructureOfRegion(c.rp) != nil && g.World.StructureOfRegion(c.rp).Kind == world.KindTown {
-			continue // une ville vend toujours jusqu'au rang 5
+			continue // a town always sells up to rank 5
 		}
 		ctx := g.vendorContext(npc)
 		if ctx.MinTier != c.min || ctx.MaxTier != c.max {
-			t.Errorf("région %v: rangs %d-%d, attendu %d-%d", c.rp, ctx.MinTier, ctx.MaxTier, c.min, c.max)
+			t.Errorf("region %v: ranks %d-%d, expected %d-%d", c.rp, ctx.MinTier, ctx.MaxTier, c.min, c.max)
 		}
 		for _, it := range gear.Fallback(npc.Key(), ctx, i18n.FR).Items {
 			if it.Tier < ctx.MinTier || it.Tier > ctx.MaxTier {
-				t.Errorf("région %v: objet de rang %d hors de %d-%d", c.rp, it.Tier, ctx.MinTier, ctx.MaxTier)
+				t.Errorf("region %v: item of rank %d outside %d-%d", c.rp, it.Tier, ctx.MinTier, ctx.MaxTier)
 			}
 		}
 	}

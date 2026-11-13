@@ -1,4 +1,4 @@
-// Package world génère un monde procédural infini, déterministe, découpé en chunks.
+// Package world generates an infinite, deterministic procedural world, split into chunks.
 package world
 
 import (
@@ -8,10 +8,10 @@ import (
 	opensimplex "github.com/ojrac/opensimplex-go"
 )
 
-// ChunkSize est la largeur/hauteur d'un chunk en tuiles.
+// ChunkSize is the width/height of a chunk in tiles.
 const ChunkSize = 32
 
-// Tile est le type de terrain d'une case.
+// Tile is the terrain type of a tile.
 type Tile uint8
 
 const (
@@ -24,55 +24,55 @@ const (
 	Mountain
 	Snow
 
-	// Tuiles des structures (villages, villes, forteresses). Ajoutées après
-	// Snow pour ne pas changer les valeurs des tuiles de terrain.
-	Road  // chemin, place
-	Floor // sol intérieur d'un bâtiment
-	Wall  // mur: infranchissable
-	Door  // porte ou portail: franchissable
+	// Structure tiles (villages, towns, fortresses). Added after
+	// Snow so as not to change the terrain tile values.
+	Road  // road, square
+	Floor // interior floor of a building
+	Wall  // wall: impassable
+	Door  // door or gate: passable
 
-	// Tuiles des donjons (voir dungeon.go).
-	Chest  // coffre: franchissable, s'ouvre en y marchant
-	Stairs // escalier: entrée et sortie du donjon
+	// Dungeon tiles (see dungeon.go).
+	Chest  // chest: passable, opens by walking onto it
+	Stairs // staircase: entrance and exit of the dungeon
 
-	// Entrance marque, à l'écran du client seulement, l'entrée d'un donjon déjà découverte. Le monde ne la
-	// génère jamais : l'entrée secrète est une case de terrain ordinaire (voir dungeon.go).
+	// Entrance marks, on the client screen only, an already discovered dungeon entrance. The world never
+	// generates it: the secret entrance is an ordinary terrain tile (see dungeon.go).
 	Entrance
 
-	// Rock est la roche pleine d'un donjon: infranchissable, dessinée en sourdine (voir dungeonmap.go).
+	// Rock is the solid rock of a dungeon: impassable, drawn muted (see dungeonmap.go).
 	Rock
 
-	// Points d'intérêt en plein air (voir poi.go): tous franchissables, on interagit en y marchant.
-	Campfire  // feu de camp
-	Shrine    // sanctuaire
-	Tower     // tour de guet
-	Stone     // pierre dressée
-	LairChest // coffre d'un repaire
-	Spring    // source ou oasis
-	Ruin      // ruines gardées
+	// Outdoor points of interest (see poi.go): all passable, one interacts by walking onto them.
+	Campfire  // campfire
+	Shrine    // shrine
+	Tower     // watchtower
+	Stone     // standing stone
+	LairChest // lair chest
+	Spring    // spring or oasis
+	Ruin      // guarded ruins
 
-	// River est une rivière: eau peu profonde, franchissable à gué (voir terrain2.go). Un pont est une route posée dessus.
+	// River is a river: shallow water, fordable (see terrain2.go). A bridge is a road laid over it.
 	River
 
-	// Biomes de la v2 (voir terrain2.go): tous franchissables.
-	Tundra // sol gelé des hautes latitudes
-	Desert // sable et roche des zones chaudes et sèches
-	Swamp  // marais, bas et humide
-	Jungle // forêt dense des zones chaudes et humides
+	// v2 biomes (see terrain2.go): all passable.
+	Tundra // frozen ground of the high latitudes
+	Desert // sand and rock of the hot, dry zones
+	Swamp  // marsh, low and wet
+	Jungle // dense forest of the hot, humid zones
 
-	// Nœuds de ressources de la v3 (voir resources.go): franchissables, on les récolte avec la touche d'action.
-	TreeNode // arbre à abattre (bois)
-	OreNode  // filon de minerai ou affleurement de pierre
-	HerbNode // touffe de plantes
-	FishNode // banc de poissons, dans une rivière
+	// v3 resource nodes (see resources.go): passable, harvested with the action key.
+	TreeNode // tree to fell (wood)
+	OreNode  // ore vein or rock outcrop
+	HerbNode // tuft of plants
+	FishNode // school of fish, in a river
 
-	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
+	// NumTiles is the number of tile types: the values range from 0 to NumTiles-1.
 	NumTiles
 )
 
-// Glyph renvoie un caractère ASCII représentant la tuile (vue schématique, sans
-// couleur; le client utilise render, qui ajoute variantes et couleurs). ASCII
-// pur: les caractères comme ♣ ou ≈ ont une largeur ambiguë selon les terminaux.
+// Glyph returns an ASCII character representing the tile (schematic view, without
+// colour; the client uses render, which adds variants and colours). Pure
+// ASCII: characters like ♣ or ≈ have an ambiguous width depending on the terminal.
 func (t Tile) Glyph() rune {
 	switch t {
 	case DeepWater:
@@ -143,8 +143,8 @@ func (t Tile) Glyph() rune {
 	return '?'
 }
 
-// ordinary indique un terrain naturel ordinaire: assez plat et sec pour un donjon caché, un point d'intérêt,
-// un trésor enterré ou une structure. Exclut l'eau, les montagnes, les rivières et les marais.
+// ordinary indicates ordinary natural terrain: flat and dry enough for a hidden dungeon, a point of interest,
+// a buried treasure or a structure. Excludes water, mountains, rivers and marshes.
 func (t Tile) ordinary() bool {
 	switch t {
 	case Plain, Forest, Hills, Sand, Tundra, Desert, Jungle:
@@ -153,7 +153,7 @@ func (t Tile) ordinary() bool {
 	return false
 }
 
-// Walkable indique si un joueur peut marcher sur la tuile.
+// Walkable tells whether a player can walk on the tile.
 func (t Tile) Walkable() bool {
 	switch t {
 	case DeepWater, Water, Mountain, Wall, Rock:
@@ -162,74 +162,74 @@ func (t Tile) Walkable() bool {
 	return true
 }
 
-// ChunkPos identifie un chunk dans la grille de chunks.
+// ChunkPos identifies a chunk in the chunk grid.
 type ChunkPos struct{ X, Y int }
 
-// Pos est une position en coordonnées de tuiles.
+// Pos is a position in tile coordinates.
 type Pos struct{ X, Y int }
 
-// Chunk contient les tuiles d'une zone ChunkSize x ChunkSize.
+// Chunk contains the tiles of a ChunkSize x ChunkSize area.
 type Chunk struct {
 	Pos   ChunkPos
 	Tiles [ChunkSize][ChunkSize]Tile // [y][x]
 }
 
-// World génère et met en cache des chunks à partir d'une seed.
+// World generates and caches chunks from a seed.
 type World struct {
 	Seed int64
-	// GenVersion est la version du générateur de terrain (voir GenLatest). Un monde déjà
-	// joué garde la sienne: changer le terrain d'une base existante rendrait incohérentes
-	// les positions sauvegardées.
+	// GenVersion is the version of the terrain generator (see GenLatest). An already
+	// played world keeps its own: changing the terrain of an existing database would make the saved
+	// positions inconsistent.
 	GenVersion int
 
 	elevation opensimplex.Noise
 	moisture  opensimplex.Noise
-	noise2    noise2 // bruits du générateur v2
+	noise2    noise2 // noises of generator v2
 
 	mu    sync.Mutex
 	cache map[ChunkPos]*Chunk
 
-	// Structures (voir structures.go). smu est toujours pris après mu, jamais avant.
+	// Structures (see structures.go). smu is always taken after mu, never before.
 	smu        sync.Mutex
 	structs    map[RegionPos]*Structure
 	anchorOnce sync.Once
 	anchor     Pos
 
-	// Contrées (voir territory.go). tmu est indépendant de mu et smu.
+	// Districts (see territory.go). tmu is independent of mu and smu.
 	tmu         sync.Mutex
 	territories map[TerritoryID]*Territory
 
-	// Donjons (voir dungeon.go). dmu est indépendant des autres verrous : il n'est jamais tenu
-	// pendant un calcul.
+	// Dungeons (see dungeon.go). dmu is independent of the other locks: it is never held
+	// during a computation.
 	dmu      sync.Mutex
 	dungeons map[RegionPos]*Dungeon
 
-	// Points d'intérêt (voir poi.go). pmu est indépendant des autres verrous : il n'est jamais tenu pendant un calcul.
+	// Points of interest (see poi.go). pmu is independent of the other locks: it is never held during a computation.
 	pmu  sync.Mutex
 	pois map[RegionPos][]*POI
 
-	// Routes entre lieux (voir roads.go). rmu est pris avant smu, jamais après.
+	// Roads between places (see roads.go). rmu is taken before smu, never after.
 	rmu   sync.Mutex
 	roads map[roadKey]*roadLink
 }
 
-// Versions du générateur de terrain.
+// Terrain generator versions.
 const (
-	// GenV1 est le générateur d'origine (élévation + humidité, sans continents).
+	// GenV1 is the original generator (elevation + humidity, without continents).
 	GenV1 = 1
-	// GenV2 ajoute continents, océans, îles, chaînes de montagnes, rivières et biomes (voir terrain2.go).
+	// GenV2 adds continents, oceans, islands, mountain ranges, rivers and biomes (see terrain2.go).
 	GenV2 = 2
-	// GenV3 sème des nœuds de ressources (arbres, filons, plantes) sur le terrain v2 (voir resources.go).
+	// GenV3 sows resource nodes (trees, veins, plants) on the v2 terrain (see resources.go).
 	GenV3 = 3
-	// GenLatest est la version utilisée pour les nouveaux mondes.
+	// GenLatest is the version used for new worlds.
 	GenLatest = GenV3
 )
 
-// New crée un monde déterministe pour la seed donnée, avec le générateur d'origine (v1).
+// New creates a deterministic world for the given seed, with the original generator (v1).
 func New(seed int64) *World { return NewVersion(seed, GenV1) }
 
-// NewVersion crée un monde déterministe pour la seed et la version de générateur données.
-// Une version inconnue ou nulle retombe sur v1 (anciens clients et bases sans version).
+// NewVersion creates a deterministic world for the given seed and generator version.
+// An unknown or zero version falls back to v1 (old clients and databases without a version).
 func NewVersion(seed int64, gen int) *World {
 	if gen < GenV1 || gen > GenV3 {
 		gen = GenV1
@@ -250,7 +250,7 @@ func NewVersion(seed int64, gen int) *World {
 	}
 }
 
-// fbm somme plusieurs octaves de bruit, résultat dans [-1, 1].
+// fbm sums several octaves of noise, result in [-1, 1].
 func fbm(n opensimplex.Noise, x, y float64) float64 {
 	sum, amp, freq, norm := 0.0, 1.0, 1.0, 0.0
 	for range 4 {
@@ -262,8 +262,8 @@ func fbm(n opensimplex.Noise, x, y float64) float64 {
 	return sum / norm
 }
 
-// TileAt calcule la tuile à une position absolue (sans cache de chunk), en
-// tenant compte des structures.
+// TileAt computes the tile at an absolute position (without chunk cache), taking
+// structures into account.
 func (w *World) TileAt(x, y int) Tile {
 	if s := w.StructureAt(x, y); s != nil {
 		return s.TileAt(x, y)
@@ -281,19 +281,19 @@ func (w *World) TileAt(x, y int) Tile {
 	return t
 }
 
-// terrainAt calcule le terrain brut, sans structure. Le placement des
-// structures s'appuie sur lui (jamais sur TileAt, pour éviter toute circularité).
+// terrainAt computes the raw terrain, without structures. Structure placement
+// relies on it (never on TileAt, to avoid any circularity).
 func (w *World) terrainAt(x, y int) Tile {
-	if w.GenVersion >= GenV2 { // la v3 partage le terrain de la v2
+	if w.GenVersion >= GenV2 { // v3 shares the terrain of v2
 		return w.terrainAtV2(x, y)
 	}
 	return w.terrainAtV1(x, y)
 }
 
-// Terrain est le terrain brut en (x, y), sans structure, POI ni route. Pour les outils de visualisation.
+// Terrain is the raw terrain at (x, y), without structure, POI or road. For the visualisation tools.
 func (w *World) Terrain(x, y int) Tile { return w.terrainAt(x, y) }
 
-// terrainAtV1 est le générateur d'origine, figé: ne pas le modifier (layout_golden_test).
+// terrainAtV1 is the original generator, frozen: do not modify it (layout_golden_test).
 func (w *World) terrainAtV1(x, y int) Tile {
 	const scale = 0.02
 	fx, fy := float64(x)*scale, float64(y)*scale
@@ -320,17 +320,17 @@ func (w *World) terrainAtV1(x, y int) Tile {
 	return Snow
 }
 
-// floorDiv est la division entière arrondie vers -∞ (correcte pour les négatifs).
+// floorDiv is integer division rounded towards -infinity (correct for negatives).
 func floorDiv(a, b int) int {
 	return int(math.Floor(float64(a) / float64(b)))
 }
 
-// ChunkOf renvoie le chunk contenant la position de tuile donnée.
+// ChunkOf returns the chunk containing the given tile position.
 func ChunkOf(x, y int) ChunkPos {
 	return ChunkPos{floorDiv(x, ChunkSize), floorDiv(y, ChunkSize)}
 }
 
-// Chunk renvoie (en le générant au besoin) le chunk demandé.
+// Chunk returns (generating it if needed) the requested chunk.
 func (w *World) Chunk(cp ChunkPos) *Chunk {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -338,8 +338,8 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 		return c
 	}
 	c := &Chunk{Pos: cp}
-	// Une région entière contient le chunk: une seule recherche de structure,
-	// et non une par tuile.
+	// A whole region contains the chunk: a single structure lookup,
+	// and not one per tile.
 	rp := RegionOf(cp.X*ChunkSize, cp.Y*ChunkSize)
 	s := w.structureForRegion(rp)
 	roads := w.roadsAround(rp)
@@ -364,14 +364,14 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 	return c
 }
 
-// At renvoie la tuile à la position absolue (via le cache de chunks).
+// At returns the tile at the absolute position (via the chunk cache).
 func (w *World) At(x, y int) Tile {
 	cp := ChunkOf(x, y)
 	c := w.Chunk(cp)
 	return c.Tiles[y-cp.Y*ChunkSize][x-cp.X*ChunkSize]
 }
 
-// Unload retire de la mémoire les chunks n'appartenant pas à keep.
+// Unload removes from memory the chunks not belonging to keep.
 func (w *World) Unload(keep map[ChunkPos]bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -382,9 +382,9 @@ func (w *World) Unload(keep map[ChunkPos]bool) {
 	}
 }
 
-// FindSpawn renvoie le point de départ des joueurs: la première plaine ou forêt
-// en spirale autour de l'origine, calculée sur le terrain brut. Aucune
-// structure ne recouvre ses abords (voir startClearance).
+// FindSpawn returns the players' starting point: the first plain or forest
+// in a spiral around the origin, computed on the raw terrain. No
+// structure covers its surroundings (see startClearance).
 func (w *World) FindSpawn() Pos { return w.spawnAnchor() }
 
 func abs(a int) int {

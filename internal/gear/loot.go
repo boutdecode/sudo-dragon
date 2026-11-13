@@ -6,21 +6,21 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// DungeonLoot fabrique la pièce d'équipement d'un coffre de donjon, dans la langue l, sans modèle de langage.
-// roll décide de tout (emplacement, style, nom) : le même tirage donne le même objet. Le palier est borné à
-// [1, MaxTier]. L'objet reçoit un bonus de qualité (arme) ou de DEF au maximum permis, comme l'assortiment d'un
-// vendeur, et son vendeur d'origine est le donjon (Index -1 ; voir OriginDungeon).
+// DungeonLoot builds the piece of equipment from a dungeon chest, in language l, without a language model.
+// roll decides everything (slot, style, name): the same roll gives the same item. The tier is clamped to
+// [1, MaxTier]. The item gets a quality bonus (weapon) or DEF bonus at the maximum allowed, like a
+// vendor's stock, and its origin vendor is the dungeon (Index -1; see OriginDungeon).
 func DungeonLoot(l i18n.Lang, dungeon world.RegionPos, tier int, roll uint64) Item {
 	return loot(l, "gear.desc.dungeon", dungeon, tier, roll)
 }
 
-// MonsterLoot fabrique la pièce d'équipement qu'un monstre tué dans la région rp laisse derrière lui. Même
-// fabrication et mêmes bornes que DungeonLoot; seule la description change.
+// MonsterLoot builds the piece of equipment that a monster killed in region rp leaves behind. Same
+// crafting and same bounds as DungeonLoot; only the description changes.
 func MonsterLoot(l i18n.Lang, rp world.RegionPos, tier int, roll uint64) Item {
 	return loot(l, "gear.desc.monster", rp, tier, roll)
 }
 
-// TierForLevel donne le plus haut palier d'équipement accessible à un niveau (voir MinLevelOf).
+// TierForLevel gives the highest equipment tier accessible at a level (see MinLevelOf).
 func TierForLevel(level int) int {
 	t := 1
 	for k := 2; k <= MaxTier; k++ {
@@ -67,6 +67,6 @@ func loot(l i18n.Lang, descKey string, dungeon world.RegionPos, tier int, roll u
 	return it
 }
 
-// OriginDungeon est l'origine d'un objet trouvé dans le donjon de la région rp : la clé d'un « vendeur » d'indice
-// -1, qu'aucun PNJ ne porte. Elle tient dans les colonnes de la sauvegarde, sans migration.
+// OriginDungeon is the origin of an item found in the dungeon of region rp: the key of a "vendor" with index
+// -1, which no NPC carries. It fits in the save columns, without migration.
 func OriginDungeon(rp world.RegionPos) world.NPCKey { return world.NPCKey{Region: rp, Index: -1} }

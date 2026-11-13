@@ -1,7 +1,7 @@
-// Package protocol définit les messages échangés entre client et serveur.
+// Package protocol defines the messages exchanged between client and server.
 //
-// Chaque message est une enveloppe JSON {"t": <type>, "d": <charge utile>}
-// envoyée dans une trame WebSocket texte.
+// Each message is a JSON envelope {"t": <type>, "d": <payload>}
+// sent in a text WebSocket frame.
 package protocol
 
 import (
@@ -9,29 +9,29 @@ import (
 	"fmt"
 )
 
-// Types de messages.
+// Message types.
 const (
-	// Client -> serveur
+	// Client -> server
 	TLogin    = "login"
 	TChatSend = "chat_send"
 	TMove     = "move"
-	// TCombatAction: voir CombatAction.
+	// TCombatAction: see CombatAction.
 	TCombatAction = "combat_action"
-	// TNPCAction: voir NPCAction.
+	// TNPCAction: see NPCAction.
 	TNPCAction = "npc_action"
-	// TQuestAction: voir QuestAction.
+	// TQuestAction: see QuestAction.
 	TQuestAction = "quest_action"
-	// TGearAction: voir GearAction.
+	// TGearAction: see GearAction.
 	TGearAction = "gear_action"
-	// TCreateAction: voir CreateAction (phase de création du personnage, avant TWelcome).
+	// TCreateAction: see CreateAction (character creation phase, before TWelcome).
 	TCreateAction = "create_action"
-	// TGather (sans charge utile): le joueur récolte le nœud de ressource sous lui ou à côté.
+	// TGather (no payload): the player gathers the resource node under or next to them.
 	TGather = "gather"
-	// TPing: mesure de latence, le serveur répond TPong (sans charge utile).
+	// TPing: latency measurement, the server answers TPong (no payload).
 	TPing = "ping"
 
-	// Serveur -> client
-	// TCreate: voir Create, envoyé à la place de TWelcome tant que le personnage n'est pas créé.
+	// Server -> client
+	// TCreate: see Create, sent instead of TWelcome until the character is created.
 	TCreate   = "create"
 	TWelcome  = "welcome"
 	TError    = "error"
@@ -39,55 +39,55 @@ const (
 	TSnapshot = "snapshot"
 	TCombat   = "combat"
 	TNPC      = "npc"
-	TQuests   = "quests"   // livre de quêtes: voir Quests
-	TBag      = "bag"      // sac d'équipement: voir Bag
-	TZone     = "zone"     // changement de zone (donjon ou carte principale): voir Zone
-	TDungeons = "dungeons" // donjons découverts: voir Dungeons
-	TNodes    = "nodes"    // nœuds de ressources épuisés autour du joueur: voir Nodes
+	TQuests   = "quests"   // quest book: see Quests
+	TBag      = "bag"      // equipment bag: see Bag
+	TZone     = "zone"     // zone change (dungeon or main map): see Zone
+	TDungeons = "dungeons" // discovered dungeons: see Dungeons
+	TNodes    = "nodes"    // depleted resource nodes around the player: see Nodes
 	TPong     = "pong"
 )
 
-// Limites partagées.
+// Shared limits.
 const (
 	MaxNameLen = 16
 	MinNameLen = 3
 	MaxChatLen = 200
 
-	// Longueur du mot de passe en octets: bcrypt ignore tout au-delà de 72.
+	// Password length in bytes: bcrypt ignores everything beyond 72.
 	MinPassLen = 8
 	MaxPassLen = 72
 
-	// Zone de vision (demi-largeur / demi-hauteur, en tuiles) autour d'un joueur.
-	// Le serveur n'envoie que les entités dans ce rectangle; le client dessine
-	// le terrain lui-même à partir de la seed.
+	// View area (half-width / half-height, in tiles) around a player.
+	// The server only sends the entities inside this rectangle; the client draws
+	// the terrain itself from the seed.
 	ViewHalfW = 40
 	ViewHalfH = 20
 )
 
-// Horloge du jeu: le serveur compte en ticks (10 par seconde), le client en déduit le jour et l'heure affichés.
-// Une heure de jeu dure une minute réelle, un jour de jeu 24 minutes.
+// Game clock: the server counts in ticks (10 per second), the client derives the displayed day and time from them.
+// One game hour lasts one real minute, one game day 24 minutes.
 const (
 	TicksPerGameHour = 600
-	StartGameHour    = 8 // heure de jeu au tick 0
+	StartGameHour    = 8 // game hour at tick 0
 )
 
-// Move est une intention de déplacement d'une tuile. dx et dy valent -1, 0 ou 1.
+// Move is an intent to move by one tile. dx and dy are -1, 0 or 1.
 type Move struct {
 	DX int `json:"dx"`
 	DY int `json:"dy"`
 }
 
-// Entity est un joueur visible dans un instantané.
+// Entity is a player visible in a snapshot.
 type Entity struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	X        int    `json:"x"`
 	Y        int    `json:"y"`
-	Fighting bool   `json:"fight,omitempty"` // engagé dans un combat
+	Fighting bool   `json:"fight,omitempty"` // engaged in a fight
 }
 
-// Monster est un monstre visible dans un instantané. Kind est l'identifiant de
-// l'espèce ("rat", "wolf"…); le client en déduit l'apparence.
+// Monster is a monster visible in a snapshot. Kind is the species identifier
+// ("rat", "wolf"...); the client derives the appearance from it.
 type Monster struct {
 	ID       int    `json:"id"`
 	Kind     string `json:"kind"`
@@ -96,7 +96,7 @@ type Monster struct {
 	Fighting bool   `json:"fight,omitempty"`
 }
 
-// Stats est la fiche du joueur local, envoyée dans chaque instantané.
+// Stats is the local player's sheet, sent in every snapshot.
 type Stats struct {
 	Level   int    `json:"lvl"`
 	XP      int    `json:"xp"`
@@ -105,83 +105,83 @@ type Stats struct {
 	MaxHP   int    `json:"mhp"`
 	Def     int    `json:"def"`
 	Hit     int    `json:"hit"`
-	Dmg     string `json:"dmg"` // dés de l'arme portée et modificateur, ex. "2d6+3"
+	Dmg     string `json:"dmg"` // dice of the wielded weapon and modifier, e.g. "2d6+3"
 	Potions int    `json:"pot"`
 	Gold    int    `json:"gold"`
 	Mana    int    `json:"mp"`
 	MaxMana int    `json:"mmp"`
 }
 
-// Snapshot décrit ce qu'un joueur voit à un tick donné. Il n'est envoyé que
-// si son contenu a changé depuis le dernier envoi.
+// Snapshot describes what a player sees at a given tick. It is only sent
+// if its content has changed since the last send.
 type Snapshot struct {
 	Tick     uint64    `json:"tick"`
 	Self     Entity    `json:"self"`
 	Others   []Entity  `json:"others,omitempty"`
 	Monsters []Monster `json:"monsters,omitempty"`
 	Stats    Stats     `json:"stats"`
-	Online   int       `json:"on,omitempty"` // joueurs connectés
+	Online   int       `json:"on,omitempty"` // connected players
 }
 
-// Zone annonce dans quelle carte se trouve le joueur. Elle est envoyée à chaque entrée ou sortie d'un donjon, et
-// de nouveau à chaque coffre ouvert dans l'instance. Elle précède toujours le premier instantané de la nouvelle
-// zone. Dungeon vide: la carte principale (les coordonnées des instantanés sont celles du monde). Sinon, les
-// coordonnées des instantanés sont locales au plan du donjon, que le client recalcule d'après Seed et Tier
-// (voir world.NewDungeonMap).
+// Zone announces which map the player is on. It is sent on every dungeon entry or exit, and
+// again each time a chest is opened in the instance. It always precedes the first snapshot of the new
+// zone. Empty Dungeon: the main map (snapshot coordinates are world coordinates). Otherwise, snapshot
+// coordinates are local to the dungeon layout, which the client recomputes from Seed and Tier
+// (see world.NewDungeonMap).
 type Zone struct {
-	Dungeon string   `json:"dungeon,omitempty"` // identifiant du donjon
-	Name    string   `json:"name,omitempty"`    // son nom, dans la langue du joueur
+	Dungeon string   `json:"dungeon,omitempty"` // dungeon identifier
+	Name    string   `json:"name,omitempty"`    // its name, in the player's language
 	Seed    int64    `json:"seed,omitempty"`
 	Tier    int      `json:"tier,omitempty"`
-	Opened  [][2]int `json:"opened,omitempty"` // coffres déjà ouverts (x, y)
-	// ResetIn, non nul, dit que le boss du donjon est déjà vaincu: nombre d'heures de jeu (arrondi au-dessus)
-	// avant que le donjon puisse repartir à neuf.
+	Opened  [][2]int `json:"opened,omitempty"` // chests already opened (x, y)
+	// ResetIn, when non-zero, says the dungeon boss is already defeated: number of game hours (rounded up)
+	// before the dungeon can reset.
 	ResetIn int `json:"reset,omitempty"`
 }
 
-// DungeonInfo décrit l'entrée d'un donjon que le joueur a découverte.
+// DungeonInfo describes the entrance of a dungeon the player has discovered.
 type DungeonInfo struct {
 	ID   string `json:"id"`
-	Name string `json:"name"` // dans la langue du joueur
-	X    int    `json:"x"`    // case de l'entrée sur la carte principale
+	Name string `json:"name"` // in the player's language
+	X    int    `json:"x"`    // entrance tile on the main map
 	Y    int    `json:"y"`
 	Tier int    `json:"tier"`
 }
 
-// Dungeons est la liste complète des donjons découverts par le joueur, envoyée à la connexion puis à chaque
-// nouvelle découverte. New, non vide, est l'identifiant du donjon qui vient d'être découvert (le client l'annonce).
+// Dungeons is the full list of dungeons discovered by the player, sent at login and then on every
+// new discovery. New, when non-empty, is the identifier of the dungeon just discovered (the client announces it).
 type Dungeons struct {
 	List []DungeonInfo `json:"list"`
 	New  string        `json:"new,omitempty"`
 }
 
-// CombatAction est le choix du joueur pour son tour de combat:
-// "attack", "item" ou "flee".
+// CombatAction is the player's choice for their combat turn:
+// "attack", "item" or "flee".
 type CombatAction struct {
 	Action string `json:"action"`
-	Target int    `json:"target,omitempty"` // indice du monstre visé dans Combat.Enemies
+	Target int    `json:"target,omitempty"` // index of the targeted monster in Combat.Enemies
 }
 
-// Issues d'un combat (Combat.Result).
+// Outcomes of a fight (Combat.Result).
 const (
 	ResultWon  = "won"
 	ResultLost = "lost"
 	ResultFled = "fled"
 )
 
-// Enemy est un monstre du combat. Abattu, il reste dans la liste avec HP == 0 (les indices sont stables).
+// Enemy is a monster in the fight. Once slain, it stays in the list with HP == 0 (indices are stable).
 type Enemy struct {
-	Kind  string `json:"kind"` // espèce
-	Name  string `json:"name"` // nom affiché, numéroté si plusieurs de même espèce
+	Kind  string `json:"kind"` // species
+	Name  string `json:"name"` // displayed name, numbered if several of the same species
 	HP    int    `json:"hp"`
 	MaxHP int    `json:"mhp"`
 	Def   int    `json:"def"`
-	Hit   int    `json:"hit"`           // bonus de toucher
-	Dmg   string `json:"dmg,omitempty"` // dés de dégâts
-	Red   string `json:"red,omitempty"` // dés de réduction
+	Hit   int    `json:"hit"`           // to-hit bonus
+	Dmg   string `json:"dmg,omitempty"` // damage dice
+	Red   string `json:"red,omitempty"` // reduction dice
 }
 
-// Strike est une attaque du tour, pour les effets visuels : Foe est la cible (si ByPlayer) ou l'attaquant.
+// Strike is an attack of the turn, for visual effects: Foe is the target (if ByPlayer) or the attacker.
 type Strike struct {
 	ByPlayer bool `json:"you,omitempty"`
 	Foe      int  `json:"foe"`
@@ -190,10 +190,10 @@ type Strike struct {
 	Crit     bool `json:"crit,omitempty"`
 }
 
-// Combat est l'état d'un combat, envoyé à son début puis après chaque tour.
-// Log contient les événements du dernier tour. Quand Over est vrai, Result
-// donne l'issue et le joueur est déjà libéré dans le monde. Boss est l'indice
-// du monstre vivant le plus fort (celui dont on affiche le portrait).
+// Combat is the state of a fight, sent at its start and after each turn.
+// Log holds the events of the last turn. When Over is true, Result
+// gives the outcome and the player is already released into the world. Boss is the index
+// of the strongest living monster (the one whose portrait is displayed).
 type Combat struct {
 	Round       int      `json:"round"`
 	Enemies     []Enemy  `json:"enemies"`
@@ -203,7 +203,7 @@ type Combat struct {
 	PlayerDef   int      `json:"pdef"`
 	PlayerMana  int      `json:"pmp"`
 	PlayerMaxMP int      `json:"pmmp"`
-	Style       string   `json:"style,omitempty"` // style de l'arme du joueur: melee, ranged ou magic
+	Style       string   `json:"style,omitempty"` // style of the player's weapon: melee, ranged or magic
 	Potions     int      `json:"pot"`
 	Log         []string `json:"log,omitempty"`
 	Strikes     []Strike `json:"strikes,omitempty"`
@@ -211,159 +211,159 @@ type Combat struct {
 	Result      string   `json:"result,omitempty"`
 }
 
-// Actions de dialogue avec un PNJ (NPCAction.Action).
+// NPC dialogue actions (NPCAction.Action).
 const (
-	NPCBuy   = "buy"   // acheter une potion (marchand)
-	NPCSell  = "sell"  // vendre une potion (marchand)
-	NPCHeal  = "heal"  // se faire soigner (soigneur)
-	NPCLeave = "leave" // mettre fin à la conversation
+	NPCBuy   = "buy"   // buy a potion (merchant)
+	NPCSell  = "sell"  // sell a potion (merchant)
+	NPCHeal  = "heal"  // get healed (healer)
+	NPCLeave = "leave" // end the conversation
 
-	// Conversation libre avec un PNJ (modèle de langage).
-	NPCTalk    = "talk"    // ouvrir la discussion
-	NPCSay     = "say"     // dire quelque chose (NPCAction.Text)
-	NPCConsent = "consent" // accepter l'envoi de ses messages à un service de langage tiers
-	NPCDecline = "decline" // refuser
-	NPCBack    = "back"    // quitter la discussion et revenir au menu du PNJ
+	// Free conversation with an NPC (language model).
+	NPCTalk    = "talk"    // open the discussion
+	NPCSay     = "say"     // say something (NPCAction.Text)
+	NPCConsent = "consent" // agree to send one's messages to a third-party language service
+	NPCDecline = "decline" // decline
+	NPCBack    = "back"    // leave the discussion and return to the NPC menu
 
-	// Quêtes. NPCTurnIn rend une quête prête à son donneur (NPCAction.Text = identifiant).
-	NPCQuestAccept = "quest_accept" // accepter la quête proposée
-	NPCQuestRefuse = "quest_refuse" // la refuser
+	// Quests. NPCTurnIn hands a ready quest back to its giver (NPCAction.Text = identifier).
+	NPCQuestAccept = "quest_accept" // accept the offered quest
+	NPCQuestRefuse = "quest_refuse" // refuse it
 	NPCTurnIn      = "quest_turnin"
-	NPCAskWork     = "quest_ask" // demander s'il y a du travail (quête de donjon, sans modèle de langage)
+	NPCAskWork     = "quest_ask" // ask whether there is work (dungeon quest, no language model)
 
-	// Équipement. NPCBuyItem et NPCSellItem portent l'objet dans NPCAction.Text (voir NPCOffer.Arg).
+	// Equipment. NPCBuyItem and NPCSellItem carry the item in NPCAction.Text (see NPCOffer.Arg).
 	NPCBuyItem  = "buy_item"
 	NPCSellItem = "sell_item"
-	NPCSellMenu = "sell_menu" // ouvre la liste des objets du sac à revendre
+	NPCSellMenu = "sell_menu" // opens the list of bag items to resell
 
-	// Gardes et vol. NPCWhere demande où trouver un métier (NPCAction.Text = type de PNJ, voir NPCOffer.Arg).
-	NPCWhere  = "where"  // garde : où trouver tel habitant
-	NPCPlaces = "places" // garde : quels lieux voisins
-	NPCSteal  = "steal"  // marchand : faire les poches
+	// Guards and theft. NPCWhere asks where to find a trade (NPCAction.Text = NPC type, see NPCOffer.Arg).
+	NPCWhere  = "where"  // guard: where to find a given inhabitant
+	NPCPlaces = "places" // guard: which neighbouring places
+	NPCSteal  = "steal"  // merchant: pick pockets
 )
 
-// MaxSayLen est la longueur maximale (en caractères) d'une réplique de joueur.
+// MaxSayLen is the maximum length (in characters) of a player's line.
 const MaxSayLen = 200
 
-// NPCAction est le choix du joueur pendant un dialogue avec un PNJ. Text n'est
-// utilisé que par NPCSay.
+// NPCAction is the player's choice during a dialogue with an NPC. Text is
+// only used by NPCSay.
 type NPCAction struct {
 	Action string `json:"action"`
 	Text   string `json:"text,omitempty"`
 }
 
-// Modes d'un dialogue (NPCDialog.Mode).
+// Dialogue modes (NPCDialog.Mode).
 const (
-	NPCModeMenu   = "menu"   // menu du métier du PNJ (acheter, vendre, soigner…)
-	NPCModeNotice = "notice" // avis de confidentialité à accepter avant de discuter
-	NPCModeChat   = "chat"   // conversation libre
-	NPCModeQuest  = "quest"  // proposition de quête à accepter ou refuser
-	NPCModeSell   = "sell"   // objets du sac à revendre à un vendeur d'équipement
+	NPCModeMenu   = "menu"   // the NPC's trade menu (buy, sell, heal...)
+	NPCModeNotice = "notice" // privacy notice to accept before chatting
+	NPCModeChat   = "chat"   // free conversation
+	NPCModeQuest  = "quest"  // quest proposal to accept or refuse
+	NPCModeSell   = "sell"   // bag items to resell to an equipment vendor
 )
 
-// NPCLine est une ligne de la transcription d'une discussion.
+// NPCLine is a line of a discussion transcript.
 type NPCLine struct {
-	Who  string `json:"who"` // "npc", "you" ou "sys"
+	Who  string `json:"who"` // "npc", "you" or "sys"
 	Text string `json:"text"`
 }
 
-// NPCOffer est une action proposée par un PNJ. Le serveur décide du prix et de
-// la disponibilité (or insuffisant, sac plein…): le client se contente de l'afficher.
+// NPCOffer is an action offered by an NPC. The server decides the price and
+// the availability (not enough gold, bag full...): the client just displays it.
 type NPCOffer struct {
 	Action    string    `json:"action"`
 	Label     string    `json:"label"`
-	Price     int       `json:"price"`          // 0 = gratuit (ou, pour une vente, sans objet)
-	Gain      bool      `json:"gain,omitempty"` // vrai si le joueur reçoit de l'or (vente) au lieu d'en payer
+	Price     int       `json:"price"`          // 0 = free (or, for a sale, no item)
+	Gain      bool      `json:"gain,omitempty"` // true if the player receives gold (sale) instead of paying
 	Available bool      `json:"ok"`
-	Arg       string    `json:"arg,omitempty"`    // à renvoyer dans NPCAction.Text (quête à rendre, objet à acheter ou vendre)
-	Detail    string    `json:"detail,omitempty"` // précision affichée à côté (bonus, niveau requis…)
-	Info      *ItemInfo `json:"info,omitempty"`   // fiche complète de l'objet (offres d'équipement), pour le panneau de détails
+	Arg       string    `json:"arg,omitempty"`    // to send back in NPCAction.Text (quest to hand in, item to buy or sell)
+	Detail    string    `json:"detail,omitempty"` // detail displayed alongside (bonus, required level...)
+	Info      *ItemInfo `json:"info,omitempty"`   // full item sheet (equipment offers), for the details panel
 }
 
-// ItemInfo est un objet d'équipement tel que le joueur le voit.
+// ItemInfo is an equipment item as the player sees it.
 type ItemInfo struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	Desc      string `json:"desc,omitempty"`
 	Slot      string `json:"slot"`           // weapon, armor, shield, helm
-	Kind      string `json:"kind,omitempty"` // style d'une arme: melee, ranged, magic
+	Kind      string `json:"kind,omitempty"` // weapon style: melee, ranged, magic
 	Tier      int    `json:"tier"`
 	Family    string `json:"family,omitempty"`
-	Dice      string `json:"dice,omitempty"`      // dégâts d'une arme, ex. "2d6+1"
-	Reduction string `json:"reduction,omitempty"` // dés retirés aux dégâts reçus (armure)
-	Def       int    `json:"def,omitempty"`       // bonus de DEF
+	Dice      string `json:"dice,omitempty"`      // weapon damage, e.g. "2d6+1"
+	Reduction string `json:"reduction,omitempty"` // dice subtracted from damage taken (armor)
+	Def       int    `json:"def,omitempty"`       // DEF bonus
 	MinLevel  int    `json:"lvl"`
-	Sell      int    `json:"sell"` // prix de revente
+	Sell      int    `json:"sell"` // resale price
 	Worn      bool   `json:"worn,omitempty"`
-	Origin    string `json:"origin,omitempty"` // nom du vendeur d'origine
+	Origin    string `json:"origin,omitempty"` // name of the original vendor
 }
 
-// Create est le tirage proposé pendant la création du personnage: le serveur lance les dés, le client
-// affiche. Il est renvoyé après chaque relance. Le client répond par des CreateAction ; TWelcome
-// clôt la création.
+// Create is the roll offered during character creation: the server rolls the dice, the client
+// displays. It is sent again after each reroll. The client answers with CreateActions; TWelcome
+// ends the creation.
 type Create struct {
-	Scores  []int       `json:"scores"` // FOR AGI INT CON SAG CHA
-	Left    int         `json:"left"`   // relances restantes (3 au total)
-	Level   int         `json:"lvl"`    // niveau conservé d'un personnage existant (1 pour un nouveau)
+	Scores  []int       `json:"scores"` // STR AGI INT CON WIS CHA
+	Left    int         `json:"left"`   // remaining rerolls (3 in total)
+	Level   int         `json:"lvl"`    // level kept from an existing character (1 for a new one)
 	Classes []ClassInfo `json:"classes"`
 }
 
-// ClassInfo décrit une base de personnage.
+// ClassInfo describes a character base class.
 type ClassInfo struct {
 	ID   string `json:"id"` // warrior, rogue, mage
 	Die  int    `json:"die"`
-	Mana int    `json:"mana"` // mana de départ avant le modificateur de SAG
+	Mana int    `json:"mana"` // starting mana before the WIS modifier
 }
 
-// Actions de CreateAction.Action.
+// CreateAction.Action values.
 const (
-	CreateReroll  = "reroll"  // relancer la caractéristique Index (0 à 5)
-	CreateConfirm = "confirm" // valider le tirage avec la classe Class
+	CreateReroll  = "reroll"  // reroll ability Index (0 to 5)
+	CreateConfirm = "confirm" // confirm the roll with class Class
 )
 
-// CreateAction est une décision du joueur pendant la création.
+// CreateAction is a player decision during creation.
 type CreateAction struct {
 	Action string `json:"action"`
 	Index  int    `json:"index,omitempty"`
 	Class  string `json:"class,omitempty"`
 }
 
-// Bag est le sac d'équipement, envoyé à la connexion et à chaque changement.
+// Bag is the equipment bag, sent at login and on every change.
 type Bag struct {
-	Notice    []string   `json:"notice,omitempty"` // lignes à ajouter au journal
-	Items     []ItemInfo `json:"items"`            // tout le sac, objets portés compris (Worn)
+	Notice    []string   `json:"notice,omitempty"` // lines to append to the log
+	Items     []ItemInfo `json:"items"`            // the whole bag, worn items included (Worn)
 	Capacity  int        `json:"cap"`
-	DefBonus  int        `json:"def"`       // bonus de DEF total de l'équipement porté
-	Reduction string     `json:"reduction"` // dés de réduction de l'armure portée ("0" sans armure)
+	DefBonus  int        `json:"def"`       // total DEF bonus of the worn equipment
+	Reduction string     `json:"reduction"` // reduction dice of the worn armor ("0" without armor)
 
-	// Fiche de création (voir internal/hero) : base, six caractéristiques (FOR AGI INT CON SAG CHA),
-	// style de l'arme portée et dé de vie.
+	// Creation sheet (see internal/hero): class, six abilities (STR AGI INT CON WIS CHA),
+	// style of the worn weapon and hit die.
 	Class  string `json:"class,omitempty"`
 	Scores []int  `json:"scores,omitempty"`
 	Style  string `json:"style,omitempty"`
 	HitDie int    `json:"die,omitempty"`
 
-	// Faits établis par le serveur sur l'histoire du personnage (fiche de personnage).
+	// Facts established by the server about the character's history (character sheet).
 	Kills     int `json:"kills,omitempty"`
 	BossKills int `json:"bosses,omitempty"`
 	Deaths    int `json:"deaths,omitempty"`
 
-	// Bénédictions de sanctuaire en cours (fiche de personnage).
+	// Active shrine blessings (character sheet).
 	Blessings []Blessing `json:"blessings,omitempty"`
 
-	// Cartes au trésor détenues : la case à creuser de chacune (fiche de personnage).
+	// Treasure maps held: the tile to dig for each one (character sheet).
 	Maps []TreasureMap `json:"maps,omitempty"`
 
-	// Matières récoltées (sac de matières, voir internal/resource), triées par catégorie puis identifiant.
+	// Gathered materials (materials bag, see internal/resource), sorted by category then identifier.
 	Resources []ResourceStack `json:"res,omitempty"`
 
-	// Métiers de récolte, un par catégorie de ressource, dans l'ordre du catalogue.
+	// Gathering jobs, one per resource category, in catalogue order.
 	Jobs []JobInfo `json:"jobs,omitempty"`
 }
 
-// JobInfo décrit un métier de récolte (bûcheron, mineur, herboriste, pêcheur): Job est la clé de catégorie
-// (resource.Category.Key), Used et Cap le remplissage du sac de la catégorie, Chance le pourcentage de réussite.
-// Next vaut 0 au niveau maximal.
+// JobInfo describes a gathering job (lumberjack, miner, herbalist, fisher): Job is the category key
+// (resource.Category.Key), Used and Cap the fill of the category's bag, Chance the success percentage.
+// Next is 0 at the maximum level.
 type JobInfo struct {
 	Job    string `json:"job"`
 	Level  int    `json:"lvl"`
@@ -374,34 +374,34 @@ type JobInfo struct {
 	Chance int    `json:"chance"`
 }
 
-// ResourceStack est une quantité de matière: ID est l'identifiant du catalogue (voir resource.Kind).
+// ResourceStack is a quantity of material: ID is the catalogue identifier (see resource.Kind).
 type ResourceStack struct {
 	ID  string `json:"id"`
 	Qty int    `json:"n"`
 }
 
-// Nodes liste les nœuds de ressources épuisés (récoltés, pas encore repoussés) autour du joueur. Le terrain
-// étant recalculé par le client, c'est ce message qui lui dit de dessiner ces nœuds comme du terrain nu. Il
-// remplace la liste précédente.
+// Nodes lists the depleted resource nodes (harvested, not yet regrown) around the player. Since the terrain
+// is recomputed by the client, this message tells it to draw those nodes as bare terrain. It
+// replaces the previous list.
 type Nodes struct {
 	Spent [][2]int `json:"spent,omitempty"` // positions (x, y)
 }
 
-// TreasureMap est une carte au trésor : les coordonnées de la case à creuser.
+// TreasureMap is a treasure map: the coordinates of the tile to dig.
 type TreasureMap struct {
 	X int `json:"x"`
 	Y int `json:"y"`
 }
 
-// Blessing est un bonus temporaire de sanctuaire. Kind vaut BlessDef, BlessHit, BlessXP ou BlessRegen ; Bonus est sa
-// valeur (points de DEF ou de toucher, pourcentage d'XP, PV par seconde) et Secs le temps restant à l'envoi.
+// Blessing is a temporary shrine bonus. Kind is BlessDef, BlessHit, BlessXP or BlessRegen; Bonus is its
+// value (DEF or to-hit points, XP percentage, HP per second) and Secs the time remaining at send time.
 type Blessing struct {
 	Kind  string `json:"kind"`
 	Bonus int    `json:"bonus"`
 	Secs  int    `json:"secs"`
 }
 
-// Genres de bénédiction.
+// Blessing kinds.
 const (
 	BlessDef   = "def"
 	BlessHit   = "hit"
@@ -409,65 +409,65 @@ const (
 	BlessRegen = "regen"
 )
 
-// GearAction est une action sur le sac : équiper un objet (ID) ou retirer l'objet d'un emplacement (Slot).
+// GearAction is an action on the bag: equip an item (ID) or remove the item from a slot (Slot).
 type GearAction struct {
-	Action string `json:"action"` // "equip" ou "unequip"
+	Action string `json:"action"` // "equip" or "unequip"
 	ID     int64  `json:"id,omitempty"`
 	Slot   string `json:"slot,omitempty"`
 }
 
-// Actions du sac.
+// Bag actions.
 const (
 	GearEquip   = "equip"
 	GearUnequip = "unequip"
 )
 
-// QuestInfo est une quête telle que le joueur la voit. Tout est calculé par le serveur.
+// QuestInfo is a quest as the player sees it. Everything is computed by the server.
 type QuestInfo struct {
 	ID       int64  `json:"id"`
 	Title    string `json:"title"`
 	Story    string `json:"story"`
-	Giver    string `json:"giver"`    // nom du PNJ
-	Place    string `json:"place"`    // nom du lieu du donneur
-	Goal     string `json:"goal"`     // objectif en toutes lettres (« Vaincre 5 loups »)
-	Progress int    `json:"progress"` // actions accomplies
+	Giver    string `json:"giver"`    // NPC name
+	Place    string `json:"place"`    // name of the giver's place
+	Goal     string `json:"goal"`     // objective spelled out ("Defeat 5 wolves")
+	Progress int    `json:"progress"` // actions completed
 	Need     int    `json:"need"`
 	Gold     int    `json:"gold"`
 	XP       int    `json:"xp"`
 	Potions  int    `json:"potions"`
 	Note     string `json:"note,omitempty"`
-	State    string `json:"state"` // "active", "ready" ou "done"
-	Gain     int    `json:"gain"`  // points de réputation à la remise
+	State    string `json:"state"` // "active", "ready" or "done"
+	Gain     int    `json:"gain"`  // reputation points on hand-in
 
-	// Clé du PNJ donneur (région et rang dans le lieu) : le client y repère, sur la carte,
-	// le PNJ à qui rendre une quête prête.
+	// Key of the giver NPC (region and rank within the place): the client uses it to locate, on the map,
+	// the NPC to hand a ready quest to.
 	GiverRX  int `json:"grx"`
 	GiverRY  int `json:"gry"`
 	GiverIdx int `json:"gi"`
 }
 
-// Standing est la réputation du joueur dans un lieu.
+// Standing is the player's reputation in a place.
 type Standing struct {
 	Place  string `json:"place"`
 	Points int    `json:"points"`
 	Tier   string `json:"tier"`
-	Next   int    `json:"next,omitempty"` // points manquants pour le palier suivant
+	Next   int    `json:"next,omitempty"` // points missing for the next tier
 }
 
-// Quests est le livre de quêtes, envoyé à la connexion et à chaque changement.
+// Quests is the quest book, sent at login and on every change.
 type Quests struct {
-	Open     []QuestInfo `json:"open"`    // actives et prêtes
-	History  []QuestInfo `json:"history"` // dernières quêtes rendues
+	Open     []QuestInfo `json:"open"`    // active and ready
+	History  []QuestInfo `json:"history"` // latest quests handed in
 	Standing []Standing  `json:"standing"`
-	// Full : le quota de quêtes ouvertes est atteint, aucun donneur ne peut rien confier.
+	// Full: the open-quest quota is reached, no giver can assign anything.
 	Full bool `json:"full,omitempty"`
-	// Pauses : donneurs à qui une quête vient d'être rendue, avec le délai restant avant la suivante.
-	// Avec les donneurs des quêtes ouvertes, c'est de quoi masquer le « ! » de ceux qui n'ont rien à confier.
+	// Pauses: givers to whom a quest was just handed in, with the delay remaining before the next one.
+	// Together with the givers of open quests, this is enough to hide the "!" of those with nothing to offer.
 	Pauses []GiverPause `json:"pauses,omitempty"`
-	Notice []string     `json:"notice,omitempty"` // lignes à ajouter au journal (progression, abandon…)
+	Notice []string     `json:"notice,omitempty"` // lines to append to the log (progress, abandonment...)
 }
 
-// GiverPause est un donneur de quêtes en pause (clé du PNJ, secondes restantes).
+// GiverPause is a quest giver on pause (NPC key, seconds remaining).
 type GiverPause struct {
 	RX   int `json:"rx"`
 	RY   int `json:"ry"`
@@ -475,19 +475,19 @@ type GiverPause struct {
 	Secs int `json:"s"`
 }
 
-// QuestAction est une action sur le livre de quêtes. Aujourd'hui: abandonner.
+// QuestAction is an action on the quest book. Currently: abandon.
 type QuestAction struct {
 	Action string `json:"action"` // "abandon"
 	ID     int64  `json:"id"`
 }
 
-// Actions du livre de quêtes.
+// Quest book actions.
 const QuestAbandon = "abandon"
 
-// NPCDialog est l'état d'un dialogue, envoyé à son ouverture puis après chaque
-// action. Quand Over est vrai, le dialogue est terminé et le joueur est libre.
+// NPCDialog is the state of a dialogue, sent when it opens and then after each
+// action. When Over is true, the dialogue is finished and the player is free.
 type NPCDialog struct {
-	Kind    string     `json:"kind"` // "merchant" ou "healer"
+	Kind    string     `json:"kind"` // "merchant" or "healer"
 	Gold    int        `json:"gold"`
 	Potions int        `json:"pot"`
 	HP      int        `json:"hp"`
@@ -496,70 +496,70 @@ type NPCDialog struct {
 	Log     []string   `json:"log,omitempty"`
 	Over    bool       `json:"over,omitempty"`
 
-	// Identité du PNJ (déterministe: le client la connaît aussi) et état de la discussion.
+	// NPC identity (deterministic: the client knows it too) and discussion state.
 	Name     string    `json:"name,omitempty"`
 	Place    string    `json:"place,omitempty"`
-	Mode     string    `json:"mode,omitempty"`     // NPCModeMenu par défaut
-	Thinking bool      `json:"thinking,omitempty"` // le PNJ prépare sa réponse
-	Notice   string    `json:"notice,omitempty"`   // texte de l'avis (mode notice)
-	Lines    []NPCLine `json:"lines,omitempty"`    // transcription (mode chat)
+	Mode     string    `json:"mode,omitempty"`     // NPCModeMenu by default
+	Thinking bool      `json:"thinking,omitempty"` // the NPC is preparing its reply
+	Notice   string    `json:"notice,omitempty"`   // notice text (notice mode)
+	Lines    []NPCLine `json:"lines,omitempty"`    // transcript (chat mode)
 
-	Proposal *QuestInfo `json:"proposal,omitempty"` // quête proposée (mode quest)
+	Proposal *QuestInfo `json:"proposal,omitempty"` // proposed quest (quest mode)
 
-	Specialty string `json:"specialty,omitempty"` // spécialité d'un vendeur d'équipement
+	Specialty string `json:"specialty,omitempty"` // specialty of an equipment vendor
 }
 
-// Envelope est l'enveloppe commune à tous les messages.
+// Envelope is the envelope common to all messages.
 type Envelope struct {
 	T string          `json:"t"`
 	D json.RawMessage `json:"d,omitempty"`
 }
 
-// Login est le premier message envoyé par un client. Avec Register, le
-// serveur crée le compte (le pseudo ne doit pas exister); sinon il
-// authentifie un compte existant.
+// Login is the first message sent by a client. With Register, the
+// server creates the account (the name must not exist); otherwise it
+// authenticates an existing account.
 type Login struct {
 	Name     string `json:"name"`
 	Password string `json:"pass"`
 	Register bool   `json:"register,omitempty"`
-	// Lang est la langue de l'interface du client ("fr" ou "en"): le serveur y
-	// rédige les messages qu'il lui adresse. Absente (ancien client), c'est le français.
+	// Lang is the client's interface language ("fr" or "en"): the server writes
+	// the messages it addresses to it in that language. When absent (old client), it is French.
 	Lang string `json:"lang,omitempty"`
 }
 
-// Welcome confirme la connexion et donne l'état initial du joueur.
+// Welcome confirms the connection and gives the player's initial state.
 type Welcome struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 	X    int    `json:"x"`
 	Y    int    `json:"y"`
 	Seed int64  `json:"seed"`
-	// Gen est la version du générateur de terrain (absente = 1, anciens serveurs).
+	// Gen is the terrain generator version (absent = 1, old servers).
 	Gen int `json:"gen,omitempty"`
 }
 
-// Error signale un refus ou une erreur au client.
+// Error reports a refusal or an error to the client.
 type Error struct {
 	Msg string `json:"msg"`
 }
 
-// ChatSend est un message de chat émis par un client.
+// ChatSend is a chat message sent by a client.
 type ChatSend struct {
 	Text string `json:"text"`
 }
 
-// Canaux de chat.
+// Chat channels.
 const (
-	ChanLocal   = "local"   // joueurs dans la zone de vision de l'émetteur
-	ChanGlobal  = "global"  // tous les joueurs
-	ChanEmote   = "emote"   // /me, comme local
-	ChanWhisper = "whisper" // message privé
-	ChanSystem  = "system"  // annonces du serveur
+	ChanLocal   = "local"   // players within the sender's view area
+	ChanGlobal  = "global"  // all players
+	ChanEmote   = "emote"   // /me, same as local
+	ChanWhisper = "whisper" // private message
+	ChanSystem  = "system"  // server announcements
 )
 
-// Chat est un message de chat diffusé par le serveur.
-// From est vide pour un message système. To n'est renseigné que pour un
-// message privé (reçu par le destinataire, et renvoyé à l'émetteur).
+// Chat is a chat message broadcast by the server.
+// From is empty for a system message. To is only set for a
+// private message (received by the recipient, and sent back to the sender).
 type Chat struct {
 	Channel string `json:"ch,omitempty"`
 	From    string `json:"from,omitempty"`
@@ -567,8 +567,8 @@ type Chat struct {
 	Text    string `json:"text"`
 }
 
-// Encode sérialise une charge utile dans une enveloppe. Les charges qui savent
-// s'encoder seules (instantanés, voir fastjson.go) évitent la réflexion.
+// Encode serializes a payload into an envelope. Payloads that know how to
+// encode themselves (snapshots, see fastjson.go) avoid reflection.
 func Encode(t string, payload any) ([]byte, error) {
 	if a, ok := payload.(appender); ok {
 		size := 512
@@ -593,22 +593,22 @@ func Encode(t string, payload any) ([]byte, error) {
 	return json.Marshal(Envelope{T: t, D: raw})
 }
 
-// Decode lit une enveloppe depuis des octets.
+// Decode reads an envelope from bytes.
 func Decode(data []byte) (Envelope, error) {
 	var e Envelope
 	if err := json.Unmarshal(data, &e); err != nil {
-		return e, fmt.Errorf("message invalide: %w", err)
+		return e, fmt.Errorf("invalid message: %w", err)
 	}
 	if e.T == "" {
-		return e, fmt.Errorf("message sans type")
+		return e, fmt.Errorf("message without type")
 	}
 	return e, nil
 }
 
-// Payload désérialise la charge utile de l'enveloppe dans v.
+// Payload deserializes the envelope's payload into v.
 func (e Envelope) Payload(v any) error {
 	if len(e.D) == 0 {
-		return fmt.Errorf("charge utile absente pour %q", e.T)
+		return fmt.Errorf("missing payload for %q", e.T)
 	}
 	return json.Unmarshal(e.D, v)
 }

@@ -1,8 +1,8 @@
-// Package resource décrit les matières premières récoltables (bois, minerais, plantes) qui servent au
-// futur artisanat. Le catalogue est statique: seuls les identifiants circulent entre serveur, client et base.
+// Package resource describes the gatherable raw materials (wood, ore, herbs) used by the
+// future crafting. The catalogue is static: only identifiers travel between server, client and database.
 package resource
 
-// Category est la famille d'une ressource.
+// Category is the family of a resource.
 type Category uint8
 
 const (
@@ -13,7 +13,7 @@ const (
 	NumCategories
 )
 
-// Key est l'identifiant de la catégorie (clé de traduction "resource.cat.<key>").
+// Key is the identifier of the category (translation key "resource.cat.<key>").
 func (c Category) Key() string {
 	switch c {
 	case Ore:
@@ -26,19 +26,19 @@ func (c Category) Key() string {
 	return "wood"
 }
 
-// Kind est l'identifiant stable d'une ressource (stocké en base): n'en renommez jamais un.
+// Kind is the stable identifier of a resource (stored in the database): never rename one.
 type Kind string
 
-// Info décrit une ressource.
+// Info describes a resource.
 type Info struct {
 	Kind Kind
 	Cat  Category
-	Tier int // 1 (commun) à 4 (rare): la rareté, qui monte avec le niveau de la région
-	// Climates restreint l'apparition à certains climats (indices de world.Climate); vide = partout.
+	Tier int // 1 (common) to 4 (rare): rarity, which rises with the region level
+	// Climates restricts spawning to certain climates (world.Climate indices); empty = everywhere.
 	Climates []int
 }
 
-// Indices de climat (miroir de world.Climate, sans dépendance).
+// Climate indices (mirror of world.Climate, without the dependency).
 const (
 	Temperate = iota
 	Tropical
@@ -46,7 +46,7 @@ const (
 	Boreal
 )
 
-// all est le catalogue, dans un ordre stable.
+// all is the catalogue, in a stable order.
 var all = []Info{
 	{"oak", Wood, 1, []int{Temperate, Tropical}},
 	{"pine", Wood, 1, []int{Boreal, Arid}},
@@ -86,10 +86,10 @@ var byKind = func() map[Kind]*Info {
 	return m
 }()
 
-// All renvoie le catalogue (copie).
+// All returns the catalogue (copy).
 func All() []Info { return append([]Info(nil), all...) }
 
-// Lookup renvoie la fiche d'une ressource connue.
+// Lookup returns the entry of a known resource.
 func Lookup(k Kind) (Info, bool) {
 	i, ok := byKind[k]
 	if !ok {
@@ -98,14 +98,14 @@ func Lookup(k Kind) (Info, bool) {
 	return *i, true
 }
 
-// MaxTier est le palier le plus rare.
+// MaxTier is the rarest tier.
 const MaxTier = 4
 
-// Pick choisit, de façon déterministe, la ressource de la catégorie cat pour un nœud: h est un hachage de la
-// position, climate un indice (voir Temperate…), level le niveau de région (1 à 20). Plus le niveau est
-// élevé, plus les paliers rares sont fréquents.
+// Pick deterministically chooses the resource of category cat for a node: h is a hash of the
+// position, climate an index (see Temperate...), level the region level (1 to 20). The higher the level,
+// the more frequent the rare tiers are.
 func Pick(cat Category, climate, level int, h uint64) Kind {
-	// Palier maximal accessible: 1 au niveau 1-5, 4 au niveau 16-20.
+	// Highest accessible tier: 1 at level 1-5, 4 at level 16-20.
 	maxTier := min(1+(max(level, 1)-1)/5, MaxTier)
 	var cands []Info
 	total := 0
@@ -116,7 +116,7 @@ func Pick(cat Category, climate, level int, h uint64) Kind {
 		cands = append(cands, r)
 		total += weight(r.Tier, maxTier)
 	}
-	if len(cands) == 0 { // ne devrait pas arriver: repli sur le premier commun de la catégorie
+	if len(cands) == 0 { // should not happen: fall back to the first common one of the category
 		for _, r := range all {
 			if r.Cat == cat && r.Tier == 1 {
 				return r.Kind
@@ -134,9 +134,9 @@ func Pick(cat Category, climate, level int, h uint64) Kind {
 	return cands[0].Kind
 }
 
-// weight: les paliers communs dominent, les rares restent rares même en haut niveau.
+// weight: common tiers dominate, rare ones stay rare even at high level.
 func weight(tier, maxTier int) int {
-	return 1 << uint(max(maxTier-tier, 0)) // 1, 2, 4, 8 du palier le plus haut au plus bas
+	return 1 << uint(max(maxTier-tier, 0)) // 1, 2, 4, 8 from the highest tier to the lowest
 }
 
 func climateOK(r Info, c int) bool {

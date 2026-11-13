@@ -1,10 +1,10 @@
-// Package llm est le client des modèles de langage (Mistral AI) utilisés pour
-// faire parler les PNJ.
+// Package llm is the client for the language models (Mistral AI) used to
+// make NPCs talk.
 //
-// Ce paquet ne connaît rien du jeu: il envoie des messages et renvoie du texte.
-// Le modèle ne produit JAMAIS d'action (pas d'outils, pas d'appels de
-// fonctions): c'est une garantie de conception, le pire effet possible d'une
-// réponse est un texte.
+// This package knows nothing about the game: it sends messages and returns text.
+// The model NEVER produces an action (no tools, no function calls):
+// this is a design guarantee, the worst possible effect of a
+// response is text.
 package llm
 
 import (
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Role est l'auteur d'un message.
+// Role is the author of a message.
 type Role string
 
 const (
@@ -24,37 +24,37 @@ const (
 	Assistant Role = "assistant"
 )
 
-// Message est un message d'une conversation.
+// Message is a message in a conversation.
 type Message struct {
 	Role    Role
 	Content string
 }
 
-// Guardrail demande à Mistral de modérer l'ENTRÉE avant de la traiter; une
-// violation est renvoyée par l'API (HTTP 403), ce qui donne ErrBlocked.
+// Guardrail asks Mistral to moderate the INPUT before processing it; a
+// violation is returned by the API (HTTP 403), which yields ErrBlocked.
 type Guardrail struct {
-	// Thresholds associe une catégorie à un seuil de 0 à 1 (1 = catégorie désactivée).
+	// Thresholds maps a category to a threshold from 0 to 1 (1 = category disabled).
 	Thresholds map[string]float64
-	// BlockOnError bloque aussi quand la modération elle-même échoue (fail-closed).
+	// BlockOnError also blocks when the moderation itself fails (fail-closed).
 	BlockOnError bool
 }
 
-// Request est une requête de complétion.
+// Request is a completion request.
 type Request struct {
-	Model       string // vide: modèle par défaut du client
+	Model       string // empty: client's default model
 	Messages    []Message
 	Temperature *float64
-	MaxTokens   int  // 0: valeur par défaut de l'API
-	JSON        bool // demande une réponse JSON (le prompt doit aussi l'exiger)
-	Seed        *int // échantillonnage reproductible
+	MaxTokens   int  // 0: API default value
+	JSON        bool // asks for a JSON response (the prompt must also require it)
+	Seed        *int // reproducible sampling
 	Guardrail   *Guardrail
 }
 
-// Usage est la consommation de jetons d'une requête. Les champs peuvent être
-// nuls si l'API ne les renvoie pas: voir Response.TotalTokens.
+// Usage is the token consumption of a request. The fields may be
+// zero if the API does not return them: see Response.TotalTokens.
 type Usage struct{ Prompt, Completion, Total int }
 
-// Response est la réponse d'un modèle.
+// Response is a model's response.
 type Response struct {
 	Content      string
 	FinishReason string
@@ -62,8 +62,8 @@ type Response struct {
 	Usage        Usage
 }
 
-// TotalTokens renvoie les jetons consommés, ou une estimation (environ un jeton
-// pour trois caractères) si l'API n'a pas fourni la consommation.
+// TotalTokens returns the tokens consumed, or an estimate (about one token
+// per three characters) if the API did not provide the usage.
 func (r Response) TotalTokens(req Request) int {
 	if r.Usage.Total > 0 {
 		return r.Usage.Total
@@ -78,14 +78,14 @@ func (r Response) TotalTokens(req Request) int {
 	return chars/3 + 1
 }
 
-// Verdict est le résultat de la modération d'un texte.
+// Verdict is the result of moderating a text.
 type Verdict struct {
-	// Flagged liste les catégories jugées violées (ex. "hate_and_discrimination").
+	// Flagged lists the categories judged violated (e.g. "hate_and_discrimination").
 	Flagged []string
 }
 
-// Violates indique si au moins une catégorie de blocked est signalée. Une liste
-// vide signifie « toutes les catégories ».
+// Violates reports whether at least one category of blocked is flagged. An empty
+// list means "all categories".
 func (v Verdict) Violates(blocked map[string]bool) bool {
 	for _, c := range v.Flagged {
 		if len(blocked) == 0 || blocked[c] {
@@ -95,29 +95,29 @@ func (v Verdict) Violates(blocked map[string]bool) bool {
 	return false
 }
 
-// Client est l'accès à un fournisseur de modèles.
+// Client is the access to a model provider.
 type Client interface {
 	Chat(ctx context.Context, req Request) (Response, error)
-	// Moderate classe chaque texte; la réponse a autant d'éléments que texts.
+	// Moderate classifies each text; the response has as many elements as texts.
 	Moderate(ctx context.Context, texts []string) ([]Verdict, error)
 }
 
-// Erreurs. Utiliser errors.Is / errors.As.
+// Errors. Use errors.Is / errors.As.
 var (
-	ErrBlocked      = errors.New("llm: entrée bloquée par la modération")
-	ErrUnauthorized = errors.New("llm: clé d'API refusée")
-	ErrBadRequest   = errors.New("llm: requête refusée par l'API")
-	ErrRateLimited  = errors.New("llm: limite de débit atteinte")
-	ErrUnavailable  = errors.New("llm: service indisponible")
-	ErrBadResponse  = errors.New("llm: réponse inexploitable")
+	ErrBlocked      = errors.New("llm: input blocked by moderation")
+	ErrUnauthorized = errors.New("llm: API key rejected")
+	ErrBadRequest   = errors.New("llm: request rejected by the API")
+	ErrRateLimited  = errors.New("llm: rate limit reached")
+	ErrUnavailable  = errors.New("llm: service unavailable")
+	ErrBadResponse  = errors.New("llm: unusable response")
 )
 
-// APIError détaille une réponse d'erreur du fournisseur. Le corps est tronqué
-// et ne contient jamais la clé d'API.
+// APIError details an error response from the provider. The body is truncated
+// and never contains the API key.
 type APIError struct {
 	Status     int
 	Body       string
-	RetryAfter time.Duration // 0 si l'API n'en indique pas
+	RetryAfter time.Duration // 0 if the API gives none
 	kind       error
 }
 
@@ -129,10 +129,10 @@ func (e *APIError) Error() string {
 	return msg
 }
 
-// Unwrap permet errors.Is(err, ErrRateLimited), etc.
+// Unwrap enables errors.Is(err, ErrRateLimited), etc.
 func (e *APIError) Unwrap() error { return e.kind }
 
-// truncate borne un texte d'erreur affiché ou journalisé.
+// truncate bounds an error text that is displayed or logged.
 func truncate(s string, n int) string {
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > n {

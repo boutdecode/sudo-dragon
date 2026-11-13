@@ -31,21 +31,21 @@ func TestMapGridShowsSelfExploredAndUnexplored(t *testing.T) {
 	m.wmap.zoom = 1
 	lines, explored, total := mapGrid(m.world, &m.wmap, m.snap.Self, m.snap.Others, 101, 41)
 	if len(lines) != 41 {
-		t.Fatalf("lignes = %d", len(lines))
+		t.Fatalf("lines = %d", len(lines))
 	}
 	out := ansi.Strip(strings.Join(lines, "\n"))
 	if !strings.Contains(out, "@") || !strings.Contains(out, "░") {
-		t.Error("la carte devrait montrer le joueur et de l'inexploré")
+		t.Error("the map should show the player and unexplored area")
 	}
 	if strings.Count(out, "@") != 2 {
-		t.Errorf("attendu 2 « @ » (joueur + autre), obtenu %d", strings.Count(out, "@"))
+		t.Errorf("expected 2 \"@\" (player + other), got %d", strings.Count(out, "@"))
 	}
 	if explored == 0 || explored >= total {
-		t.Errorf("exploré = %d/%d", explored, total)
+		t.Errorf("explored = %d/%d", explored, total)
 	}
-	// Au centre de la grille, la cellule est celle du joueur.
+	// At the center of the grid, the cell is the player's.
 	if r := []rune(ansi.Strip(lines[20])); r[50] != '@' {
-		t.Errorf("le joueur devrait être au centre, trouvé %q", string(r[50]))
+		t.Errorf("the player should be at the center, found %q", string(r[50]))
 	}
 }
 
@@ -58,7 +58,7 @@ func TestMapStructuresAppearWhenExplored(t *testing.T) {
 		break
 	}
 	if s == nil {
-		t.Skip("aucune structure proche")
+		t.Skip("no nearby structure")
 	}
 	ctr := s.Center()
 	m.snap.Self.X, m.snap.Self.Y = ctr.X+3, ctr.Y
@@ -71,7 +71,7 @@ func TestMapStructuresAppearWhenExplored(t *testing.T) {
 		want = "X"
 	}
 	if !strings.Contains(out, want) {
-		t.Errorf("structure %v sans %q", s.Kind, want)
+		t.Errorf("structure %v without %q", s.Kind, want)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestMapKeysZoomCursorMarkers(t *testing.T) {
 	m := mapModel(i18n.FR, 120, 40)
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'm', Text: "m"})
 	if !m.worldMap || m.wmap.curX != 12 || m.wmap.z() != 8 {
-		t.Fatalf("ouverture: %+v", m.wmap)
+		t.Fatalf("opening: %+v", m.wmap)
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: '+', Text: "+"})
 	if m.wmap.z() != 4 {
@@ -89,36 +89,36 @@ func TestMapKeysZoomCursorMarkers(t *testing.T) {
 		m = pressKey(t, m, tea.KeyPressMsg{Code: '-', Text: "-"})
 	}
 	if m.wmap.z() != 16 {
-		t.Errorf("zoom borné à 16, obtenu %d", m.wmap.z())
+		t.Errorf("zoom capped at 16, got %d", m.wmap.z())
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyRight})
 	if m.wmap.curX != 12+16 {
-		t.Errorf("curseur x = %d", m.wmap.curX)
+		t.Errorf("cursor x = %d", m.wmap.curX)
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'w', Text: "w"})
 	if len(m.wmap.markers) != 1 || !m.wmap.naming || m.wmap.markers[0].Name != "Repère 1" {
-		t.Fatalf("w devrait poser un repère et ouvrir la saisie: %+v", m.wmap)
+		t.Fatalf("w should place a marker and open the input: %+v", m.wmap)
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.wmap.naming || !m.worldMap || len(m.wmap.markers) != 1 {
-		t.Fatal("Échap annule la saisie sans fermer la carte ni perdre le repère")
+		t.Fatal("Escape cancels the input without closing the map or losing the marker")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if len(m.wmap.markers) != 0 {
-		t.Fatal("x devrait retirer le repère de la cellule")
+		t.Fatal("x should remove the cell's marker")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: '0', Text: "0"})
 	if m.wmap.curX != 12 {
-		t.Error("0 devrait recentrer")
+		t.Error("0 should recenter")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'g', Text: "g"})
 	if m.worldMap {
-		t.Error("g devrait fermer la carte")
+		t.Error("g should close the map")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: 'm', Text: "m"})
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.worldMap {
-		t.Error("Échap devrait fermer la carte")
+		t.Error("Escape should close the map")
 	}
 }
 
@@ -131,21 +131,21 @@ func TestMapViewFitsEverySizeAndLanguage(t *testing.T) {
 			v := m.View().Content
 			lines := strings.Split(v, "\n")
 			if len(lines) > sz[1] {
-				t.Errorf("%s %v: %d lignes > %d", lang, sz, len(lines), sz[1])
+				t.Errorf("%s %v: %d lines > %d", lang, sz, len(lines), sz[1])
 			}
 			for _, l := range lines {
 				if ansi.StringWidth(l) > sz[0] {
-					t.Fatalf("%s %v: ligne trop large (%d)", lang, sz, ansi.StringWidth(l))
+					t.Fatalf("%s %v: line too wide (%d)", lang, sz, ansi.StringWidth(l))
 				}
 			}
 			plain := ansi.Strip(v)
 			for _, want := range []string{m.t("map.title"), m.t("map.zoom", 8), seedLabel(1)} {
 				if !strings.Contains(plain, want) {
-					t.Errorf("%s %v: carte sans %q", lang, sz, want)
+					t.Errorf("%s %v: map without %q", lang, sz, want)
 				}
 			}
 			if sz[0] >= legendMinWidth && !strings.Contains(plain, m.t("map.legend")) {
-				t.Errorf("%s %v: légende absente", lang, sz)
+				t.Errorf("%s %v: legend missing", lang, sz)
 			}
 		}
 	}
@@ -157,7 +157,7 @@ func TestArrowAndSeedLabel(t *testing.T) {
 		want   string
 	}{{5, 0, "→"}, {5, 5, "↘"}, {0, 5, "↓"}, {-5, 5, "↙"}, {-5, 0, "←"}, {-5, -5, "↖"}, {0, -5, "↑"}, {5, -5, "↗"}} {
 		if got := arrowTo(c.dx, c.dy); got != c.want {
-			t.Errorf("arrowTo(%d,%d) = %s, attendu %s", c.dx, c.dy, got, c.want)
+			t.Errorf("arrowTo(%d,%d) = %s, expected %s", c.dx, c.dy, got, c.want)
 		}
 	}
 	if got := seedLabel(0x4F2A91C0); got != "4F2A-91C0" {
@@ -172,32 +172,32 @@ func TestMapCursorBlinks(t *testing.T) {
 	tm, cmd := m.Update(mapBlinkMsg{gen})
 	m = tm.(Model)
 	if m.wmap.blink == was || cmd == nil {
-		t.Fatal("le curseur devrait basculer et relancer le minuteur")
+		t.Fatal("the cursor should toggle and restart the timer")
 	}
 	m = pressKey(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	tm, cmd = m.Update(mapBlinkMsg{gen})
 	if cmd != nil || tm.(Model).wmap.blink != m.wmap.blink {
-		t.Error("carte fermée : le clignotement doit s'arrêter")
+		t.Error("map closed: blinking must stop")
 	}
 }
 
-// Les couleurs de la carte suivent le climat de la contrée, sans changer les glyphes.
+// The map colors follow the region's climate, without changing the glyphs.
 func TestMapStylesFollowClimate(t *testing.T) {
 	if len(mapStyles) != int(world.NumClimates)*numMapStyles {
-		t.Fatalf("%d styles, attendu %d", len(mapStyles), int(world.NumClimates)*numMapStyles)
+		t.Fatalf("%d styles, expected %d", len(mapStyles), int(world.NumClimates)*numMapStyles)
 	}
 	temperate := mapStyles[msForest+climatShift(world.Temperate)].Render("^")
 	for c := world.Climate(1); c < world.NumClimates; c++ {
 		if got := mapStyles[msForest+climatShift(c)].Render("^"); got == temperate {
-			t.Errorf("la forêt du climat %s a la couleur du tempéré", c.Key())
+			t.Errorf("the forest of climate %s has the temperate color", c.Key())
 		}
 		if mapStyles[msVillage+climatShift(c)].Render("H") != mapStyles[msVillage].Render("H") {
-			t.Errorf("les villages ne doivent pas changer de couleur (%s)", c.Key())
+			t.Errorf("villages must not change color (%s)", c.Key())
 		}
 	}
 	for c := world.Climate(0); c < world.NumClimates; c++ {
 		if i18n.T(i18n.FR, "climate."+c.Key()) == "climate."+c.Key() || i18n.T(i18n.EN, "climate."+c.Key()) == "climate."+c.Key() {
-			t.Errorf("climat %s sans traduction", c.Key())
+			t.Errorf("climate %s without translation", c.Key())
 		}
 	}
 }

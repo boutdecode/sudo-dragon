@@ -48,7 +48,7 @@ type rig struct {
 	cancel context.CancelFunc
 }
 
-// reply fabrique la réponse JSON d'un modèle bien élevé.
+// reply builds the JSON response of a well-behaved model.
 func reply(text string, intro *lore.Intro, memory string) llm.Response {
 	m := map[string]any{"reply": text, "memory": memory, "intro": nil}
 	if intro != nil {
@@ -69,7 +69,7 @@ func newRig(t *testing.T, cfg Config, accounts ...string) *rig {
 	r := &rig{t: t, be: be, clk: &clock{t: base}, fake: &llm.Fake{}}
 	r.book = &lore.Book{Repo: be.Store, Deeds: be.Store, Now: r.clk.Now}
 	if cfg.MinInterval == 0 {
-		cfg.MinInterval = -1 // désactivé par défaut dans les tests; testé à part
+		cfg.MinInterval = -1 // disabled by default in tests; tested separately
 	}
 	r.svc = New(r.fake, r.book, cfg,
 		WithClock(r.clk.Now),
@@ -90,7 +90,7 @@ func (r *rig) req(account, msg string) Request {
 	return rq
 }
 
-// ask envoie une demande et attend sa réponse.
+// ask sends a request and waits for its response.
 func (r *rig) ask(account, msg string) Reply {
 	r.t.Helper()
 	return r.askReq(r.req(account, msg))
@@ -104,7 +104,7 @@ func (r *rig) askReq(req Request) Reply {
 	case rep := <-ch:
 		return rep
 	case <-time.After(5 * time.Second):
-		r.t.Fatal("aucune réponse du service")
+		r.t.Fatal("no response from the service")
 		return Reply{}
 	}
 }
@@ -113,7 +113,7 @@ func (r *rig) lastSystem() string {
 	r.t.Helper()
 	calls := r.fake.ChatCalls()
 	if len(calls) == 0 {
-		r.t.Fatal("aucun appel au modèle")
+		r.t.Fatal("no model call")
 	}
 	return calls[len(calls)-1].Messages[0].Content
 }
@@ -126,7 +126,7 @@ func (r *rig) card(account string) (lore.Card, bool) {
 	return c, ok
 }
 
-// --- Parcours nominal ---
+// --- Nominal path ---
 
 func TestAskHappyPathSendsAWellFormedRequest(t *testing.T) {
 	r := newRig(t, Config{}, "brenna")
@@ -136,20 +136,20 @@ func TestAskHappyPathSendsAWellFormedRequest(t *testing.T) {
 	}
 	calls := r.fake.ChatCalls()
 	if len(calls) != 1 {
-		t.Fatalf("%d appels", len(calls))
+		t.Fatalf("%d calls", len(calls))
 	}
 	c := calls[0]
 	if !c.JSON || c.MaxTokens != DefaultConfig().MaxTokens || c.Temperature == nil || *c.Temperature != DefaultConfig().Temperature {
-		t.Fatalf("paramètres: %+v", c)
+		t.Fatalf("parameters: %+v", c)
 	}
 	if c.Guardrail == nil || len(c.Guardrail.Thresholds) != len(DefaultBlockedCategories) {
-		t.Fatalf("garde-fou: %+v", c.Guardrail)
+		t.Fatalf("guardrail: %+v", c.Guardrail)
 	}
 	if c.Messages[0].Role != llm.System || c.Messages[len(c.Messages)-1].Content != "Bonjour, soigneuse." {
 		t.Fatalf("messages: %+v", c.Messages)
 	}
 	if !strings.Contains(c.Messages[0].Content, "Sœur Katell") {
-		t.Fatal("le PNJ n'est pas incarné dans le prompt")
+		t.Fatal("the NPC is not embodied in the prompt")
 	}
 }
 
@@ -160,7 +160,7 @@ func TestSessionHistoryIsForwarded(t *testing.T) {
 	r.askReq(rq)
 	msgs := r.fake.ChatCalls()[0].Messages
 	if len(msgs) != 4 || msgs[1].Content != "Salut" || !strings.Contains(msgs[2].Content, "Bienvenue.") {
-		t.Fatalf("historique absent: %+v", msgs)
+		t.Fatalf("history missing: %+v", msgs)
 	}
 }
 
@@ -171,14 +171,14 @@ func TestIntroIsRememberedAndHeardByAnotherPlayer(t *testing.T) {
 	}
 	rep := r.ask("aldric", "Je suis Aldric le Rouge, forgeron, je cherche mon frère.")
 	if !rep.Remembered {
-		t.Fatalf("la présentation n'a pas été retenue: %+v", rep)
+		t.Fatalf("the introduction was not retained: %+v", rep)
 	}
 	card, ok := r.card("aldric")
 	if !ok || card.Alias != "Aldric le Rouge" || card.Role != "forgeron" || card.Level != 5 {
-		t.Fatalf("fiche: %+v (ok=%v)", card, ok)
+		t.Fatalf("card: %+v (ok=%v)", card, ok)
 	}
 
-	// Un autre joueur, au même PNJ: il apprend la présentation, étiquetée « vu ici ».
+	// Another player, with the same NPC: they learn the introduction, labeled "seen here" (vu ici).
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		return reply("Un forgeron est passé.", nil, ""), nil
 	}
@@ -187,12 +187,12 @@ func TestIntroIsRememberedAndHeardByAnotherPlayer(t *testing.T) {
 	data := dataBlock(t, sys)
 	rumors := data["rumeurs"].([]any)
 	if len(rumors) != 1 {
-		t.Fatalf("rumeurs: %v", rumors)
+		t.Fatalf("rumors: %v", rumors)
 	}
 	rum := rumors[0].(map[string]any)
 	said := rum["dit_de_lui"].(map[string]any)
 	if rum["pseudo"] != "aldric" || said["nom_ou_surnom"] != "Aldric le Rouge" || said["but"] != "retrouver son frère" {
-		t.Fatalf("rumeur: %v", rum)
+		t.Fatalf("rumor: %v", rum)
 	}
 	if !strings.HasPrefix(rum["provenance"].(string), "vu ici") {
 		t.Fatalf("provenance: %v", rum["provenance"])
@@ -206,7 +206,7 @@ func TestRumorReachesAnotherPlaceOnlyAfterTheDelay(t *testing.T) {
 	}
 	r.ask("aldric", "Je suis Aldric, forgeron.")
 
-	// Un PNJ du lieu voisin (une région à l'est).
+	// An NPC from the neighboring place (one region to the east).
 	far := r.req("brenna", "Du nouveau ?")
 	far.NPC.Region = world.RegionPos{X: 2, Y: 1}
 	far.Place = "Kermarec"
@@ -214,13 +214,13 @@ func TestRumorReachesAnotherPlaceOnlyAfterTheDelay(t *testing.T) {
 
 	r.askReq(far)
 	if rumors := dataBlock(t, r.lastSystem())["rumeurs"].([]any); len(rumors) != 0 {
-		t.Fatalf("la rumeur est arrivée instantanément: %v", rumors)
+		t.Fatalf("the rumor arrived instantly: %v", rumors)
 	}
 	r.clk.Advance(lore.HopDelay)
 	r.askReq(far)
 	rumors := dataBlock(t, r.lastSystem())["rumeurs"].([]any)
 	if len(rumors) != 1 {
-		t.Fatalf("la rumeur aurait dû arriver: %v", rumors)
+		t.Fatalf("the rumor should have arrived: %v", rumors)
 	}
 	prov := rumors[0].(map[string]any)["provenance"].(string)
 	if !strings.HasPrefix(prov, "ouï-dire venu de Lieu") {
@@ -235,17 +235,17 @@ func TestMemoryIsPrivateToTheSpeaker(t *testing.T) {
 	}
 	r.ask("aldric", "Je dois de l'argent à quelqu'un.")
 
-	// Brenna n'en voit rien, même après le délai de rumeur.
+	// Brenna sees none of it, even after the rumor delay.
 	r.clk.Advance(time.Hour)
 	r.ask("brenna", "Bonjour.")
 	if strings.Contains(r.lastSystem(), "SECRET-D-ALDRIC") {
-		t.Fatal("le souvenir privé d'Aldric a fuité dans la conversation de Brenna")
+		t.Fatal("Aldric's private memory leaked into Brenna's conversation")
 	}
-	// Aldric, lui, retrouve son souvenir.
+	// Aldric, for his part, recovers his memory.
 	r.ask("aldric", "Rebonjour.")
 	inter := dataBlock(t, r.lastSystem())["interlocuteur"].(map[string]any)
 	if inter["mon_souvenir_de_lui"] != "SECRET-D-ALDRIC: il cache une dette." {
-		t.Fatalf("souvenir: %v", inter["mon_souvenir_de_lui"])
+		t.Fatalf("memory: %v", inter["mon_souvenir_de_lui"])
 	}
 }
 
@@ -256,7 +256,7 @@ func TestVerifiedFactsAreRefreshedOnEveryTurn(t *testing.T) {
 	}
 	r.ask("aldric", "Je suis Aldric.")
 	if c, _ := r.card("aldric"); c.BossKills != 0 {
-		t.Fatalf("fiche initiale: %+v", c.Facts)
+		t.Fatalf("initial card: %+v", c.Facts)
 	}
 
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return reply("Bravo.", nil, "m"), nil }
@@ -265,11 +265,11 @@ func TestVerifiedFactsAreRefreshedOnEveryTurn(t *testing.T) {
 	r.askReq(rq)
 	c, _ := r.card("aldric")
 	if c.BossKills != 3 || c.Level != 22 {
-		t.Fatalf("les faits vérifiés n'ont pas été mis à jour: %+v", c.Facts)
+		t.Fatalf("the verified facts were not updated: %+v", c.Facts)
 	}
 }
 
-// --- Réponses du modèle imparfaites ---
+// --- Imperfect model responses ---
 
 func TestPlainTextReplyIsDeliveredWithoutAnyMemoryWrite(t *testing.T) {
 	r := newRig(t, Config{}, "aldric")
@@ -281,10 +281,10 @@ func TestPlainTextReplyIsDeliveredWithoutAnyMemoryWrite(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("une fiche a été écrite à partir d'une réponse non structurée")
+		t.Fatal("a card was written from an unstructured response")
 	}
 	if m, _ := r.book.Recall(context.Background(), testNPC().Key(), "aldric"); m != "" {
-		t.Fatalf("un souvenir a été écrit: %q", m)
+		t.Fatalf("a memory was written: %q", m)
 	}
 }
 
@@ -306,7 +306,7 @@ func TestReplyIsSanitizedForTheTerminal(t *testing.T) {
 	}
 	rep := r.ask("aldric", "Bonjour")
 	if rep.Text != "Salut à l'envers" || strings.ContainsAny(rep.Text, "\x1b\x07‮") {
-		t.Fatalf("réplique non nettoyée: %q", rep.Text)
+		t.Fatalf("reply not cleaned: %q", rep.Text)
 	}
 }
 
@@ -316,20 +316,20 @@ func TestPanicInTheModelPathDoesNotKillTheService(t *testing.T) {
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		calls++
 		if calls == 1 {
-			panic("bug imprévu")
+			panic("unexpected bug")
 		}
 		return reply("Je suis là.", nil, ""), nil
 	}
 	if rep := r.ask("aldric", "Bonjour"); rep.Failure != Unavailable {
-		t.Fatalf("après un plantage: %+v", rep)
+		t.Fatalf("after a crash: %+v", rep)
 	}
-	// Le même joueur peut réessayer (son créneau « en cours » a été libéré) et le service répond.
+	// The same player can retry (their "in progress" slot was released) and the service answers.
 	if rep := r.ask("aldric", "Encore"); rep.Failure != OK || rep.Text != "Je suis là." {
-		t.Fatalf("le service est resté bloqué: %+v", rep)
+		t.Fatalf("the service stayed blocked: %+v", rep)
 	}
 }
 
-// --- Écriture de fiche : refus ---
+// --- Card writing: refusals ---
 
 func TestImpersonationAliasIsNotStoredButTheReplyIsDelivered(t *testing.T) {
 	r := newRig(t, Config{}, "aldric", "brenna")
@@ -341,7 +341,7 @@ func TestImpersonationAliasIsNotStoredButTheReplyIsDelivered(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("une fiche usurpant un autre joueur a été écrite")
+		t.Fatal("a card impersonating another player was written")
 	}
 }
 
@@ -360,7 +360,7 @@ func TestModerationRefusalOfACardBlocksTheWrite(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("une fiche signalée par la modération a été écrite")
+		t.Fatal("a card flagged by moderation was written")
 	}
 }
 
@@ -375,7 +375,7 @@ func TestModerationOutageFailsClosedForCards(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("une fiche a été écrite sans contrôle de modération")
+		t.Fatal("a card was written without moderation check")
 	}
 }
 
@@ -386,11 +386,11 @@ func TestModerationOfCategoriesOutsideTheBlockListIsIgnored(t *testing.T) {
 	}
 	r.fake.ModerateFunc = func(_ context.Context, texts []string) ([]llm.Verdict, error) {
 		out := make([]llm.Verdict, len(texts))
-		out[0].Flagged = []string{"health", "financial"} // un soigneur ou un marchand en parlent légitimement
+		out[0].Flagged = []string{"health", "financial"} // a healer or a merchant legitimately talk about them
 		return out, nil
 	}
 	if rep := r.ask("aldric", "Je suis Aldric, médecin."); !rep.Remembered {
-		t.Fatalf("une catégorie légitime a bloqué la fiche: %+v", rep)
+		t.Fatalf("a legitimate category blocked the card: %+v", rep)
 	}
 }
 
@@ -401,27 +401,27 @@ func TestCardWriteCooldown(t *testing.T) {
 		return reply("Bien.", &lore.Intro{Alias: "Aldric", Role: "forgeron"}, ""), nil
 	}
 	if !r.ask("aldric", "Je suis Aldric.").Remembered {
-		t.Fatal("première fiche refusée")
+		t.Fatal("first card refused")
 	}
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		return reply("Ah ?", &lore.Intro{Role: "roi du monde"}, ""), nil
 	}
 	if rep := r.ask("aldric", "Non, je suis roi."); rep.Remembered || rep.Failure != OK {
-		t.Fatalf("seconde fiche trop rapprochée acceptée: %+v", rep)
+		t.Fatalf("second card too close in time accepted: %+v", rep)
 	}
 	if c, _ := r.card("aldric"); c.Role != "forgeron" {
-		t.Fatalf("fiche modifiée malgré le délai: %+v", c.Intro)
+		t.Fatalf("card modified despite the delay: %+v", c.Intro)
 	}
 	r.clk.Advance(time.Minute)
 	if !r.ask("aldric", "Finalement, roi.").Remembered {
-		t.Fatal("fiche refusée après le délai")
+		t.Fatal("card refused after the delay")
 	}
 	if c, _ := r.card("aldric"); c.Role != "roi du monde" || c.Alias != "Aldric" {
-		t.Fatalf("fusion des champs: %+v", c.Intro)
+		t.Fatalf("field merge: %+v", c.Intro)
 	}
 }
 
-// --- Erreurs du fournisseur ---
+// --- Provider errors ---
 
 func TestProviderErrorsMapToInCharacterFailures(t *testing.T) {
 	cases := []struct {
@@ -436,10 +436,10 @@ func TestProviderErrorsMapToInCharacterFailures(t *testing.T) {
 		r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return llm.Response{}, c.err }
 		rep := r.ask("aldric", "Bonjour")
 		if rep.Failure != c.want || !strings.Contains(rep.Text, "Sœur Katell") {
-			t.Errorf("%v: %+v, attendu %v avec le nom du PNJ", c.err, rep, c.want)
+			t.Errorf("%v: %+v, want %v with the NPC's name", c.err, rep, c.want)
 		}
 		if strings.Contains(rep.Text, c.err.Error()) && c.err.Error() != "" {
-			t.Errorf("%v: le texte d'erreur technique est montré au joueur: %q", c.err, rep.Text)
+			t.Errorf("%v: the technical error text is shown to the player: %q", c.err, rep.Text)
 		}
 	}
 }
@@ -449,14 +449,14 @@ func TestRejectedKeyDisablesTheService(t *testing.T) {
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return llm.Response{}, llm.ErrUnauthorized }
 	r.ask("aldric", "Bonjour")
 	if r.svc.Available() {
-		t.Fatal("le service reste disponible après un refus de clé")
+		t.Fatal("the service stays available after a key refusal")
 	}
 	calls := len(r.fake.ChatCalls())
 	if rep := r.ask("brenna", "Bonjour"); rep.Failure != Unavailable {
 		t.Fatalf("%+v", rep)
 	}
 	if len(r.fake.ChatCalls()) != calls {
-		t.Fatal("le service continue d'appeler l'API avec une clé refusée")
+		t.Fatal("the service keeps calling the API with a rejected key")
 	}
 }
 
@@ -468,19 +468,19 @@ func TestCircuitBreakerOpensAndCloses(t *testing.T) {
 		r.ask(a, "Bonjour")
 	}
 	if r.svc.Available() {
-		t.Fatal("le disjoncteur aurait dû s'ouvrir après 3 échecs consécutifs")
+		t.Fatal("the circuit breaker should have opened after 3 consecutive failures")
 	}
 	calls := len(r.fake.ChatCalls())
 	if rep := r.ask("d", "Bonjour"); rep.Failure != Unavailable {
 		t.Fatalf("%+v", rep)
 	}
 	if len(r.fake.ChatCalls()) != calls {
-		t.Fatal("un appel est parti alors que le disjoncteur est ouvert")
+		t.Fatal("a call went out while the circuit breaker is open")
 	}
 
 	r.clk.Advance(31 * time.Second)
 	if !r.svc.Available() {
-		t.Fatal("le disjoncteur aurait dû se refermer après la pause")
+		t.Fatal("the circuit breaker should have closed after the pause")
 	}
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return reply("De retour.", nil, ""), nil }
 	if rep := r.ask("d", "Bonjour"); rep.Failure != OK || rep.Text != "De retour." {
@@ -507,7 +507,7 @@ func TestSuccessResetsTheBreakerCounter(t *testing.T) {
 		r.ask("a", "x")
 	}
 	if !r.svc.Available() {
-		t.Fatal("des échecs séparés par un succès ne doivent pas ouvrir le disjoncteur")
+		t.Fatal("failures separated by a success must not open the circuit breaker")
 	}
 }
 
@@ -519,11 +519,11 @@ func TestRateLimitedAndBlockedDoNotTripTheBreaker(t *testing.T) {
 		r.ask("a", "x")
 	}
 	if !r.svc.Available() {
-		t.Fatal("un refus de modération ou une limite de débit ne signale pas une panne")
+		t.Fatal("a moderation refusal or a rate limit does not signal an outage")
 	}
 }
 
-// --- Modération de l'entrée ---
+// --- Input moderation ---
 
 func TestGuardrailFallbackWhenTheAPIRejectsTheField(t *testing.T) {
 	r := newRig(t, Config{}, "aldric", "brenna")
@@ -538,33 +538,33 @@ func TestGuardrailFallbackWhenTheAPIRejectsTheField(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if len(r.fake.ModerationCalls()) == 0 || r.fake.ModerationCalls()[0][0] != "Salut" {
-		t.Fatalf("le message n'a pas été modéré explicitement: %v", r.fake.ModerationCalls())
+		t.Fatalf("the message was not explicitly moderated: %v", r.fake.ModerationCalls())
 	}
 
-	// Ensuite le service reste en mode explicite, sans réessayer le champ refusé.
+	// Afterwards the service stays in explicit mode, without retrying the rejected field.
 	before := len(r.fake.ChatCalls())
 	r.ask("brenna", "Coucou")
 	calls := r.fake.ChatCalls()
 	if len(calls)-before != 1 || calls[len(calls)-1].Guardrail != nil {
-		t.Fatalf("le garde-fou refusé est renvoyé à chaque requête: %d appels, %+v", len(calls)-before, calls[len(calls)-1].Guardrail)
+		t.Fatalf("the rejected guardrail is sent again on every request: %d calls, %+v", len(calls)-before, calls[len(calls)-1].Guardrail)
 	}
 	if !r.svc.Stats().Moderation || r.svc.Stats().Guardrails {
-		t.Fatalf("état: %+v", r.svc.Stats())
+		t.Fatalf("state: %+v", r.svc.Stats())
 	}
 }
 
 func TestExplicitModerationBlocksBeforeCallingTheModel(t *testing.T) {
 	r := newRig(t, Config{}, "aldric")
-	r.svc.guardrailsOK.Store(false) // mode explicite
+	r.svc.guardrailsOK.Store(false) // explicit mode
 	r.fake.ModerateFunc = func(context.Context, []string) ([]llm.Verdict, error) {
 		return []llm.Verdict{{Flagged: []string{"violence_and_threats"}}}, nil
 	}
 	rep := r.ask("aldric", "message violent")
 	if rep.Failure != Blocked || len(r.fake.ChatCalls()) != 0 {
-		t.Fatalf("%+v, %d appels au modèle", rep, len(r.fake.ChatCalls()))
+		t.Fatalf("%+v, %d model calls", rep, len(r.fake.ChatCalls()))
 	}
 	if r.svc.Stats().Blocked != 1 {
-		t.Fatalf("compteur de blocages: %+v", r.svc.Stats())
+		t.Fatalf("block counter: %+v", r.svc.Stats())
 	}
 }
 
@@ -580,10 +580,10 @@ func TestExplicitModerationOutageAllowsTalkingButNotRemembering(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("fiche écrite alors que le message n'a pas pu être modéré")
+		t.Fatal("card written although the message could not be moderated")
 	}
 	if m, _ := r.book.Recall(context.Background(), testNPC().Key(), "aldric"); m != "" {
-		t.Fatalf("souvenir écrit alors que le message n'a pas pu être modéré: %q", m)
+		t.Fatalf("memory written although the message could not be moderated: %q", m)
 	}
 }
 
@@ -597,7 +597,7 @@ func TestBlockedByGuardrailCountsAndDoesNotChargeTokens(t *testing.T) {
 	}
 }
 
-// --- Sonde ---
+// --- Probe ---
 
 func TestProbeFullSuccess(t *testing.T) {
 	r := newRig(t, Config{})
@@ -607,7 +607,7 @@ func TestProbeFullSuccess(t *testing.T) {
 	}
 	call := r.fake.ChatCalls()[0]
 	if !call.JSON || call.Guardrail == nil || call.MaxTokens > 32 {
-		t.Fatalf("la sonde doit être minuscule et exercer les mêmes champs: %+v", call)
+		t.Fatalf("the probe must be tiny and exercise the same fields: %+v", call)
 	}
 }
 
@@ -632,7 +632,7 @@ func TestProbeDisablesTheServiceWhenChatFails(t *testing.T) {
 		r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) { return llm.Response{}, err }
 		res := r.svc.Probe(context.Background())
 		if res.Chat || !errors.Is(res.ChatErr, err) || r.svc.Available() {
-			t.Errorf("%v: %+v, disponible=%v", err, res, r.svc.Available())
+			t.Errorf("%v: %+v, available=%v", err, res, r.svc.Available())
 		}
 	}
 }
@@ -652,7 +652,7 @@ func TestProbeWithoutModerationStillAllowsTalkingButNeverRemembering(t *testing.
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("fiche écrite alors que la modération est indisponible")
+		t.Fatal("card written although moderation is unavailable")
 	}
 }
 
@@ -660,11 +660,11 @@ func TestProbeCountsItsTokens(t *testing.T) {
 	r := newRig(t, Config{})
 	r.svc.Probe(context.Background())
 	if r.svc.Stats().TokensToday != 100 {
-		t.Fatalf("jetons: %d", r.svc.Stats().TokensToday)
+		t.Fatalf("tokens: %d", r.svc.Stats().TokensToday)
 	}
 }
 
-// --- Limites ---
+// --- Limits ---
 
 func TestMinIntervalPerPlayer(t *testing.T) {
 	r := newRig(t, Config{MinInterval: 2 * time.Second}, "aldric", "brenna")
@@ -674,14 +674,14 @@ func TestMinIntervalPerPlayer(t *testing.T) {
 	calls := len(r.fake.ChatCalls())
 	rep := r.ask("aldric", "deux")
 	if rep.Failure != Cooldown || len(r.fake.ChatCalls()) != calls {
-		t.Fatalf("%+v: un message trop rapproché doit être refusé sans appel au modèle", rep)
+		t.Fatalf("%+v: a message too close in time must be refused without a model call", rep)
 	}
 	if rep := r.ask("brenna", "autre joueur"); rep.Failure != OK {
-		t.Fatalf("la limite d'un joueur ne doit pas toucher les autres: %+v", rep)
+		t.Fatalf("one player's limit must not affect the others: %+v", rep)
 	}
 	r.clk.Advance(2 * time.Second)
 	if rep := r.ask("aldric", "trois"); rep.Failure != OK {
-		t.Fatalf("après le délai: %+v", rep)
+		t.Fatalf("after the delay: %+v", rep)
 	}
 }
 
@@ -689,7 +689,7 @@ func TestAccountsAreCaseInsensitiveForLimits(t *testing.T) {
 	r := newRig(t, Config{MinInterval: time.Minute}, "Aldric")
 	r.ask("Aldric", "un")
 	if rep := r.ask("ALDRIC", "deux"); rep.Failure != Cooldown {
-		t.Fatalf("une autre casse contourne la limite: %+v", rep)
+		t.Fatalf("a different case bypasses the limit: %+v", rep)
 	}
 }
 
@@ -701,22 +701,22 @@ func TestHourlyLimit(t *testing.T) {
 		}
 	}
 	if rep := r.ask("aldric", "x"); rep.Failure != Cooldown {
-		t.Fatalf("4e message: %+v", rep)
+		t.Fatalf("4th message: %+v", rep)
 	}
 	if rep := r.ask("brenna", "x"); rep.Failure != OK {
-		t.Fatalf("autre joueur: %+v", rep)
+		t.Fatalf("other player: %+v", rep)
 	}
 	r.clk.Advance(time.Hour + time.Second)
 	if rep := r.ask("aldric", "x"); rep.Failure != OK {
-		t.Fatalf("après une heure: %+v", rep)
+		t.Fatalf("after an hour: %+v", rep)
 	}
 }
 
 func TestDailyTokenBudget(t *testing.T) {
 	r := newRig(t, Config{DailyTokens: 500, MaxTokens: 100}, "a", "b", "c", "d", "e", "f", "g")
-	// Une demande est refusée si les jetons déjà consommés plus le maximum d'une réponse
-	// dépasseraient le budget: on peut donc l'utiliser jusqu'au plafond exact.
-	// Ici, chaque réponse coûte 100 jetons: 5 réponses font 500, la 6e est refusée.
+	// A request is refused if the tokens already consumed plus the maximum of a response
+	// would exceed the budget: so it can be used up to the exact cap.
+	// Here, each response costs 100 tokens: 5 responses make 500, the 6th is refused.
 	ok := 0
 	for _, a := range []string{"a", "b", "c", "d", "e", "f"} {
 		if r.ask(a, "x").Failure == OK {
@@ -724,7 +724,7 @@ func TestDailyTokenBudget(t *testing.T) {
 		}
 	}
 	if ok != 5 {
-		t.Fatalf("%d réponses avant l'épuisement du budget, attendu 5", ok)
+		t.Fatalf("%d responses before the budget ran out, want 5", ok)
 	}
 	rep := r.ask("g", "x")
 	if rep.Failure != Budget || !strings.Contains(rep.Text, "Revenez demain") {
@@ -735,13 +735,13 @@ func TestDailyTokenBudget(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 
-	// Le lendemain (UTC), le compteur repart de zéro.
+	// The next day (UTC), the counter restarts from zero.
 	r.clk.Advance(24 * time.Hour)
 	if rep := r.ask("g", "x"); rep.Failure != OK {
-		t.Fatalf("le budget n'a pas été remis à zéro: %+v", rep)
+		t.Fatalf("the budget was not reset: %+v", rep)
 	}
 	if r.svc.Stats().TokensToday != 100 {
-		t.Fatalf("jetons du nouveau jour: %d", r.svc.Stats().TokensToday)
+		t.Fatalf("new day's tokens: %d", r.svc.Stats().TokensToday)
 	}
 }
 
@@ -749,11 +749,11 @@ func TestTokensAreEstimatedWhenUsageIsMissing(t *testing.T) {
 	r := newRig(t, Config{}, "aldric")
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
 		b, _ := json.Marshal(map[string]any{"reply": "ok"})
-		return llm.Response{Content: string(b)}, nil // pas de consommation fournie
+		return llm.Response{Content: string(b)}, nil // no usage provided
 	}
 	r.ask("aldric", "x")
 	if r.svc.Stats().TokensToday < 100 {
-		t.Fatalf("le budget ne compte pas les appels sans usage: %d", r.svc.Stats().TokensToday)
+		t.Fatalf("the budget does not count calls without usage: %d", r.svc.Stats().TokensToday)
 	}
 }
 
@@ -772,14 +772,14 @@ func TestOneRequestInFlightPerPlayer(t *testing.T) {
 
 	rep := r.ask("aldric", "second")
 	if rep.Failure != Busy {
-		t.Fatalf("une seconde demande du même joueur doit être refusée: %+v", rep)
+		t.Fatalf("a second request from the same player must be refused: %+v", rep)
 	}
 	close(release)
 	if got := <-first; got.Failure != OK {
 		t.Fatalf("%+v", got)
 	}
 	if rep := r.ask("aldric", "troisième"); rep.Failure != OK {
-		t.Fatalf("le créneau doit être libéré à la fin: %+v", rep)
+		t.Fatalf("the slot must be released at the end: %+v", rep)
 	}
 }
 
@@ -794,17 +794,17 @@ func TestFullQueueAnswersBusy(t *testing.T) {
 	}
 	got := make(chan Reply, 3)
 	r.svc.Ask(r.req("a", "x"), func(rep Reply) { got <- rep })
-	<-started                                                  // a occupe l'unique worker
-	r.svc.Ask(r.req("b", "x"), func(rep Reply) { got <- rep }) // b attend dans la file
-	r.svc.Ask(r.req("c", "x"), func(rep Reply) { got <- rep }) // c ne tient plus
+	<-started                                                  // a occupies the only worker
+	r.svc.Ask(r.req("b", "x"), func(rep Reply) { got <- rep }) // b waits in the queue
+	r.svc.Ask(r.req("c", "x"), func(rep Reply) { got <- rep }) // c no longer fits
 
 	select {
 	case rep := <-got:
 		if rep.Failure != Busy {
-			t.Fatalf("la demande en trop doit recevoir « occupé »: %+v", rep)
+			t.Fatalf("the excess request must receive \"busy\": %+v", rep)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("pas de réponse « occupé »")
+		t.Fatal("no \"busy\" response")
 	}
 	close(release)
 	for i := 0; i < 2; i++ {
@@ -812,9 +812,9 @@ func TestFullQueueAnswersBusy(t *testing.T) {
 			t.Fatalf("%+v", rep)
 		}
 	}
-	// Le joueur refusé n'est pas bloqué pour autant.
+	// The refused player is not blocked for all that.
 	if rep := r.ask("c", "x"); rep.Failure != OK {
-		t.Fatalf("créneau resté bloqué après un refus « occupé »: %+v", rep)
+		t.Fatalf("slot left blocked after a \"busy\" refusal: %+v", rep)
 	}
 }
 
@@ -840,25 +840,25 @@ func TestWorkersCapConcurrentProviderCalls(t *testing.T) {
 	}
 	wg.Wait()
 	if peak.Load() > 2 {
-		t.Fatalf("%d appels simultanés au fournisseur, plafond 2", peak.Load())
+		t.Fatalf("%d simultaneous calls to the provider, cap 2", peak.Load())
 	}
 	if peak.Load() < 2 {
-		t.Fatalf("aucun parallélisme (pic %d): les workers ne servent à rien", peak.Load())
+		t.Fatalf("no parallelism (peak %d): the workers are useless", peak.Load())
 	}
 }
 
-// done ne doit jamais être appelé par la goroutine de l'appelant, même pour un refus
-// immédiat: l'appelant (la boucle de jeu) tient son propre état et pourrait s'interbloquer.
+// done must never be called by the caller's goroutine, even for an immediate
+// refusal: the caller (the game loop) holds its own state and could deadlock.
 func TestDoneIsNeverCalledInline(t *testing.T) {
 	cfg := Config{MinInterval: time.Hour}
 	r := newRig(t, cfg, "aldric")
-	r.ask("aldric", "premier") // arme le délai minimal
+	r.ask("aldric", "premier") // arms the minimum delay
 
 	var held sync.Mutex
-	held.Lock() // l'« appelant » tient un verrou pendant Ask
+	held.Lock() // the "caller" holds a lock during Ask
 	got := make(chan Failure, 1)
 	r.svc.Ask(r.req("aldric", "trop tôt"), func(rep Reply) {
-		held.Lock() // si done s'exécutait en ligne, ceci bloquerait pour toujours
+		held.Lock() // if done ran inline, this would block forever
 		held.Unlock()
 		got <- rep.Failure
 	})
@@ -866,35 +866,35 @@ func TestDoneIsNeverCalledInline(t *testing.T) {
 	select {
 	case f := <-got:
 		if f != Cooldown {
-			t.Fatalf("échec = %v", f)
+			t.Fatalf("failure = %v", f)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("interblocage: done a été appelé en ligne")
+		t.Fatal("deadlock: done was called inline")
 	}
 }
 
 func TestRejectionsAreInstantAndNeverReachTheProvider(t *testing.T) {
-	r := newRig(t, Config{DailyTokens: 50, MaxTokens: 100}, "aldric") // budget inférieur à une réponse
+	r := newRig(t, Config{DailyTokens: 50, MaxTokens: 100}, "aldric") // budget lower than one response
 	start := time.Now()
 	rep := r.ask("aldric", "x")
 	if rep.Failure != Budget || len(r.fake.ChatCalls()) != 0 {
-		t.Fatalf("%+v, %d appels", rep, len(r.fake.ChatCalls()))
+		t.Fatalf("%+v, %d calls", rep, len(r.fake.ChatCalls()))
 	}
 	if time.Since(start) > time.Second {
-		t.Fatal("un refus de budget ne doit pas attendre")
+		t.Fatal("a budget refusal must not wait")
 	}
 }
 
-// --- Dégradations de la mémoire ---
+// --- Memory degradations ---
 
 type failingRepo struct{ lore.Repo }
 
 func (failingRepo) CardsNear(context.Context, world.RegionPos, int, time.Time, int) ([]lore.Card, error) {
-	return nil, errors.New("base indisponible")
+	return nil, errors.New("database unavailable")
 }
 
 func (failingRepo) GetMemory(context.Context, world.NPCKey, string) (lore.Memory, bool, error) {
-	return lore.Memory{}, false, errors.New("base indisponible")
+	return lore.Memory{}, false, errors.New("database unavailable")
 }
 
 func TestConversationSurvivesAMemoryOutage(t *testing.T) {
@@ -902,7 +902,7 @@ func TestConversationSurvivesAMemoryOutage(t *testing.T) {
 	r.book.Repo = failingRepo{Repo: r.be.Store}
 	rep := r.ask("aldric", "Bonjour")
 	if rep.Failure != OK || rep.Text != "Bonjour." {
-		t.Fatalf("%+v: une panne de la base de mémoire ne doit pas empêcher de parler", rep)
+		t.Fatalf("%+v: an outage of the memory database must not prevent talking", rep)
 	}
 }
 
@@ -922,7 +922,7 @@ func TestStatsCounters(t *testing.T) {
 		t.Fatalf("%+v", st)
 	}
 	if st.TokensToday != 100 {
-		t.Fatalf("jetons: %d", st.TokensToday)
+		t.Fatalf("tokens: %d", st.TokensToday)
 	}
 }
 
@@ -934,7 +934,7 @@ func TestStartedServiceStopsWithItsContext(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("les workers ne s'arrêtent pas à l'annulation du contexte")
+		t.Fatal("the workers do not stop when the context is canceled")
 	}
 }
 
@@ -958,12 +958,12 @@ func TestConfigDefaultsFillZeros(t *testing.T) {
 	}
 }
 
-// --- Ouverture de conversation ---
+// --- Conversation opening ---
 
 func TestOpeningAsksTheNPCToSpeakFirstAndWritesNothing(t *testing.T) {
 	r := newRig(t, Config{}, "aldric")
 	r.fake.ChatFunc = func(context.Context, llm.Request) (llm.Response, error) {
-		// Même si le modèle rend une présentation et un souvenir, rien ne doit être écrit.
+		// Even if the model returns an introduction and a memory, nothing must be written.
 		return reply("Bienvenue, voyageur. Qui êtes-vous ?", &lore.Intro{Alias: "Inventé"}, "souvenir inventé"), nil
 	}
 	rq := r.req("aldric", "")
@@ -973,20 +973,20 @@ func TestOpeningAsksTheNPCToSpeakFirstAndWritesNothing(t *testing.T) {
 		t.Fatalf("%+v", rep)
 	}
 	if _, ok := r.card("aldric"); ok {
-		t.Fatal("une fiche a été écrite à l'ouverture, alors que le joueur n'a rien dit")
+		t.Fatal("a card was written at opening, although the player said nothing")
 	}
 	if m, _ := r.book.Recall(context.Background(), testNPC().Key(), "aldric"); m != "" {
-		t.Fatalf("un souvenir a été écrit à l'ouverture: %q", m)
+		t.Fatalf("a memory was written at opening: %q", m)
 	}
 
 	msgs := r.fake.ChatCalls()[0].Messages
 	last := msgs[len(msgs)-1]
 	if last.Role != llm.User || last.Content != i18n.T(i18n.FR, "prompt.opening.stage") {
-		t.Fatalf("dernier message: %+v", last)
+		t.Fatalf("last message: %+v", last)
 	}
 	sys := msgs[0].Content
 	if !strings.Contains(sys, "C'est le début de la conversation") || !strings.Contains(sys, "demande-lui qui il est") {
-		t.Fatal("le prompt n'invite pas le PNJ à demander au voyageur de se présenter")
+		t.Fatal("the prompt does not invite the NPC to ask the traveler to introduce themselves")
 	}
 }
 
@@ -1002,7 +1002,7 @@ func TestOpeningForAKnownTravellerMentionsHeAlreadyIntroducedHimself(t *testing.
 	r.askReq(rq)
 	sys := r.lastSystem()
 	if strings.Contains(sys, "demande-lui qui il est") || !strings.Contains(sys, "tu le connais déjà") {
-		t.Fatal("un voyageur déjà présenté ne doit pas être invité à se présenter à nouveau")
+		t.Fatal("an already introduced traveler must not be invited to introduce themselves again")
 	}
 }
 
@@ -1014,6 +1014,6 @@ func TestInCharacterWording(t *testing.T) {
 		}
 	}
 	if !strings.HasPrefix(InCharacter(i18n.FR, "", Busy), "Le PNJ ") {
-		t.Error("nom vide")
+		t.Error("empty name")
 	}
 }

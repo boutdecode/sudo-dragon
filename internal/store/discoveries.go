@@ -6,11 +6,11 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// maxStoredDiscoveries borne les donjons mémorisés par compte (il y en a environ un par cinq régions).
+// maxStoredDiscoveries bounds the dungeons remembered per account (there is about one per five regions).
 const maxStoredDiscoveries = 2000
 
-// saveDiscoveries remplace les entrées de donjon découvertes par un compte (dans la transaction de
-// sauvegarde du personnage). Un donjon est désigné par la région qui le cache.
+// saveDiscoveries replaces the dungeon entries discovered by an account (inside the character
+// save transaction). A dungeon is identified by the region that hides it.
 func saveDiscoveries(tx *sql.Tx, account string, c Character) error {
 	if _, err := tx.Exec(`DELETE FROM discoveries WHERE account = ?`, account); err != nil {
 		return err
@@ -32,7 +32,7 @@ func saveDiscoveries(tx *sql.Tx, account string, c Character) error {
 	return nil
 }
 
-// loadDiscoveries relit les donjons découverts par un compte (dans un ordre stable).
+// loadDiscoveries reads back the dungeons discovered by an account (in a stable order).
 func (s *Store) loadDiscoveries(account string) ([]world.RegionPos, error) {
 	rows, err := s.db.Query(`SELECT region_x, region_y FROM discoveries WHERE account = ? ORDER BY region_y, region_x`, account)
 	if err != nil {

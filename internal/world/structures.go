@@ -7,32 +7,32 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
-// RegionSize est le côté d'une région, en tuiles. Chaque région contient au
-// plus une structure. C'est un multiple de ChunkSize: un chunk n'appartient
-// jamais à deux régions.
+// RegionSize is the side of a region, in tiles. Each region contains at
+// most one structure. It is a multiple of ChunkSize: a chunk never belongs
+// to two regions.
 const RegionSize = ChunkSize * 8
 
-// regionMargin sépare l'emprise d'une structure du bord de sa région. Il doit
-// rester supérieur à la marge de la zone sûre (safeMargin) pour qu'une zone
-// sûre ne déborde jamais sur la région voisine.
+// regionMargin separates the footprint of a structure from the edge of its region. It must
+// stay greater than the safe zone margin (safeMargin) so that a safe
+// zone never spills over onto the neighbouring region.
 const regionMargin = 6
 
-// safeMargin élargit l'emprise d'un village ou d'une ville pour former sa zone sûre.
+// safeMargin widens the footprint of a village or town to form its safe zone.
 const safeMargin = 3
 
-// startClearance est la distance minimale entre le point de départ des
-// joueurs et l'emprise de n'importe quelle structure.
+// startClearance is the minimum distance between the players' starting point
+// and the footprint of any structure.
 const startClearance = 16
 
-// RegionPos identifie une région dans la grille de régions.
+// RegionPos identifies a region in the region grid.
 type RegionPos struct{ X, Y int }
 
-// RegionOf renvoie la région contenant la tuile (x, y).
+// RegionOf returns the region containing tile (x, y).
 func RegionOf(x, y int) RegionPos {
 	return RegionPos{floorDiv(x, RegionSize), floorDiv(y, RegionSize)}
 }
 
-// Kind est le type d'une structure.
+// Kind is the type of a structure.
 type Kind uint8
 
 const (
@@ -41,7 +41,7 @@ const (
 	KindFortress
 )
 
-// String renvoie l'identifiant du type (utilisé dans les journaux et outils).
+// String returns the identifier of the type (used in logs and tools).
 func (k Kind) String() string {
 	switch k {
 	case KindVillage:
@@ -54,79 +54,79 @@ func (k Kind) String() string {
 	return "?"
 }
 
-// NPCKind est le type d'un personnage non joueur.
+// NPCKind is the type of a non-player character.
 type NPCKind string
 
 const (
-	NPCMerchant NPCKind = "merchant" // achète et vend des potions
-	NPCHealer   NPCKind = "healer"   // soigne contre de l'or
-	NPCVillager NPCKind = "villager" // sans métier : on ne peut que discuter avec lui
-	NPCChief    NPCKind = "chief"    // chef d'un village : connaît les lieux voisins
-	NPCMayor    NPCKind = "mayor"    // maire d'une ville : connaît les lieux voisins
-	NPCSmith    NPCKind = "smith"    // forgeron : vend des armes
-	NPCArmorer  NPCKind = "armorer"  // armurier : vend armures, boucliers et casques
+	NPCMerchant NPCKind = "merchant" // buys and sells potions
+	NPCHealer   NPCKind = "healer"   // heals for gold
+	NPCVillager NPCKind = "villager" // no trade: one can only chat with them
+	NPCChief    NPCKind = "chief"    // chief of a village: knows the neighbouring places
+	NPCMayor    NPCKind = "mayor"    // mayor of a town: knows the neighbouring places
+	NPCSmith    NPCKind = "smith"    // blacksmith: sells weapons
+	NPCArmorer  NPCKind = "armorer"  // armourer: sells armour, shields and helmets
 )
 
-// NPCKinds liste les types de PNJ que le générateur peut placer (pour vérifier
-// que le client sait tous les dessiner).
+// NPCKinds lists the NPC types that the generator can place (to check
+// that the client can draw them all).
 func NPCKinds() []NPCKind {
 	return []NPCKind{NPCMerchant, NPCHealer, NPCVillager, NPCChief, NPCMayor, NPCSmith, NPCArmorer}
 }
 
-// NPC est un personnage immobile placé par le générateur. Il est calculé à
-// l'identique par le serveur et par le client à partir de la seed.
+// NPC is a stationary character placed by the generator. It is computed
+// identically by the server and the client from the seed.
 type NPC struct {
 	Kind NPCKind
 	Pos  Pos
 
-	// Identité déterministe (voir names.go): même valeur pour tous, à chaque
-	// démarrage. Region et Index forment la clé stable du PNJ.
+	// Deterministic identity (see names.go): same value for everyone, at every
+	// start. Region and Index form the stable key of the NPC.
 	Region  RegionPos
 	Index   int
-	Name    string  // nom français (voir NameIn pour les autres langues)
-	Persona Persona // personnalité en français (voir PersonaIn)
+	Name    string  // French name (see NameIn for the other languages)
+	Persona Persona // personality in French (see PersonaIn)
 
-	// GivesQuests : ce villageois confie des quêtes. Tiré du flux d'identité (sans toucher
-	// aux plans) : le premier villageois de chaque lieu en donne toujours, puis environ un sur deux.
+	// GivesQuests: this villager hands out quests. Drawn from the identity stream (without touching
+	// the plans): the first villager of each place always gives some, then about one in two.
 	GivesQuests bool
 
-	id ident // indices d'identité, pour traduire Name et Persona
+	id ident // identity indices, to translate Name and Persona
 }
 
-// SlotRole précise quel monstre occupe un emplacement de forteresse.
+// SlotRole specifies which monster occupies a fortress slot.
 type SlotRole uint8
 
 const (
-	RoleGuard SlotRole = iota + 1 // soldat de garnison
-	RoleElite                     // soldat d'élite, gardien du donjon
-	RoleBoss                      // seigneur de la forteresse
+	RoleGuard SlotRole = iota + 1 // garrison soldier
+	RoleElite                     // elite soldier, guardian of the keep
+	RoleBoss                      // lord of the fortress
 )
 
-// Slot est un emplacement où une forteresse fait apparaître un monstre.
+// Slot is a spot where a fortress spawns a monster.
 type Slot struct {
 	Pos  Pos
 	Role SlotRole
 }
 
-// Structure est un village, une ville ou une forteresse.
+// Structure is a village, a town or a fortress.
 type Structure struct {
 	Kind   Kind
-	Name   string // nom du lieu en français, déterministe (voir NameIn)
+	Name   string // name of the place in French, deterministic (see NameIn)
 	Region RegionPos
-	Origin Pos // coin haut-gauche de l'emprise
-	W, H   int // dimensions de l'emprise
+	Origin Pos // top-left corner of the footprint
+	W, H   int // dimensions of the footprint
 	NPCs   []NPC
-	Guards []NPC // gardes qui patrouillent (village et ville) : position de départ seulement, voir guards.go
+	Guards []NPC // guards that patrol (village and town): starting position only, see guards.go
 	Slots  []Slot
 
-	tiles []Tile // W*H, ligne par ligne
+	tiles []Tile // W*H, row by row
 
-	fort int    // préfixe d'une forteresse (« Fort », « Citadelle »…), indice du catalogue
-	base string // nom du lieu sans préfixe de forteresse
+	fort int    // prefix of a fortress ("Fort", "Citadelle"...), catalogue index
+	base string // name of the place without fortress prefix
 }
 
-// NameIn renvoie le nom du lieu dans la langue l. Seuls les préfixes des forteresses
-// (« Citadelle » / « Citadel ») changent: le reste est un nom propre.
+// NameIn returns the name of the place in language l. Only the fortress prefixes
+// ("Citadelle" / "Citadel") change: the rest is a proper name.
 func (s *Structure) NameIn(l i18n.Lang) string {
 	if s.Kind == KindFortress {
 		return fortName(l, s.fort, s.base)
@@ -134,23 +134,23 @@ func (s *Structure) NameIn(l i18n.Lang) string {
 	return s.Name
 }
 
-// Contains indique si la tuile (x, y) est dans l'emprise.
+// Contains tells whether tile (x, y) is within the footprint.
 func (s *Structure) Contains(x, y int) bool {
 	return x >= s.Origin.X && x < s.Origin.X+s.W && y >= s.Origin.Y && y < s.Origin.Y+s.H
 }
 
-// TileAt renvoie la tuile de la structure en (x, y), qui doit être dans l'emprise.
+// TileAt returns the tile of the structure at (x, y), which must be within the footprint.
 func (s *Structure) TileAt(x, y int) Tile {
 	return s.tiles[(y-s.Origin.Y)*s.W+(x-s.Origin.X)]
 }
 
-// Center renvoie la tuile centrale de l'emprise.
+// Center returns the central tile of the footprint.
 func (s *Structure) Center() Pos {
 	return Pos{s.Origin.X + s.W/2, s.Origin.Y + s.H/2}
 }
 
-// Safe indique si (x, y) est dans la zone sûre de la structure (emprise + marge).
-// Seuls les villages et les villes ont une zone sûre.
+// Safe tells whether (x, y) is within the safe zone of the structure (footprint + margin).
+// Only villages and towns have a safe zone.
 func (s *Structure) Safe(x, y int) bool {
 	if s.Kind != KindVillage && s.Kind != KindTown {
 		return false
@@ -159,29 +159,29 @@ func (s *Structure) Safe(x, y int) bool {
 		y >= s.Origin.Y-safeMargin && y < s.Origin.Y+s.H+safeMargin
 }
 
-// SlotKey identifie de façon stable un emplacement de forteresse.
+// SlotKey identifies a fortress slot in a stable way.
 type SlotKey struct {
 	Region RegionPos
 	Index  int
 }
 
-// Key renvoie la clé de l'emplacement i de la structure.
+// Key returns the key of slot i of the structure.
 func (s *Structure) Key(i int) SlotKey { return SlotKey{s.Region, i} }
 
-// Dimensions des emprises (marge de terrain dégagé comprise).
+// Dimensions of the footprints (margin of clear terrain included).
 var kindSize = map[Kind][2]int{
 	KindVillage:  {32, 26},
 	KindTown:     {58, 46},
 	KindFortress: {48, 40},
 }
 
-// structureCacheMax borne la mémoire du cache de structures; au-delà, il est
-// vidé et se reconstruit (la génération est déterministe).
+// structureCacheMax bounds the memory of the structure cache; beyond it, it is
+// emptied and rebuilt (generation is deterministic).
 const structureCacheMax = 4096
 
-// spawnAnchor renvoie le point de départ « terrain brut »: la première plaine
-// ou forêt en spirale autour de l'origine. Il ne dépend d'aucune structure,
-// ce qui évite une dépendance circulaire avec leur placement.
+// spawnAnchor returns the "raw terrain" starting point: the first plain
+// or forest in a spiral around the origin. It depends on no structure,
+// which avoids a circular dependency with their placement.
 func (w *World) spawnAnchor() Pos {
 	w.anchorOnce.Do(func() {
 		w.anchor = Pos{}
@@ -202,7 +202,7 @@ func (w *World) spawnAnchor() Pos {
 	return w.anchor
 }
 
-// structureForRegion renvoie la structure de la région, ou nil. Le résultat est mis en cache.
+// structureForRegion returns the structure of the region, or nil. The result is cached.
 func (w *World) structureForRegion(rp RegionPos) *Structure {
 	w.smu.Lock()
 	defer w.smu.Unlock()
@@ -222,19 +222,19 @@ func regionRNG(seed int64, rp RegionPos) *rand.Rand {
 	return rand.New(rand.NewPCG(uint64(seed)^0x5171C7, a^0xD1B54A32D192ED03))
 }
 
-// buildRegion décide du contenu d'une région.
+// buildRegion decides the content of a region.
 func (w *World) buildRegion(rp RegionPos) *Structure {
 	rng := regionRNG(w.Seed, rp)
 
-	// La région du point de départ reçoit un village: un nouveau joueur doit
-	// en trouver un près de lui.
+	// The starting point's region gets a village: a new player must
+	// find one near them.
 	if anchor := w.spawnAnchor(); RegionOf(anchor.X, anchor.Y) == rp {
 		if s := w.buildStartVillage(rp, rng, anchor); s != nil {
 			return s
 		}
 	}
 
-	if rng.Float64() >= w.structureChance() { // pas de structure ici
+	if rng.Float64() >= w.structureChance() { // no structure here
 		return nil
 	}
 	var kind Kind
@@ -253,18 +253,18 @@ func (w *World) buildRegion(rp RegionPos) *Structure {
 	return w.generate(rp, kind, x0, y0, rng)
 }
 
-// buildStartVillage place le village de départ au meilleur site de la région
-// le plus proche du point de départ. Renvoie nil si la région n'offre aucun
-// site convenable (île, montagnes…): le placement ordinaire prend alors le relais.
+// buildStartVillage places the starting village at the best site of the region
+// closest to the starting point. Returns nil if the region offers no
+// suitable site (island, mountains...): the ordinary placement then takes over.
 func (w *World) buildStartVillage(rp RegionPos, rng *rand.Rand, anchor Pos) *Structure {
 	size := kindSize[KindVillage]
 
-	// Sites candidats, du plus proche du point de départ au plus lointain.
-	// On s'arrête au premier convenable: évaluer le terrain sous chaque site
-	// coûte cher (près de 300 000 évaluations de bruit pour tous), et les
-	// premiers candidats suffisent presque toujours. Le résultat est le même
-	// que de comparer tous les sites: à distance égale, le premier dans l'ordre
-	// de balayage l'emporte (tri stable).
+	// Candidate sites, from the closest to the starting point to the farthest.
+	// We stop at the first suitable one: evaluating the terrain under each site
+	// is expensive (nearly 300,000 noise evaluations for all of them), and the
+	// first candidates almost always suffice. The result is the same
+	// as comparing all the sites: at equal distance, the first in scan
+	// order wins (stable sort).
 	type cand struct{ x0, y0, dist int }
 	var cands []cand
 	for y0 := regionMargin; y0 <= RegionSize-size[1]-regionMargin; y0 += 4 {
@@ -288,13 +288,13 @@ func (w *World) buildStartVillage(rp RegionPos, rng *rand.Rand, anchor Pos) *Str
 	return nil
 }
 
-// nearAnchor indique si l'emprise, élargie de startClearance, contient le point de départ.
+// nearAnchor tells whether the footprint, widened by startClearance, contains the starting point.
 func (w *World) nearAnchor(ox, oy, W, H int, anchor Pos) bool {
 	return anchor.X >= ox-startClearance && anchor.X < ox+W+startClearance &&
 		anchor.Y >= oy-startClearance && anchor.Y < oy+H+startClearance
 }
 
-// chooseSite tire des sites candidats dans la région et garde le meilleur.
+// chooseSite draws candidate sites in the region and keeps the best one.
 func (w *World) chooseSite(rp RegionPos, kind Kind, rng *rand.Rand) (x0, y0 int, ok bool) {
 	size := kindSize[kind]
 	anchor := w.spawnAnchor()
@@ -321,9 +321,9 @@ func (w *World) chooseSite(rp RegionPos, kind Kind, rng *rand.Rand) (x0, y0 int,
 	return x0, y0, ok
 }
 
-// siteQuality échantillonne le terrain brut sous l'emprise (un point sur trois).
-// flat est la part de terrain praticable et plat (ni eau, ni montagne, ni neige);
-// pref est l'adéquation moyenne au type de structure.
+// siteQuality samples the raw terrain under the footprint (one point in three).
+// flat is the share of walkable, flat terrain (no water, mountain or snow);
+// pref is the mean suitability for the structure type.
 func (w *World) siteQuality(kind Kind, ox, oy, W, H int) (flat, pref float64) {
 	var n, nFlat int
 	var sumPref float64
@@ -340,7 +340,7 @@ func (w *World) siteQuality(kind Kind, ox, oy, W, H int) (flat, pref float64) {
 	return float64(nFlat) / float64(n), sumPref / float64(n)
 }
 
-// preference note de 0 à 1 l'adéquation d'un terrain à un type de structure.
+// preference rates from 0 to 1 the suitability of a terrain for a structure type.
 func preference(kind Kind, t Tile) float64 {
 	switch kind {
 	case KindFortress:
@@ -368,7 +368,7 @@ func preference(kind Kind, t Tile) float64 {
 	return 0.3
 }
 
-// waterNearby indique s'il y a de l'eau dans l'une des huit directions autour de (x, y).
+// waterNearby tells whether there is water in any of the eight directions around (x, y).
 func (w *World) waterNearby(x, y int) bool {
 	const d = 28
 	for _, v := range [8][2]int{{d, 0}, {-d, 0}, {0, d}, {0, -d}, {d, d}, {d, -d}, {-d, d}, {-d, -d}} {
@@ -379,13 +379,13 @@ func (w *World) waterNearby(x, y int) bool {
 	return false
 }
 
-// generate dessine la structure et la place à (x0, y0) dans la région.
+// generate draws the structure and places it at (x0, y0) in the region.
 func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *Structure {
 	size := kindSize[kind]
 	var c *canvas
 	switch kind {
 	case KindVillage:
-		// Un village n'a qu'un des deux vendeurs d'équipement, choisi par le flux d'identité (pas par celui des plans).
+		// A village has only one of the two equipment sellers, chosen by the identity stream (not by the plans' one).
 		vendor := NPCSmith
 		if identityRNG(w.Seed, rp, 7000).IntN(2) == 1 {
 			vendor = NPCArmorer
@@ -398,11 +398,11 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	}
 	origin := Pos{rp.X*RegionSize + x0, rp.Y*RegionSize + y0}
 	s := &Structure{Kind: kind, Region: rp, Origin: origin, W: c.w, H: c.h, tiles: c.t}
-	// Identités: flux séparés, pour ne pas décaler le tirage des plans.
+	// Identities: separate streams, so as not to shift the draw of the plans.
 	s.Name, s.fort, s.base = placeName(kind, identityRNG(w.Seed, rp, 0), baseForGen(w.Seed, w.GenVersion, rp))
 	taken := map[string]bool{}
 	for i, n := range c.npcs {
-		// Deux PNJ d'un même lieu ne portent jamais le même nom: on retire avec un autre sel.
+		// Two NPCs of the same place never bear the same name: we redraw with another salt.
 		var id ident
 		var name string
 		for try := uint64(0); try < 16; try++ {
@@ -433,12 +433,12 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	return s
 }
 
-// StructureOfRegion renvoie la structure de la région (ou nil). Sert à nommer les
-// lieux lointains d'après leur région.
+// StructureOfRegion returns the structure of the region (or nil). Used to name
+// distant places after their region.
 func (w *World) StructureOfRegion(rp RegionPos) *Structure { return w.structureForRegion(rp) }
 
-// PlaceAt renvoie le lieu où se trouve (x, y) : la structure dont l'emprise ou la zone sûre contient
-// la case, ou nil en pleine nature. Sert à afficher « où l'on est ».
+// PlaceAt returns the place where (x, y) is: the structure whose footprint or safe zone contains
+// the tile, or nil in the wild. Used to display "where one is".
 func (w *World) PlaceAt(x, y int) *Structure {
 	s := w.structureForRegion(RegionOf(x, y))
 	if s != nil && (s.Contains(x, y) || s.Safe(x, y)) {
@@ -447,7 +447,7 @@ func (w *World) PlaceAt(x, y int) *Structure {
 	return nil
 }
 
-// StructureAt renvoie la structure dont l'emprise contient (x, y), ou nil.
+// StructureAt returns the structure whose footprint contains (x, y), or nil.
 func (w *World) StructureAt(x, y int) *Structure {
 	s := w.structureForRegion(RegionOf(x, y))
 	if s != nil && s.Contains(x, y) {
@@ -456,8 +456,8 @@ func (w *World) StructureAt(x, y int) *Structure {
 	return nil
 }
 
-// StructuresNear renvoie les structures dont l'emprise est à moins de radius
-// tuiles de p (en distance de Chebyshev), triées de la plus proche à la plus lointaine.
+// StructuresNear returns the structures whose footprint is within radius
+// tiles of p (in Chebyshev distance), sorted from closest to farthest.
 func (w *World) StructuresNear(p Pos, radius int) []*Structure {
 	lo, hi := RegionOf(p.X-radius, p.Y-radius), RegionOf(p.X+radius, p.Y+radius)
 	var out []*Structure
@@ -467,7 +467,7 @@ func (w *World) StructuresNear(p Pos, radius int) []*Structure {
 			if s == nil {
 				continue
 			}
-			// Distance de p au rectangle de l'emprise.
+			// Distance from p to the footprint rectangle.
 			dx := max(s.Origin.X-p.X, 0, p.X-(s.Origin.X+s.W-1))
 			dy := max(s.Origin.Y-p.Y, 0, p.Y-(s.Origin.Y+s.H-1))
 			if max(dx, dy) <= radius {
@@ -482,14 +482,14 @@ func (w *World) StructuresNear(p Pos, radius int) []*Structure {
 	return out
 }
 
-// Safe indique si (x, y) est dans la zone sûre d'un village ou d'une ville:
-// les monstres n'y apparaissent ni n'y entrent.
+// Safe tells whether (x, y) is within the safe zone of a village or town:
+// monsters neither spawn nor enter there.
 func (w *World) Safe(x, y int) bool {
 	s := w.structureForRegion(RegionOf(x, y))
 	return s != nil && s.Safe(x, y)
 }
 
-// NPCAt renvoie le PNJ posté en (x, y), s'il y en a un.
+// NPCAt returns the posted NPC at (x, y), if there is one.
 func (w *World) NPCAt(x, y int) (NPC, bool) {
 	s := w.StructureAt(x, y)
 	if s == nil {
@@ -503,8 +503,8 @@ func (w *World) NPCAt(x, y int) (NPC, bool) {
 	return NPC{}, false
 }
 
-// NPCsIn renvoie les PNJ situés dans le rectangle [x0, x1] × [y0, y1]. Une
-// seule recherche par image suffit au rendu, au lieu d'une par tuile.
+// NPCsIn returns the NPCs located within the rectangle [x0, x1] x [y0, y1]. A
+// single search per frame suffices for rendering, instead of one per tile.
 func (w *World) NPCsIn(x0, y0, x1, y1 int) []NPC {
 	lo, hi := RegionOf(x0, y0), RegionOf(x1, y1)
 	var out []NPC
@@ -524,8 +524,8 @@ func (w *World) NPCsIn(x0, y0, x1, y1 int) []NPC {
 	return out
 }
 
-// structureChance est la part des régions qui portent un lieu. Le tirage consomme le même nombre de valeurs quel que
-// soit le seuil: en v1 il reste à 55 % (les mondes existants ne bougent pas), la v2 en met davantage.
+// structureChance is the share of the regions that carry a place. The draw consumes the same number of values whatever
+// the threshold: in v1 it stays at 55 % (existing worlds do not move), v2 puts more.
 func (w *World) structureChance() float64 {
 	if w.GenVersion >= GenV2 {
 		return 0.7

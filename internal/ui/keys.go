@@ -2,7 +2,7 @@ package ui
 
 import "strings"
 
-// KeyBar met en forme une barre de raccourcis: chaque paire est (touche, action).
+// KeyBar formats a shortcut bar: each pair is (key, action).
 func KeyBar(pairs ...[2]string) string {
 	parts := make([]string, len(pairs))
 	for i, p := range pairs {

@@ -18,21 +18,21 @@ func TestLimiterBlocksAtMaxAndExpires(t *testing.T) {
 	l, now := fakeLimiter(3, time.Minute)
 	for i := 0; i < 3; i++ {
 		if l.blocked("ip") {
-			t.Fatalf("bloqué trop tôt (après %d événements)", i)
+			t.Fatalf("blocked too early (after %d events)", i)
 		}
 		l.add("ip")
 	}
 	if !l.blocked("ip") {
-		t.Fatal("devrait être bloqué au quota")
+		t.Fatal("should be blocked at the quota")
 	}
 
 	*now = now.Add(59 * time.Second)
 	if !l.blocked("ip") {
-		t.Fatal("encore dans la fenêtre: doit rester bloqué")
+		t.Fatal("still within the window: must stay blocked")
 	}
 	*now = now.Add(2 * time.Second)
 	if l.blocked("ip") {
-		t.Fatal("fenêtre écoulée: doit être débloqué")
+		t.Fatal("window elapsed: must be unblocked")
 	}
 }
 
@@ -42,11 +42,11 @@ func TestLimiterSlidingWindow(t *testing.T) {
 	*now = now.Add(40 * time.Second)
 	l.add("ip")
 	if !l.blocked("ip") {
-		t.Fatal("2 événements dans la fenêtre: bloqué")
+		t.Fatal("2 events in the window: blocked")
 	}
-	*now = now.Add(30 * time.Second) // le premier (à 70 s) est sorti, le second (à 30 s) reste
+	*now = now.Add(30 * time.Second) // the first (at 70 s) has left, the second (at 30 s) stays
 	if l.blocked("ip") {
-		t.Fatal("un seul événement reste: ne doit plus être bloqué")
+		t.Fatal("a single event remains: must no longer be blocked")
 	}
 }
 
@@ -54,7 +54,7 @@ func TestLimiterKeysAreIndependent(t *testing.T) {
 	l, _ := fakeLimiter(1, time.Minute)
 	l.add("a")
 	if !l.blocked("a") || l.blocked("b") {
-		t.Fatal("les quotas doivent être indépendants par clé")
+		t.Fatal("quotas must be independent per key")
 	}
 }
 
@@ -63,13 +63,13 @@ func TestLimiterSweepsExpiredKeys(t *testing.T) {
 	for i := 0; i < 5_000; i++ {
 		l.add(fmt.Sprintf("ip-%d", i))
 	}
-	*now = now.Add(2 * time.Minute) // tout est périmé
-	l.add("nouveau")                // déclenche le nettoyage
+	*now = now.Add(2 * time.Minute) // everything is stale
+	l.add("nouveau")                // triggers the cleanup
 	l.mu.Lock()
 	n := len(l.hits)
 	l.mu.Unlock()
 	if n > 1 {
-		t.Fatalf("%d clés conservées après expiration, une seule attendue", n)
+		t.Fatalf("%d keys kept after expiry, only one expected", n)
 	}
 }
 
@@ -83,32 +83,32 @@ func TestLimiterHardKeyCap(t *testing.T) {
 	n := len(l.hits)
 	l.mu.Unlock()
 	if n > 50 {
-		t.Fatalf("%d clés suivies, plafond 50", n)
+		t.Fatalf("%d keys tracked, cap 50", n)
 	}
 
-	// Une clé déjà suivie continue d'être comptée même au plafond.
+	// A key already tracked keeps being counted even at the cap.
 	l.add("ip-0")
 	l.add("ip-0")
 	l.add("ip-0")
 	l.add("ip-0")
 	if !l.blocked("ip-0") {
-		t.Fatal("une clé suivie doit rester limitée quand le plafond est atteint")
+		t.Fatal("a tracked key must stay limited when the cap is reached")
 	}
-	// Une clé inconnue, elle, n'est pas bloquée (fail-open assumé).
+	// An unknown key, however, is not blocked (accepted fail-open).
 	if l.blocked("jamais-vue") {
-		t.Fatal("une clé non suivie ne doit pas être bloquée")
+		t.Fatal("an untracked key must not be blocked")
 	}
 }
 
-// Le coût d'un ajout ne doit pas croître avec le nombre de clés suivies.
+// The cost of an add must not grow with the number of tracked keys.
 func TestLimiterAddCostIsNotQuadratic(t *testing.T) {
-	l := newLimiter(5, time.Minute) // horloge réelle: aucune clé n'expire pendant le test
+	l := newLimiter(5, time.Minute) // real clock: no key expires during the test
 	start := time.Now()
 	for i := 0; i < 50_000; i++ {
 		l.add(fmt.Sprintf("ip-%d", i))
 	}
 	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("50 000 ajouts en %v: le coût semble quadratique", d)
+		t.Fatalf("50,000 adds in %v: the cost looks quadratic", d)
 	}
 }
 
@@ -119,7 +119,7 @@ func TestClientIP(t *testing.T) {
 		"sans-port":         "sans-port",
 	} {
 		if got := clientIP(&http.Request{RemoteAddr: addr}); got != want {
-			t.Errorf("clientIP(%q) = %q, attendu %q", addr, got, want)
+			t.Errorf("clientIP(%q) = %q, expected %q", addr, got, want)
 		}
 	}
 }

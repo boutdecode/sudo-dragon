@@ -1,389 +1,389 @@
 # sudo Dragon
 
-*[English version: README.en.md](README.en.md)*
+*[Version française : README.fr.md](README.fr.md)*
 
-Un RPG multijoueur en monde ouvert, à l'ancienne, entièrement en ASCII dans le terminal.
-Interface avec [Bubble Tea](https://charm.land/) et Lip Gloss ; serveur autoritatif en Go.
+An old-school, open-world multiplayer RPG, entirely in ASCII, in your terminal.
+UI built with [Bubble Tea](https://charm.land/) and Lip Gloss; authoritative server in Go.
 
 ```
 ╭───────────────────────────────────────────────╮╭────────────────────────╮
 │"'"""""""""'"""""""'".,:~~~~~~~--~~~~~~~~~~~~~~~││hero                    │
 │""""'""""""""'""".'"".""..:.~~~~~-~~~~~~~~~~~~~~~││Pos  4, 2               │
-│"""""""."""""".""."."'""""""..~~~~~~~~~~~~~~~~~~~││Sol  Plaine             │
-│""".""""""""""r"""""""""".'""",.~~-~~~~~~~~~~~~~~││Niv 1   XP 4/120        │
-│""""""""'"'""."".""""'"'""'""".,.~~~~~~~~~~~~~~~~││PV ########## 30/30     │
-│"""""""""""""""@""""""""""""""..~~--~~~~~~~~~~~~~││Déf 11 Dég 1d6 Pot 2    │
+│"""""""."""""".""."."'""""""..~~~~~~~~~~~~~~~~~~~││Terrain  Plain          │
+│""".""""""""""r"""""""""".'""",.~~-~~~~~~~~~~~~~~││Lvl 1   XP 4/120        │
+│""""""""'"'""."".""""'"'""'""".,.~~~~~~~~~~~~~~~~││HP ########## 30/30     │
+│"""""""""""""""@""""""""""""""..~~--~~~~~~~~~~~~~││Def 11 Dmg 1d6 Pot 2    │
 ╰───────────────────────────────────────────────╯╰────────────────────────╯
-* hero a rejoint le monde
-Entrée: chat (/help) · flèches/ZQSD/hjkl: bouger · Ctrl+C: quitter
+* hero joined the world
+Enter: chat (/help) · arrows/ZQSD/hjkl: move · Ctrl+C: quit
 ```
 
-*(illustration schématique, les couleurs ne sont pas rendues ici)*
+*(schematic illustration; colours are not rendered here)*
 
-- **Monde infini** généré par bruit simplex à partir d'une seed : océans, continents, îles, rivières, chaînes de montagnes, et des biomes selon le climat
-  (plages, plaines, forêts, collines, montagnes, neige, toundra, désert, marais, jungle). Cycle jour / nuit.
-- **Villages, villes et forteresses** générés eux aussi depuis la seed : zones sûres, marchands, soigneurs et gardes dans les premiers, garnisons et seigneur de guerre dans les secondes ; **routes** entre lieux voisins et **caravanes** de marchands ambulants.
-- **Donjons secrets**, **points d'intérêt** (feux de camp, sanctuaires, repaires, ruines…) et **cartes au trésor** à découvrir.
-- **Multijoueur** : tout le monde partage le même monde, se voit, discute et se déplace en temps réel.
-- **Monstres** par biome, de plus en plus forts loin du point de départ, qui errent et vous poursuivent ; **combat au tour par tour** (parfois en groupe) avec potions, fuite, XP et niveaux.
-- **Personnage à six caractéristiques**, trois classes, **équipement** de cinq rangs acheté, trouvé ou arraché aux monstres.
-- **Récolte** : bois, minerais, plantes et poissons, avec quatre métiers qui montent de niveau.
-- **Or et boutiques**, **quêtes** et **réputation** ; des PNJ avec qui l'on peut discuter librement (modèle de langage, optionnel).
-- **Comptes et sauvegarde** : pseudo et mot de passe (bcrypt), personnage persistant (SQLite).
+- **Infinite world** generated from a seed with simplex noise: oceans, continents, islands, rivers, mountain ranges, and biomes that follow the climate
+  (beaches, plains, forests, hills, mountains, snow, tundra, desert, swamp, jungle). Day / night cycle.
+- **Villages, towns and fortresses**, also generated from the seed: safe zones, merchants, healers and guards in the former, garrisons and a warlord in the latter; **roads** between neighbouring places and travelling **caravans**.
+- **Secret dungeons**, **points of interest** (campfires, shrines, lairs, ruins…) and **treasure maps** to discover.
+- **Multiplayer**: everyone shares the same world, sees each other, chats and moves in real time.
+- **Monsters** by biome, stronger the farther you go from the start, that wander and chase you; **turn-based combat** (sometimes against a group) with potions, fleeing, XP and levels.
+- **Six-ability characters**, three classes, and five ranks of **equipment** that you buy, find or take from monsters.
+- **Gathering**: wood, ore, plants and fish, with four professions that level up.
+- **Gold and shops**, **quests** and **reputation**; NPCs you can chat with freely (language model, optional).
+- **Accounts and saving**: username and password (bcrypt), persistent character (SQLite).
 
-La liste détaillée de ce qui est livré est dans [FEATURES.md](FEATURES.md).
+The detailed list of what has shipped is in [FEATURES.md](FEATURES.md).
 
-## Démarrage rapide
+## Quick start
 
-Prérequis : **Go 1.27 ou plus** (`go version`). Sur une machine où `go` est plus ancien,
-indiquez la bonne version : `make GO=/chemin/vers/go1.27/bin/go build`.
+Requirements: **Go 1.27 or later** (`go version`). On a machine where `go` is older,
+point to the right one: `make GO=/path/to/go1.27/bin/go build`.
 
 ```sh
-make build                 # compile serveur, client, bot et outil de carte dans ./bin
+make build                 # builds server, client, bot and map tool into ./bin
 
-./bin/sudo-dragon-server               # écoute sur :8080, base ./sudo-dragon.db
-./bin/sudo-dragon               # dans un autre terminal (ou plusieurs, pour jouer à plusieurs)
-./bin/sudo-dragon --transparent   # garde le fond de votre terminal (sinon le fond sombre du thème est peint)
+./bin/sudo-dragon-server               # listens on :8080, database ./sudo-dragon.db
+./bin/sudo-dragon               # in another terminal (or several, to play together)
+./bin/sudo-dragon --transparent   # keeps your terminal background (otherwise the dark theme background is painted)
 ```
 
-> Le jeu s'appelait « ASCII Adventure » : la base par défaut est désormais `sudo-dragon.db`. Pour garder une ancienne
-> sauvegarde, renommez `ascii-adventure.db` ou lancez le serveur avec `-db ascii-adventure.db`.
+> The game used to be called "ASCII Adventure": the default database is now `sudo-dragon.db`. To keep an old
+> save, rename `ascii-adventure.db` or start the server with `-db ascii-adventure.db`.
 
-Au premier lancement, appuyez sur **Ctrl+R** pour passer en « Création de compte », choisissez un
-pseudo et un mot de passe (8 à 72 caractères), puis Entrée. Les fois suivantes, connectez-vous
-simplement avec les mêmes identifiants : vous reprenez là où vous étiez.
+On first launch, press **Ctrl+R** to switch to "Account creation", pick a
+username and a password (8 to 72 characters), then press Enter. Afterwards, just log in
+with the same credentials: you pick up where you left off.
 
-Options du client : `-addr` (adresse du serveur), `-name` (pseudo prérempli), `-transparent`, `-lang`.
-Pour jouer sur un autre serveur : `./bin/sudo-dragon -addr wss://jeu.exemple.org/ws -name monpseudo`.
-`SUDO_DRAGON_NO_FX=1` désactive les secousses d'écran du combat.
+Client options: `-addr` (server address), `-name` (pre-filled username), `-transparent`, `-lang`.
+To play on another server: `./bin/sudo-dragon -addr wss://game.example.org/ws -name myname`.
+`SUDO_DRAGON_NO_FX=1` turns off the combat screen shake.
 
-### Langue
+### Language
 
-Le jeu existe en **français** et en **anglais**. Le client choisit la langue du système (variables `LC_ALL`, `LC_MESSAGES`,
-`LANGUAGE`, puis `LANG`, comme `gettext`) : `fr_*` donne le français, `en_*` l'anglais, et toute autre langue l'anglais.
-`-lang fr` ou `-lang en` impose une langue (`./bin/sudo-dragon -lang en`).
+The game comes in **French** and **English**. The client picks the system language (variables `LC_ALL`, `LC_MESSAGES`,
+`LANGUAGE`, then `LANG`, as `gettext` does): `fr_*` gives French, `en_*` gives English, and any other language gives English.
+`-lang fr` or `-lang en` forces a language (`./bin/sudo-dragon -lang en`).
 
-La langue est annoncée au serveur à la connexion et chaque joueur est servi dans la sienne, sur un même serveur : erreurs, aide du
-chat, annonces d'arrivée, journal de combat, marchands, soigneurs, titres et traits des PNJ, et même la consigne donnée au modèle de
-langage (le PNJ répond dans la langue du joueur). Les noms propres (lieux, prénoms) sont communs ; seuls les mots courants changent
-(« Citadelle » devient « Citadel », « Sœur » devient « Sister »). Les raccourcis suivent les mnémoniques de la langue
-(achat `A`/`B`, vente `V`/`S`, soin `S`/`H`, discussion `D`/`T`, accord `O`/`Y`, travail `T`/`W`). Les journaux et options du serveur restent en français.
+The language is announced to the server at login and each player is served in their own, on a single server: errors, chat
+help, arrival announcements, combat log, merchants, healers, NPC titles and traits, and even the instruction given to the language
+model (the NPC answers in the player's language). Proper nouns (places, first names) are shared; only common words change
+("Citadelle" becomes "Citadel", "Sœur" becomes "Sister"). Shortcuts follow the mnemonics of each language
+(buy `A`/`B`, sell `V`/`S`, heal `S`/`H`, talk `D`/`T`, consent `O`/`Y`, work `T`/`W`). Server logs, command-line options and tool output are in English.
 
-Les textes sont dans `internal/i18n` (`fr.go`, `en.go`) ; un test vérifie que les deux catalogues ont les mêmes clés et les mêmes
-directives de mise en forme. Pour ajouter une langue : un catalogue complet, enregistré dans `catalogs`, `Langs` et `Parse`.
+The texts live in `internal/i18n` (`fr.go`, `en.go`); a test checks that both catalogues have the same keys and the same
+formatting directives. To add a language: a complete catalogue, registered in `catalogs`, `Langs` and `Parse`.
 
-## Jouer
+## Playing
 
-**Se déplacer** : flèches, `Z Q S D` (AZERTY), `W A S D`, ou `h j k l`. Diagonales : `y u b n`.
-Un joueur avance de 5 cases par seconde ; tous les monstres sont plus lents, on peut donc toujours leur échapper.
+**Moving**: arrows, `Z Q S D` (AZERTY), `W A S D`, or `h j k l`. Diagonals: `y u b n`.
+A player moves 5 tiles per second; every monster is slower, so you can always outrun them.
 
-**Touches** :
+**Keys**:
 
-| Touche | Écran |
+| Key | Screen |
 |---|---|
-| `Entrée` | chat |
-| `I` | sac (équipement, potions, matières) |
-| `P` | fiche de personnage |
-| `M` | carte du monde |
-| `Q` | livre de quêtes |
-| `G` | récolter (ou, sur la carte, marcher jusqu'au curseur) |
-| `Ctrl+C` | quitter |
+| `Enter` | chat |
+| `I` | bag (equipment, potions, materials) |
+| `P` | character sheet |
+| `M` | world map |
+| `Q` | quest log |
+| `G` | gather (or, on the map, walk to the cursor) |
+| `Ctrl+C` | quit |
 
-**Chat** : `Entrée` ouvre la saisie, `Entrée` envoie, `Échap` annule. `PgHaut`/`PgBas` font défiler l'historique, `Ctrl+↑`/`Ctrl+↓` redimensionnent la zone de discussion,
-`↑`/`↓` dans la saisie rappellent les dernières lignes envoyées.
+**Chat**: `Enter` opens the input, `Enter` sends, `Esc` cancels. `PgUp`/`PgDn` scroll the history, `Ctrl+↑`/`Ctrl+↓` resize the chat area,
+and `↑`/`↓` in the input recall the lines you sent last.
 
-| Saisie | Effet |
+| Input | Effect |
 |---|---|
-| `message` | chat **local** : seuls les joueurs proches (dans votre zone de vision) le voient |
-| `/g message` | chat **global**, tout le monde |
-| `/me action` | émote locale |
-| `/w pseudo message` | message **privé** |
-| `/goto x y` ou `/goto nom` | **marche automatique** vers des coordonnées, un repère, un lieu ou une entrée de donjon découverts (Tab complète le nom) |
-| `/menhir [n° ou nom]` | voyage d'une pierre dressée activée à une autre (voir *Points d'intérêt*) |
-| `/help` | rappel des commandes |
+| `message` | **local** chat: only nearby players (inside your view) see it |
+| `/g message` | **global** chat, everyone |
+| `/me action` | local emote |
+| `/w username message` | **private** message |
+| `/goto x y` or `/goto name` | **auto-walk** to coordinates, or to a landmark, place or dungeon entrance you have discovered (Tab completes the name) |
+| `/menhir [n or name]` | travel from one activated standing stone to another (see *Points of interest*) |
+| `/help` | command reminder |
 
-**Carte du monde (`M`)** : zoom (`+` / `-`), curseur aux flèches, `0` recentre ; seul le terrain exploré est affiché. `W` pose ou renomme un **repère** (9 au plus),
-`X` le supprime, `G` lance la marche automatique vers le curseur. La carte, les repères et l'exploration sont enregistrés côté client.
+**World map (`M`)**: zoom (`+` / `-`), cursor with the arrows, `0` recentres; only explored terrain is shown. `W` places or renames a **landmark** (9 at most),
+`X` removes it, `G` starts auto-walking to the cursor. The map, landmarks and exploration are stored on the client side.
 
-**Cycle jour / nuit** : l'en-tête affiche l'heure de jeu (une heure de jeu = une minute réelle) et le terrain s'assombrit la nuit. Purement visuel.
+**Day / night cycle**: the header shows the game time (one game hour = one real minute) and the terrain darkens at night. Purely visual.
 
 ### Combat
 
-Marchez sur un monstre pour l'attaquer, ou laissez-le vous toucher. Les monstres libres à moins de 5 cases se joignent au combat : jusqu'à **3 monstres** par combat (2 pour une garnison ou un donjon).
-Une **initiative** (d20 + AGI) décide qui ouvre : les monstres strictement plus rapides frappent avant votre premier tour.
+Walk into a monster to attack it, or let it hit you. Free monsters within 5 tiles join the fight: up to **3 monsters** per fight (2 for a garrison or a dungeon).
+An **initiative** roll (d20 + AGI) decides who opens: monsters that are strictly faster strike before your first turn.
 
-L'écran de combat propose : `A` attaquer (frapper, tirer ou lancer un sort selon l'arme) · `I` boire une potion (+15 PV) · `F` fuir (une chance sur deux).
-Les touches `1` à `3` font la même chose ; flèches haut/bas + Entrée choisissent l'action, gauche/droite la cible. Après la victoire, `Entrée` ferme l'écran.
+The combat screen offers: `A` attack (strike, shoot or cast depending on the weapon) · `I` drink a potion (+15 HP) · `F` flee (a 50% chance).
+Keys `1` to `3` do the same; up/down arrows + Enter pick the action, left/right pick the target. After a victory, `Enter` closes the screen.
 
-- Vainqueur : de l'XP, de l'or, 30 % de chances de trouver une potion, parfois un objet d'équipement (voir *Équipement*). Chaque niveau lance le dé de vie de la classe (+ bonus de CON) et restaure tous les PV et la mana ; il ne change ni le toucher ni les dégâts, qui viennent des caractéristiques et de l'équipement.
-- Vaincu : vous réapparaissez au dernier **feu de camp** utilisé (sinon au point de départ, ou devant l'entrée du donjon) avec tous vos PV, sans perte d'XP.
-- Fuite : après une fuite, **aucun monstre ne vous engage pendant 5 secondes**.
-- Les PV remontent d'un point toutes les 3 secondes hors combat.
-- Pendant un combat, vous et vos adversaires restez sur place, hors d'atteinte des autres, et apparaissez en rouge pour les autres joueurs.
-  Un joueur inactif depuis 60 secondes est considéré comme ayant fui.
+- Winner: XP, gold, a 30% chance of finding a potion, sometimes a piece of equipment (see *Equipment*). Each level rolls the class hit die (+ CON bonus) and restores all HP and mana; it changes neither to-hit nor damage, which come from abilities and equipment.
+- Defeated: you respawn at the last **campfire** you used (otherwise at the starting point, or at the dungeon entrance) with full HP, without losing any XP.
+- Fleeing: after a flight, **no monster engages you for 5 seconds**.
+- HP regenerate by one point every 3 seconds outside combat.
+- During a fight, you and your opponents stay in place, out of reach of others, and appear in red to other players.
+  A player idle for 60 seconds is considered to have fled.
 
-**Règles** : chaque créature a une **DEF** (8 pour une petite créature, 10 pour un humanoïde ou une créature moyenne, 12 pour une grande, plus le modificateur d'AGI). Pour toucher, on lance un **d20** et on ajoute
-son modificateur (FOR en mêlée, AGI à distance, INT en magie) : il faut faire **strictement plus** que la DEF de la cible. Un 20 naturel touche toujours et **double les dés** de dégâts (pas les bonus) ; un 1 naturel rate toujours.
-Les dégâts sont ceux de l'arme (`x d y + z`) plus le modificateur de caractéristique, **moins les dés de réduction de l'armure** de la cible (au moins 1 si le coup touche). Le journal de combat montre le jet, la DEF visée et la réduction.
-Sans mana, une arme magique sert de gourdin (1d4 + FOR).
+**Rules**: every creature has a **DEF** (8 for a small creature, 10 for a humanoid or medium creature, 12 for a large one, plus the AGI modifier). To hit, you roll a **d20** and add
+your modifier (STR in melee, AGI at range, INT for magic): you must roll **strictly more** than the target's DEF. A natural 20 always hits and **doubles the dice** of damage (not the bonuses); a natural 1 always misses.
+Damage is the weapon's (`x d y + z`) plus the ability modifier, **minus the target's armour reduction dice** (at least 1 if the blow lands). The combat log shows the roll, the targeted DEF and the reduction.
+Without mana, a magic weapon serves as a club (1d4 + STR).
 
-### Monstres
+### Monsters
 
-| Monstre | Glyphe | Habitat | PV | DEF | Toucher | Dégâts | Réduction | XP | Détection |
+| Monster | Glyph | Habitat | HP | DEF | To-hit | Damage | Reduction | XP | Detection |
 |---|---|---|---|---|---|---|---|---|---|
-| Rat | `r` | plaine | 8 | 8 | +1 | 1d4 | – | 4 | 5 cases |
-| Crabe | `c` | plage | 12 | 8 | +2 | 1d6 | 1d4 | 6 | 3 cases |
-| Loup | `w` | forêt | 16 | 11 | +3 | 1d6+1 | – | 10 | 9 cases |
-| Gobelin | `g` | collines | 22 | 10 | +3 | 1d8 | – | 15 | 8 cases |
-| Yéti | `Y` | neige | 34 | 12 | +5 | 2d6 | 1d4 | 30 | 7 cases |
-| Scorpion | | désert | 14 | 8 | +3 | 1d6 | 1d4 | 12 | 4 cases |
-| Panthère | | jungle | 24 | 12 | +4 | 1d8+1 | – | 20 | 9 cases |
-| Crapaud | | marais | 14 | 8 | +2 | 1d6 | – | 8 | 4 cases |
-| Ours | | toundra | 30 | 12 | +4 | 2d6 | 1d4 | 22 | 6 cases |
-| Squelette | `S` | forteresse, donjon | 36 | 10 | +4 | 2d6 | 1d4 | 25 | 7 cases |
-| Chevalier | `K` | forteresse, donjon | 90 | 12 | +7 | 2d8 | 1d8 | 50 | 7 cases |
-| Seigneur de guerre | `B` | forteresse | 180 | 13 | +8 | 3d10+3 | 2d6 | 250 | 6 cases |
-| Spectre | | donjon | 30 | 12 | +5 | 2d6 | 1d4 | 30 | 7 cases |
-| Golem | | donjon | 110 | 11 | +6 | 2d10 | 1d10 | 60 | 5 cases |
-| Liche | | donjon (boss) | 200 | 12 | +8 | 3d10+4 | 2d6 | 300 | 7 cases |
+| Rat | `r` | plains | 8 | 8 | +1 | 1d4 | – | 4 | 5 tiles |
+| Crab | `c` | beach | 12 | 8 | +2 | 1d6 | 1d4 | 6 | 3 tiles |
+| Wolf | `w` | forest | 16 | 11 | +3 | 1d6+1 | – | 10 | 9 tiles |
+| Goblin | `g` | hills | 22 | 10 | +3 | 1d8 | – | 15 | 8 tiles |
+| Yeti | `Y` | snow | 34 | 12 | +5 | 2d6 | 1d4 | 30 | 7 tiles |
+| Scorpion | | desert | 14 | 8 | +3 | 1d6 | 1d4 | 12 | 4 tiles |
+| Panther | | jungle | 24 | 12 | +4 | 1d8+1 | – | 20 | 9 tiles |
+| Toad | | swamp | 14 | 8 | +2 | 1d6 | – | 8 | 4 tiles |
+| Bear | | tundra | 30 | 12 | +4 | 2d6 | 1d4 | 22 | 6 tiles |
+| Skeleton | `S` | fortress, dungeon | 36 | 10 | +4 | 2d6 | 1d4 | 25 | 7 tiles |
+| Knight | `K` | fortress, dungeon | 90 | 12 | +7 | 2d8 | 1d8 | 50 | 7 tiles |
+| Warlord | `B` | fortress | 180 | 13 | +8 | 3d10+3 | 2d6 | 250 | 6 tiles |
+| Wraith | | dungeon | 30 | 12 | +5 | 2d6 | 1d4 | 30 | 7 tiles |
+| Golem | | dungeon | 110 | 11 | +6 | 2d10 | 1d10 | 60 | 5 tiles |
+| Lich | | dungeon (boss) | 200 | 12 | +8 | 3d10+4 | 2d6 | 300 | 7 tiles |
 
-Ce sont les statistiques de base. Chaque monstre est **mis au niveau de sa région** à son apparition (voir *Niveau de région*) : PV et XP +25 % par niveau au-delà du premier, +1 au toucher tous les 3 niveaux, +1 aux dés de dégâts tous les 4 niveaux, +1 de DEF tous les 5 niveaux. Les monstres de donjon suivent le palier du donjon.
-Les monstres sont parfois accompagnés de **compagnons** (rats avec les loups, loups avec les gobelins…) : un compagnon de plus tous les 3 niveaux du joueur.
+These are base statistics. Each monster is **scaled to its region's level** when it spawns (see *Region level*): HP and XP +25% per level beyond the first, +1 to-hit every 3 levels, +1 to damage dice every 4 levels, +1 DEF every 5 levels. Dungeon monsters follow the dungeon's tier.
+Monsters are sometimes accompanied by **companions** (rats with wolves, wolves with goblins…): one more companion for every 3 player levels.
 
-Un monstre vaincu laisse de l'or (entre la moitié et la totalité de son XP). Un personnage débute niveau 1 avec ses PV de classe (voir « Caractéristiques et classes »), sa DEF de 10 + modificateur d'AGI, son **arme de départ** (épée courte du guerrier, arc court du gredin, bâton du magicien : 1d6), 2 potions et aucun or ; il faut `120 × niveau²` XP pour passer au niveau suivant (environ 60 h de jeu actif pour atteindre le niveau 20).
-Un guerrier débutant bat un rat ou un loup, mais pas un yéti : il faut progresser et s'équiper (c'est vérifié par un test d'équilibrage ; le gredin et surtout le magicien, plus fragiles, évitent le loup).
+A defeated monster drops gold (between half and all of its XP). A character starts at level 1 with their class HP (see "Abilities and classes"), a DEF of 10 + AGI modifier, their **starting weapon** (the warrior's short sword, the rogue's short bow, the mage's staff: 1d6), 2 potions and no gold; it takes `120 × level²` XP to reach the next level (about 60 hours of active play to reach level 20).
+A starting warrior beats a rat or a wolf, but not a yeti: you have to progress and gear up (this is checked by a balance test; the rogue and especially the mage, being frailer, avoid the wolf).
 
-## Le monde
+## The world
 
-### Niveau de région, régions et contrées
+### Region level, regions and territories
 
-Le monde repose sur plusieurs découpages, tous calculés depuis la seed (le client les retrouve sans rien recevoir) :
+The world rests on several subdivisions, all computed from the seed (the client recovers them without being sent anything):
 
-- **La grille de régions** (carrés de 256 × 256 cases) est l'unité technique : au plus un lieu par région, rumeurs qui voyagent sur 1 région (le lieu et ses voisines), réputation par région.
-- **Le niveau de région** (1 à 20) croît avec l'éloignement du point de départ (un niveau toutes les ~154 cases). Il règle la force des monstres, le rang de l'équipement vendu et lâché, et le palier des donjons. Le journal annonce le passage à une tranche plus dangereuse.
-- **Les contrées** sont des pays nommés à frontières irrégulières (diagramme de Voronoi à germes décalés, environ 1 000 cases de large). Leur nom reflète le terrain dominant
-  (« Forêts d'Aube », « Plaines de Solbrune », « Côtes de Kerhaven »…) et existe en français et en anglais. Les lieux d'une contrée ont un air de famille : leurs noms puisent dans la même
-  petite famille de syllabes, sans jamais se répéter à moins de 3 régions. Chaque contrée a un **climat** (tempéré, tropical, aride, boréal) qui change les couleurs du terrain ; il est purement visuel.
+- **The region grid** (256 × 256 tile squares) is the technical unit: at most one place per region, rumours that travel 1 region (the place and its neighbours), reputation per region.
+- **The region level** (1 to 20) grows with distance from the starting point (one level every ~154 tiles). It sets monster strength, the rank of the equipment sold and dropped, and the tier of dungeons. The log announces when you enter a more dangerous band.
+- **Territories** are named countries with irregular borders (a Voronoi diagram with jittered seeds, about 1,000 tiles wide). Their name reflects the dominant terrain
+  ("Forêts d'Aube", "Plaines de Solbrune", "Côtes de Kerhaven"…) and exists in French and English. The places of a territory share a family likeness: their names draw on the same
+  small family of syllables and never repeat within 3 regions. Each territory has a **climate** (temperate, tropical, arid, boreal) that changes the terrain colours; it is purely visual.
 
-L'interface affiche en haut de la carte `contrée · Niv. N · lieu · terrain (x, y)`, le lieu (« village Tourelle », « forteresse… ») n'apparaissant que dans l'emprise ou la zone sûre d'un village,
-d'une ville ou d'une forteresse. Une ligne s'ajoute au journal en entrant dans une nouvelle contrée ou un nouveau lieu. Les PNJ connaissent la contrée de leur lieu.
-`worldview -territories -step 100` dessine les contrées en lettres avec leur légende.
+At the top of the map, the UI shows `territory · Lvl N · place · terrain (x, y)`; the place ("village Tourelle", "fortress…") only appears inside the footprint or the safe zone of a village,
+town or fortress. A line is added to the log when you enter a new territory or place. NPCs know the territory of their place.
+`worldview -territories -step 100` draws the territories as letters with their legend.
 
-**Versions du générateur.** Une base garde la version de terrain avec laquelle elle a été créée : un monde ancien ne change jamais de relief.
-La v1 est un terrain simple sans rivières ; la **v2** ajoute continents, rivières, chaînes de montagnes et biomes ; la **v3** (nouveaux mondes) ajoute les nœuds de ressources sans toucher au terrain de la v2.
-`worldview -gen N` dessine une version donnée.
+**Generator versions.** A database keeps the terrain version it was created with: an old world never changes its landscape.
+v1 is a simple terrain without rivers; **v2** adds continents, rivers, mountain ranges and biomes; **v3** (new worlds) adds resource nodes without touching the v2 terrain.
+`worldview -gen N` draws a given version.
 
-### Villages, villes et forteresses
+### Villages, towns and fortresses
 
-Chaque région accueille **au plus un lieu** (environ 70 % en ont un avec le générateur v2),
-choisi selon le terrain : les villages en plaine ou en forêt, les villes en plaine et de préférence près de l'eau, les forteresses sur les collines.
-Un village se trouve toujours à quelques dizaines de cases du point de départ. Les lieux sont **calculés à l'identique par le serveur et par le client**
-à partir de la seed : rien n'est envoyé ni sauvegardé. Deux lieux voisins sont reliés par une **route**, qui franchit les rivières par un pont.
+Each region hosts **at most one place** (about 70% have one with the v2 generator),
+chosen according to terrain: villages on plains or in forests, towns on plains and preferably near water, fortresses on hills.
+A village is always a few dozen tiles from the starting point. Places are **computed identically by the server and the client**
+from the seed: nothing is sent or saved. Two neighbouring places are linked by a **road**, which crosses rivers over a bridge.
 
-| Lieu | Taille | Contenu |
+| Place | Size | Contents |
 |---|---|---|
-| Village | ~32 × 26 | 4 à 8 maisons reliées à une place par des chemins, un **soigneur**, 3 **villageois**, un **chef**, un forgeron ou un armurier, 2 **gardes** |
-| Ville | ~58 × 46 | muraille à quatre portes, deux avenues, une place, une vingtaine de bâtiments, un **marchand**, un **soigneur**, 5 **villageois**, un **maire**, un **forgeron**, un **armurier**, 5 **gardes** |
-| Forteresse | 48 × 40 | enceinte épaisse à tours d'angle et un portail, cour, deux casernes, donjon cloisonné ; **8 soldats et le seigneur de guerre** |
+| Village | ~32 × 26 | 4 to 8 houses linked to a square by paths, a **healer**, 3 **villagers**, a **chief**, a smith or an armourer, 2 **guards** |
+| Town | ~58 × 46 | wall with four gates, two avenues, a square, about twenty buildings, a **merchant**, a **healer**, 5 **villagers**, a **mayor**, a **smith**, an **armourer**, 5 **guards** |
+| Fortress | 48 × 40 | thick wall with corner towers and one gate, courtyard, two barracks, partitioned keep; **8 soldiers and the warlord** |
 
-Sur la carte : `#` mur, `+` porte, `:` chemin, `_` sol intérieur, `M` marchand, `H` soigneur, `F` forgeron, `R` armurier, `C` chef de village ou maire (il connaît les lieux à 3 régions alentour, direction et distance, et renseigne même sans clé Mistral), `V` villageois, `!` villageois qui confie des quêtes (sans métier : on ne fait que discuter avec eux ; sans clé Mistral ils disent une phrase d'ambiance), `G` garde, `E` caravane.
+On the map: `#` wall, `+` door, `:` path, `_` interior floor, `M` merchant, `H` healer, `F` smith, `R` armourer, `C` village chief or mayor (knows the places within 3 regions, with direction and distance, and answers even without a Mistral key), `V` villager, `!` villager who hands out quests (no trade: you can only talk to them; without a Mistral key they say an ambient line), `G` guard, `E` caravan.
 
-**Zones sûres.** Un village ou une ville, avec trois cases de marge, est une zone sûre : aucun monstre n'y apparaît ni n'y entre,
-un joueur qui s'y trouve n'est ni poursuivi ni attaqué par les monstres, et il y regagne 1 PV par seconde (au lieu d'un toutes les 3 secondes).
+**Safe zones.** A village or town, plus three tiles of margin, is a safe zone: no monster spawns or enters there,
+a player inside is neither chased nor attacked by monsters, and regains 1 HP per second there (instead of one every 3 seconds).
 
-**PNJ.** Marchez sur un PNJ pour lui parler (vous restez immobile pendant la conversation ; `Échap` pour la quitter, abandon automatique après 60 secondes).
+**NPCs.** Walk into an NPC to talk to it (you stay still during the conversation; `Esc` leaves it, and it is dropped automatically after 60 seconds).
 
-| PNJ | Action | Prix |
+| NPC | Action | Price |
 |---|---|---|
-| Marchand | `A` acheter une potion | 20 or |
-| Marchand | `V` vendre une potion | +8 or |
-| Marchand | faire les poches (voir *Vol*) | |
-| Soigneur | `S` soins complets | gratuit au niveau 1, ensuite 4 or × niveau |
-| Garde | où trouver un habitant ? lieux voisins ? | |
+| Merchant | `B` buy a potion | 20 gold |
+| Merchant | `S` sell a potion | +8 gold |
+| Merchant | pick pockets (see *Theft*) | |
+| Healer | `H` full healing | free at level 1, then 4 gold × level |
+| Guard | where to find a resident? neighbouring places? | |
 
-Le serveur décide des prix et des refus (or insuffisant, sac plein, déjà en pleine forme : rien n'est alors débité). Chaque transaction est sauvegardée aussitôt.
+The server decides prices and refusals (not enough gold, full bag, already at full health: nothing is charged then). Every transaction is saved immediately.
 
-**Gardes.** Un village a 2 gardes, une ville 5 : ils patrouillent sur les chemins du lieu, même en zone sûre. Marcher sur un garde lui adresse la parole : il indique où trouver le soigneur, le marchand, le forgeron, l'armurier ou le chef, et les lieux voisins (sans clé Mistral).
-Un joueur **Recherché** (voir *Réputation*) dans ce lieu est poursuivi et combattu par les gardes, même en zone sûre ; les tuer coûte de la réputation.
+**Guards.** A village has 2 guards, a town 5: they patrol the paths of the place, even in the safe zone. Walking into a guard speaks to them: they tell you where to find the healer, merchant, smith, armourer or chief, and the neighbouring places (without a Mistral key).
+A player who is **Wanted** (see *Reputation*) in that place is chased and fought by the guards, even in the safe zone; killing them costs reputation.
 
-**Vol.** Le marchand propose « Faire les poches » : 50 % de chances, modulées par le charisme ; un succès rapporte quelques pièces, un échec coûte 3 points de réputation dans le lieu, et un marchand ne se laisse pas voler deux fois en 3 minutes.
+**Theft.** The merchant offers "Pick pockets": 50% chance, modulated by charisma; a success brings in a few coins, a failure costs 3 reputation points in the place, and a merchant won't let you rob them twice within 3 minutes.
 
-**Caravanes.** Sur une route entre deux lieux voisins sur deux circule une caravane (`E`) : un forgeron ou armurier ambulant qui fait l'aller-retour. Elle vend de l'équipement d'un rang au-dessus des forges de sa région, avec un assortiment qui change chaque jour de jeu.
+**Caravans.** On one road in two between neighbouring places travels a caravan (`E`): a travelling smith or armourer that goes back and forth. It sells equipment one rank above the forges of its region, with a stock that changes every game day.
 
-**Forteresses.** La garnison apparaît quand un joueur s'approche (à moins de 40 cases) et ne quitte jamais la forteresse : fuir suffit à lui échapper.
-Chaque soldat occupe un poste ; vaincu, il n'est remplacé qu'au bout de **5 minutes** (15 pour le seigneur de guerre). S'éloigner ne déclenche aucun délai.
-Le **seigneur de guerre**, au centre du donjon, laisse un trésor garanti : **100 or et 3 potions**. Ordre de grandeur, un joueur à l'aise contre
-un squelette vers le niveau 4, un chevalier vers le 8, et le seigneur de guerre vers le 16 (ces seuils sont verrouillés par des tests d'équilibrage).
+**Fortresses.** The garrison spawns when a player approaches (within 40 tiles) and never leaves the fortress: running away is enough to escape it.
+Each soldier holds a post; once defeated, it is only replaced after **5 minutes** (15 for the warlord). Moving away triggers no delay.
+The **warlord**, at the centre of the keep, drops a guaranteed treasure: **100 gold and 3 potions**. As a rule of thumb, a player is comfortable against
+a skeleton around level 4, a knight around 8, and the warlord around 16 (these thresholds are locked in by balance tests).
 
-`go run ./cmd/worldview -seed 1 -sites -x 0 -y 0 -w 400 -h 0` liste les lieux d'une zone ; avec une hauteur non nulle, il les dessine
-(`S` soldat, `K` élite, `B` seigneur) pour préparer une expédition.
+`go run ./cmd/worldview -seed 1 -sites -x 0 -y 0 -w 400 -h 0` lists the places of an area; with a non-zero height, it draws them
+(`S` soldier, `K` elite, `B` warlord) to plan an expedition.
 
-### Donjons secrets
+### Secret dungeons
 
-Environ une région sur cinq cache un **donjon** dont l'entrée est une case de terrain ordinaire : on la **découvre** en passant à 3 cases ou moins (pour ce personnage seulement), en rendant certaines quêtes, ou en explorant des ruines ou une tour de guet.
-Une entrée découverte s'affiche `>` sur la carte et se rejoint par `/goto <nom>`. Chaque donjon a un nom unique, un **palier** de 1 à 5 (plus fort loin du départ) et un plan de salles et de couloirs tiré de sa propre seed.
+About one region in five hides a **dungeon** whose entrance is an ordinary terrain tile: you **discover** it by passing within 3 tiles (for that character only), by turning in certain quests, or by exploring ruins or a watchtower.
+A discovered entrance is shown as `>` on the map and can be reached with `/goto <name>`. Each dungeon has a unique name, a **tier** from 1 to 5 (stronger far from the start) and a layout of rooms and corridors drawn from its own seed.
 
-Marcher sur l'entrée y emmène, avec les joueurs libres à moins de 5 cases ; tous les joueurs d'un donjon le partagent. Des gardes (squelettes, spectres), des élites (chevaliers, golems) et la **liche** (le boss) l'habitent ; des **coffres** donnent or, potions et équipement du palier,
-et celui du boss, verrouillé tant que la liche vit, contient toujours un objet un rang au-dessus. On sort par l'escalier ; vaincu, on se réveille devant l'entrée.
-Le donjon garde son état tant que la liche vit ; une fois qu'elle est tombée, il se reforme un jour de jeu plus tard. `M` y ouvre le plan déjà exploré.
+Walking onto the entrance takes you in, along with free players within 5 tiles; everyone in a dungeon shares it. Guards (skeletons, wraiths), elites (knights, golems) and the **lich** (the boss) live there; **chests** give gold, potions and equipment of the dungeon's tier,
+and the boss's chest, locked while the lich lives, always holds an item one rank higher. You leave by the stairs; if defeated, you wake up in front of the entrance.
+A dungeon keeps its state as long as the lich lives; once it has fallen, the dungeon reforms one game day later. `M` there opens the part of the plan you have already explored.
 
-### Points d'intérêt et cartes au trésor
+### Points of interest and treasure maps
 
-De petits repères à une case, visibles d'emblée sur la carte, auxquels on touche en **marchant dessus** :
+Small one-tile landmarks, visible on the map from the start, that you use by **walking onto them**:
 
-| Point | Glyphe | Effet |
+| Point | Glyph | Effect |
 |---|---|---|
-| Feu de camp | `&` | soigne la moitié des PV et de la mana, et devient votre **point de réapparition** |
-| Sanctuaire | `o` | bénédiction de 5 min selon le climat (DEF, régénération, toucher ou XP) |
-| Repaire | `x` | trois gardiens à vaincre, puis un coffre (or, potions, équipement) |
-| Tour de guet | `I` | révèle les entrées de donjon proches et explore 96 cases de carte |
-| Pierre dressée | `\|` | s'active au premier passage ; `/menhir` téléporte vers une autre pierre activée contre de l'or |
-| Source | `v` | rend des PV et de la mana (une oasis en climat aride) |
-| Ruines | `/` | un gardien d'élite protège un coffre, un fragment de lore et l'entrée du donjon le plus proche |
+| Campfire | `&` | heals half of your HP and mana, and becomes your **respawn point** |
+| Shrine | `o` | 5-minute blessing depending on the climate (DEF, regeneration, to-hit or XP) |
+| Lair | `x` | three guardians to defeat, then a chest (gold, potions, equipment) |
+| Watchtower | `I` | reveals nearby dungeon entrances and explores 96 tiles of map |
+| Standing stone | `\|` | activates on first visit; `/menhir` teleports to another activated stone for gold |
+| Spring | `v` | restores HP and mana (an oasis in an arid climate) |
+| Ruins | `/` | an elite guardian protects a chest, a lore fragment and the entrance to the nearest dungeon |
 
-Les coffres de repaire, de ruines et les monstres de la surface laissent parfois une **carte au trésor** : arriver exactement sur la case indiquée (`/goto x y`) déterre or, potions et équipement.
-Le détail des effets, délais et valeurs est dans [FEATURES.md](FEATURES.md).
+Chests from lairs and ruins, and surface monsters, sometimes drop a **treasure map**: reach the exact tile it points to (`/goto x y`) and you dig up gold, potions and equipment.
+The detail of effects, delays and values is in [FEATURES.md](FEATURES.md).
 
-### Ressources et récolte
+### Resources and gathering
 
-Dans les mondes en v3, des **nœuds de ressources** parsèment le terrain : arbres, filons, plantes (en plaine) et bancs de poissons (dans les rivières). Ils gardent le glyphe du terrain qu'ils recouvrent ; seule leur couleur (en gras) dit la ressource.
-Touche **`G`**, sur la case du nœud ou à côté, pour tenter la récolte : un jet de réussite (40 % au niveau 1 du métier, jusqu'à 94 %), puis le nœud est épuisé pour tous pendant 10 minutes.
-Quatre **métiers** (bûcheron, mineur, herboriste, pêcheur, niveau 1 à 10) progressent à chaque réussite et agrandissent le sac de la catégorie. Les ressources, 18 déclinaisons plus les poissons, dépendent du climat et du niveau de la région ;
-elles vont dans un **sac de matières** (listé dans l'écran du sac `I`) et ne servent pas encore : l'artisanat viendra ensuite.
+In v3 worlds, **resource nodes** dot the terrain: trees, ore veins, plants (on plains) and fish shoals (in rivers). They keep the glyph of the terrain they sit on; only their colour (in bold) tells the resource.
+Press **`G`**, on the node's tile or next to it, to attempt a harvest: a success roll (40% at profession level 1, up to 94%), then the node is exhausted for everyone for 10 minutes.
+Four **professions** (lumberjack, miner, herbalist, fisher, level 1 to 10) progress with every success and enlarge the category's bag. Resources, 18 varieties plus fish, depend on the territory's climate and the region level;
+they go into a **materials bag** (listed on the bag screen `I`) and aren't used yet: crafting comes next.
 
-## PNJ conversationnels (Mistral)
+## Conversational NPCs (Mistral)
 
-Le choix **Discuter** (touche `D`) ouvre une conversation libre avec un PNJ. Le LLM ne produit que du texte : il n'agit jamais sur
-l'or, les objets ou les stats ; le commerce et les soins restent dans les menus fixes. Sans clé, la fonction est absente et le jeu
-fonctionne normalement.
+The **Talk** choice (key `T`) opens a free conversation with an NPC. The LLM only produces text: it never acts on
+gold, items or stats; trade and healing stay in the fixed menus. Without a key the feature is absent and the game
+runs normally.
 
-**Activation** : `export MISTRAL_API_KEY=...` puis lancer le serveur (`-llm auto` par défaut ; `-llm on` exige la clé ; `-llm off` désactive).
-La clé ne se donne jamais en option. Au démarrage, une sonde teste le chat et la modération ; si l'API est en panne, le service reste
-désactivé et se re-teste toutes les 5 minutes. Options : `-llm-model`, `-llm-moderation-model` (les noms de modèles changent : voir la
-documentation Mistral), `-llm-daily-tokens` (budget par jour UTC, défaut 1 000 000), `-llm-workers`, `-llm-base-url` (faux serveur de développement).
-Le budget ne compte que les jetons de sortie demandés au maximum : il peut être légèrement dépassé.
+**Enabling**: `export MISTRAL_API_KEY=...` then start the server (`-llm auto` by default; `-llm on` requires the key; `-llm off` disables). 
+The key is never passed as an option. At startup, a probe tests chat and moderation; if the API is down, the service stays
+disabled and is re-tested every 5 minutes. Options: `-llm-model`, `-llm-moderation-model` (model names change: see the
+Mistral documentation), `-llm-daily-tokens` (budget per UTC day, default 1,000,000), `-llm-workers`, `-llm-base-url` (fake development server).
+The budget only counts the maximum requested output tokens: it can be slightly exceeded.
 
-**Mémoire et lore** : un PNJ peut demander au joueur de se présenter. La fiche (pseudo, rôle, origine, but, trait), déclarée par le joueur donc
-non vérifiée, est mémorisée par lieu (8 lieux au plus par compte). Les autres joueurs l'entendent sous forme de **rumeurs** : visibles à
-1 région au plus (le lieu et les régions adjacentes), avec 1 heure de délai pour passer à la région voisine, oubliées après 14 jours. Chaque PNJ garde aussi
-un résumé **privé** de ses conversations avec chaque joueur, jamais montré aux autres : un PNJ qui n'a jamais parlé au joueur ne le connaît que par rumeurs et le traite en inconnu.
-Le serveur y ajoute des faits vérifiés (niveau, boss tués, morts, quêtes rendues).
+**Memory and lore**: an NPC may ask the player to introduce themselves. The card (name, role, origin, goal, trait), declared by the player and therefore
+unverified, is remembered per place (8 places at most per account). Other players hear it as **rumours**: visible within
+1 region at most (the place and adjacent regions), with a 1-hour delay to reach the neighbouring region, forgotten after 14 days. Each NPC also keeps
+a **private** summary of its conversations with each player, never shown to others: an NPC who has never spoken to the player only knows them through rumours and treats them as a stranger.
+The server adds verified facts (level, bosses killed, deaths, quests turned in).
 
-**Confidentialité** : un avis s'affiche à la première discussion et exige un accord explicite (une fois par compte). Sans accord, rien n'est envoyé au fournisseur.
+**Privacy**: a notice is shown at the first conversation and requires explicit consent (once per account). Without consent, nothing is sent to the provider.
 
-**Modération et exploitation** : modération Mistral des entrées et des fiches (en cas d'échec, rien n'est écrit), limites par compte et file bornée.
-`/stats` expose un bloc `llm`. Sur la base (serveur éteint) :
-`server -lore-list [-lore-account NOM]` et `server -lore-purge account:NOM` ou `place:RX,RY`.
+**Moderation and operations**: Mistral moderation of inputs and cards (on failure, nothing is written), per-account limits and a bounded queue.
+`/stats` exposes an `llm` block. On the database (server stopped):
+`server -lore-list [-lore-account NAME]` and `server -lore-purge account:NAME` or `place:RX,RY`.
 
-`make llm-smoke` fait un essai réel de l'API (ignoré sans clé).
+`make llm-smoke` runs a real API check (skipped without a key).
 
-## Caractéristiques et classes
+## Abilities and classes
 
-À la première connexion, un écran de **création** propose six caractéristiques tirées par le serveur (**3d6**, soit 3 à 18) :
+On first login, a **creation** screen offers six abilities rolled by the server (**3d6**, i.e. 3 to 18):
 
-| | Rôle |
+| | Role |
 |---|---|
-| FOR (force) | attaque et dégâts de **mêlée** |
-| AGI (agilité) | attaque et dégâts **à distance** |
-| INT (intelligence) | attaque et dégâts **magiques** |
-| CON (constitution) | points de vie |
-| SAG (sagesse) | mana |
-| CHA (charisme) | perception par les PNJ : prix, et première impression donnée à leur modèle de langage |
+| STR (strength) | **melee** attack and damage |
+| AGI (agility) | **ranged** attack and damage |
+| INT (intelligence) | **magic** attack and damage |
+| CON (constitution) | hit points |
+| WIS (wisdom) | mana |
+| CHA (charisma) | how NPCs perceive you: prices, and the first impression given to their language model |
 
-Chaque valeur donne un **modificateur** : 3 → −4, 4-5 → −3, 6-7 → −2, 8-9 → −1, 10-11 → 0, 12-13 → +1, 14-15 → +2… (20-21 → +5).
-Vous pouvez **relancer 3 fois en tout** (une caractéristique à la fois, touche `R`), puis choisissez une **classe** :
+Each value gives a **modifier**: 3 → −4, 4-5 → −3, 6-7 → −2, 8-9 → −1, 10-11 → 0, 12-13 → +1, 14-15 → +2… (20-21 → +5).
+You can **reroll 3 times in total** (one ability at a time, key `R`), then choose a **class**:
 
-| Classe | Dé de vie | Mana de départ |
+| Class | Hit die | Starting mana |
 |---|---|---|
-| Guerrier | d12 | 2 |
-| Gredin | d8 | 4 |
-| Magicien | d6 | 8 |
+| Warrior | d12 | 2 |
+| Rogue | d8 | 4 |
+| Mage | d6 | 8 |
 
-- **PV** : niveau 1 = dé maximal + modificateur de CON ; chaque niveau suivant = dé lancé + modificateur de CON (au moins 1). Les PV maximaux sont enregistrés.
-- **Mana** = base de classe + 2 par niveau + niveau × modificateur de SAG. Un sort coûte 2 mana ; elle revient avec les PV (repos, soigneur, montée de niveau).
-- **Style d'attaque = arme portée** : épée, hache… (mêlée, FOR) ; arc, arbalète (distance, AGI) ; bâton, baguette (magie, INT, 2 mana par sort). À mains nues : mêlée. Le modificateur s'ajoute au jet de toucher et aux dégâts.
-- **Charisme** : ±2 % par point de modificateur sur les prix des PNJ (bornés à ±10 %, après la réduction de réputation).
-- Les personnages créés avant cette version gardent niveau, or, quêtes et sac, mais repassent par la création à leur prochaine connexion ; leurs PV sont relancés niveau par niveau.
-- La touche `P` ouvre la **fiche de personnage** : classe, niveau, PV, mana, attaque et défense (avec la part de l'équipement), style et chance de toucher, effet du charisme, or, position, palmarès, caractéristiques détaillées, équipement porté, bénédictions en cours, cartes au trésor, métiers de récolte et réputation. Un résumé des caractéristiques reste dans le panneau latéral.
+- **HP**: level 1 = maximum die + CON modifier; each following level = rolled die + CON modifier (at least 1). Maximum HP are saved.
+- **Mana** = class base + 2 per level + level × WIS modifier. A spell costs 2 mana; it comes back with HP (rest, healer, level-up).
+- **Attack style = weapon carried**: sword, axe… (melee, STR); bow, crossbow (ranged, AGI); staff, wand (magic, INT, 2 mana per spell). Bare-handed: melee. The modifier adds to the to-hit roll and to damage.
+- **Charisma**: ±2% per modifier point on NPC prices (capped at ±10%, after the reputation discount).
+- Characters created before this version keep their level, gold, quests and bag, but go through creation again on their next login; their HP are re-rolled level by level.
+- The `P` key opens the **character sheet**: class, level, HP, mana, attack and defence (with the equipment's share), style and hit chance, charisma effect, gold, position, record, detailed abilities, worn equipment, active blessings, treasure maps, gathering professions and reputation. A summary of the abilities stays in the side panel.
 
-## Équipement et forges
+## Equipment and forges
 
-Quatre emplacements : **arme**, **armure**, **bouclier** et **casque**. Les objets ont un **palier** (= **rang**) de 1 à 5, qui est aussi le **niveau requis** (1, 5, 10, 15, 20).
+Four slots: **weapon**, **armour**, **shield** and **helmet**. Items have a **tier** (= **rank**) from 1 to 5, which is also the **required level** (1, 5, 10, 15, 20).
 
-- **Arme** : dégâts `x d y + z` avec **x = rang** (1 dé au rang 1, 2 au rang 2…), **y = famille** (type de dégâts) et **z = qualité** (0 jusqu'au rang). Familles : coupant d4 (dague, lance, baguette), tranchant d6 (épées, hache, arc court, bâton),
-  contondant d8 (masse, arbalète), **deux mains** d12 (espadon, grande hache). L'arc court, l'arbalète et le bâton se portent à deux mains. Le style (mêlée, distance, magie) découle de la famille.
-- **Armure** : bonus de DEF **et** dés de réduction (rang × d4 légère, d6 intermédiaire ou d8 lourde, retirés à chaque coup reçu). **Bouclier** et **casque** : bonus de DEF seulement.
-- Une arme à **deux mains** interdit le bouclier (et inversement).
+- **Weapon**: damage `x d y + z` where **x = rank** (1 die at rank 1, 2 at rank 2…), **y = family** (damage type) and **z = quality** (0 up to the rank). Families: piercing d4 (dagger, spear, wand), slashing d6 (swords, axe, short bow, staff),
+  bludgeoning d8 (mace, crossbow), **two-handed** d12 (greatsword, great axe). The short bow, crossbow and staff are two-handed. The style (melee, ranged, magic) follows from the family.
+- **Armour**: DEF bonus **and** reduction dice (rank × d4 light, d6 medium or d8 heavy, subtracted from every blow received). **Shield** and **helmet**: DEF bonus only.
+- A **two-handed** weapon rules out a shield (and vice versa).
 
-Le **sac** (touche `I`, 24 objets) garde tout ce qu'on achète ou trouve : `E` équipe ou retire l'objet choisi, un objet par emplacement, impossible en plein combat. Le panneau latéral, la fiche et le combat utilisent les valeurs effectives.
-Un objet porté ne se revend pas ; la revente rapporte 40 % du prix. L'or est plafonné à 999 999.
+The **bag** (key `I`, 24 items) keeps everything you buy or find: `E` equips or removes the selected item, one item per slot, impossible in the middle of a fight. The side panel, the sheet and combat use the effective values.
+A worn item can't be resold; resale pays 40% of the price. Gold is capped at 999,999.
 
-**Butin** : les monstres lâchent parfois de l'équipement du rang de leur région (5 % pour un monstre de biome, 15 % pour un soldat de garnison, toujours pour le seigneur de guerre) ; les coffres de donjon, de repaire et de ruines, et les cartes au trésor en donnent aussi.
+**Loot**: monsters sometimes drop equipment of their region's rank (5% for a biome monster, 15% for a garrison soldier, always for the warlord); dungeon, lair and ruin chests, and treasure maps, give some too.
 
-**Vendeurs** : chaque ville a un **forgeron** (armes, `F`) et un **armurier** (armures, boucliers, casques, `R`) ; chaque village n'a que l'un des deux ; les forteresses aucun. Achat par les chiffres `1`-`9`,
-revente par `V`. La réputation du lieu réduit aussi les prix de l'équipement. Le **rang vendu dépend de la région** : un forgeron lointain ne vend plus d'équipement de débutant.
+**Vendors**: each town has a **smith** (weapons, `F`) and an **armourer** (armour, shields, helmets, `R`); each village has only one of the two; fortresses have none. Buy with the digits `1`-`9`,
+resell with `S`. The place's reputation also lowers equipment prices. The **rank on sale depends on the region**: a distant smith no longer sells beginner gear.
 
-**Spécialité et étalage générés** : à la première visite, le modèle de langage invente en JSON la spécialité du vendeur et 6 à 8 objets (noms, descriptions, palier, **famille**, qualité, bonus de DEF, prix). **Le serveur décide** : emplacement
-vendu, palier borné d'après la région, famille parmi celles de l'emplacement (les dés ne sont jamais choisis par le modèle), qualité, DEF et prix ramenés dans des bornes calculées d'après le palier, textes nettoyés et modérés, au moins 4 objets valides sinon l'étalage est écarté. L'étalage
-est enregistré (`npc_wares`) et identique pour tous les joueurs ; aucun texte de joueur n'entre dans cette demande. Sans clé Mistral, ou tant que l'étalage n'est pas prêt, un **assortiment de repli**
-déterministe est proposé : le jeu est complet sans IA. Un objet acheté est copié en entier dans le sac et ne change plus.
+**Generated specialty and stock**: on the first visit, the language model invents in JSON the vendor's specialty and 6 to 8 items (names, descriptions, tier, **family**, quality, DEF bonus, price). **The server decides**: slot
+sold, tier bounded by the region, family among those of the slot (the dice are never chosen by the model), quality, DEF and price brought back within bounds computed from the tier, texts cleaned and moderated, at least 4 valid items or the stock is discarded. The stock
+is saved (`npc_wares`) and identical for every player; no player text enters this request. Without a Mistral key, or while the stock isn't ready, a deterministic **fallback assortment**
+is offered: the game is complete without AI. A purchased item is copied whole into the bag and never changes.
 
-Côté opérateur : `server -wares-list` affiche les étalages générés, `server -wares-reset RX,RY,RANG` efface celui d'un vendeur pour qu'il soit régénéré. `/stats` compte étalages générés et rejetés.
+Operator side: `server -wares-list` shows the generated stocks, `server -wares-reset RX,RY,RANK` clears a vendor's stock so it is regenerated. `/stats` counts generated and rejected stocks.
 
-## Quêtes et réputation
+## Quests and reputation
 
-Certains villageois (marqués d'un `!` sur la carte ; au moins un par village ou ville) confient des **quêtes**. Il faut les dialogues IA (voir ci-dessus) pour
-en recevoir de nouvelles, sauf les quêtes de donjon, proposées sans clé ; celles en cours progressent et se rendent sans clé.
+Some villagers (marked with a `!` on the map; at least one per village or town) hand out **quests**. You need the AI dialogues (see above) to
+receive new ones, except dungeon quests, which are offered without a key; quests in progress advance and can be turned in without a key.
 
-**Déroulement** : en discutant (« je cherche du travail »), le PNJ peut proposer une quête. Le modèle de langage la formalise en JSON (titre, histoire, objectif, récompense), mais
-**c'est le serveur qui décide** : il n'accepte que des objectifs qu'il sait vérifier lui-même, ramène la récompense dans des plafonds calculés d'après la difficulté, nettoie et modère les
-textes, puis présente une carte **Accepter / Refuser** (`A` / `R`). Rien n'existe tant que le joueur n'a pas accepté. Le modèle ne juge jamais qu'une quête est accomplie.
+**Flow**: while chatting ("I'm looking for work"), the NPC may offer a quest. The language model formalises it as JSON (title, story, objective, reward), but
+**the server decides**: it only accepts objectives it can verify itself, brings the reward within caps computed from the difficulty, cleans and moderates the
+texts, then presents an **Accept / Decline** card (`A` / `R`). Nothing exists until the player has accepted. The model never judges that a quest is completed.
 
-- **Objectifs** : vaincre 3 à 12 monstres d'une espèce (seules comptent les victoires *après* l'acceptation), entrer dans un lieu voisin (à 3 régions au plus), vaincre le seigneur de guerre
-  (niveau 10 au moins, forteresse à portée), ou vaincre la **liche d'un donjon secret** voisin (niveau requis selon le palier ; accepter la quête en révèle l'entrée).
-- **Récompense** : or ≤ 2 × l'expérience totale des monstres, XP ≤ 25 %, potions ≤ 2 (3 pour le seigneur) ; le texte de remerciement n'a aucun effet.
-- **Limites** : 5 quêtes ouvertes au plus, une par donneur, 30 minutes avant une nouvelle quête du même donneur, expiration au bout de 7 jours, abandon possible. Un donneur qui n'a rien à confier perd son `!`.
-- **Livre de quêtes** (`Q`) : quêtes en cours avec progression et récompense réelle, onglet réputation et historique (`Tab`), abandon avec confirmation (`X` deux fois).
-- **Remise** : on rend la quête au donneur (touches `1`, `2`… dans son menu). Or, XP, potions et réputation sont versés d'un coup et sauvegardés aussitôt.
+- **Objectives**: defeat 3 to 12 monsters of one species (only victories *after* acceptance count), enter a neighbouring place (within 3 regions), defeat the warlord
+  (level 10 at least, fortress within reach), or defeat the **lich of a nearby secret dungeon** (required level depends on the tier; accepting the quest reveals its entrance).
+- **Reward**: gold ≤ 2 × the monsters' total experience, XP ≤ 25%, potions ≤ 2 (3 for the warlord); the thank-you text has no effect.
+- **Limits**: 5 open quests at most, one per giver, 30 minutes before a new quest from the same giver, expiry after 7 days, abandoning possible. A giver with nothing to offer loses their `!`.
+- **Quest log** (`Q`): quests in progress with progress and real reward, reputation and history tab (`Tab`), abandon with confirmation (`X` twice).
+- **Turn-in**: you hand the quest back to the giver (keys `1`, `2`… in their menu). Gold, XP, potions and reputation are paid out at once and saved immediately.
 
-**Réputation** : chaque quête rendue rapporte 2 à 4 points dans le lieu du donneur. Paliers : Recherché (≤ −10), Suspect (≤ −5), Inconnu, Connu (3), Estimé (8), Honoré (15). Aux paliers Estimé et Honoré, les soins, les potions
-et l'équipement y coûtent 20 % puis 40 % de moins. Elle **baisse** de 1 en abandonnant une quête, de 3 en se faisant prendre à voler et de 5 en tuant un garde, avec un minimum de −20. Les PNJ du lieu connaissent la réputation du joueur et ses quêtes rendues ; la rumeur de ces exploits voyage comme celle des présentations
-(1 région, 1 heure pour passer à la région voisine, oubli après 14 jours). Les quêtes rendues sont des faits établis par le serveur, pas des paroles de joueur.
+**Reputation**: each completed quest earns 2 to 4 points in the giver's place. Tiers: Wanted (≤ −10), Suspect (≤ −5), Unknown, Known (3), Esteemed (8), Honored (15). At the Esteemed and Honored tiers, healing, potions
+and equipment there cost 20% then 40% less. It **drops** by 1 for abandoning a quest, by 3 for getting caught stealing and by 5 for killing a guard, down to a minimum of −20. The place's NPCs know the player's reputation and turned-in quests; the rumour of these deeds travels like that of introductions
+(1 region, 1 hour to reach the neighbouring region, forgotten after 14 days). Completed quests are facts established by the server, not player statements.
 
-Côté opérateur, `-lore-list` affiche aussi les quêtes rendues et `-lore-purge` supprime quêtes et réputation avec le reste. Les quêtes de `quests` et la réputation de `reputation` sont dans la base SQLite.
+Operator side, `-lore-list` also shows the completed quests and `-lore-purge` deletes quests and reputation along with the rest. The `quests` and `reputation` data are in the SQLite database.
 
-## Serveur
+## Server
 
 ```sh
 ./bin/sudo-dragon-server -addr :8080 -db /var/lib/sudo-dragon/game.db
 ```
 
-| Option | Défaut | Rôle |
+| Option | Default | Role |
 |---|---|---|
-| `-addr` | `:8080` | adresse d'écoute |
-| `-db` | `sudo-dragon.db` | base SQLite (comptes, personnages) |
-| `-seed` | `1` | seed du monde, **fixée à la création de la base** |
-| `-tls-cert`, `-tls-key` | | active TLS (`wss://`) |
-| `-max-registrations` | `10` | créations de compte par heure et par adresse IP (`0` = illimité) |
-| `-login-workers` | moitié des cœurs | hachages de mot de passe simultanés (voir *Performances*) |
-| `-pprof` | désactivé | profilage Go, ex. `127.0.0.1:6060` (ne jamais l'exposer publiquement) |
-| `-llm`, `-llm-*` | `auto` | dialogues de PNJ par modèle de langage (voir *PNJ conversationnels*) |
-| `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset` | | outils d'administration sur la base, puis quitte |
+| `-addr` | `:8080` | listen address |
+| `-db` | `sudo-dragon.db` | SQLite database (accounts, characters) |
+| `-seed` | `1` | world seed, **fixed when the database is created** |
+| `-tls-cert`, `-tls-key` | | enable TLS (`wss://`) |
+| `-max-registrations` | `10` | account creations per hour and per IP address (`0` = unlimited) |
+| `-login-workers` | half the cores | simultaneous password hashes (see *Performance*) |
+| `-pprof` | disabled | Go profiling, e.g. `127.0.0.1:6060` (never expose publicly) |
+| `-llm`, `-llm-*` | `auto` | NPC dialogues through a language model (see *Conversational NPCs*) |
+| `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset` | | database administration tools, then exit |
 
-**Données.** Tout l'état persistant tient dans le fichier SQLite (mode WAL : `.db`, `.db-wal`, `.db-shm`).
-Le serveur sauvegarde chaque joueur à sa déconnexion, après chaque combat, toutes les 30 secondes et à l'arrêt
-(`Ctrl+C` / `SIGTERM` : arrêt propre, sauvegardes vidées). Pour une copie de secours à chaud :
-`sqlite3 game.db ".backup sauvegarde.db"`, ou arrêtez le serveur et copiez les trois fichiers.
-Relancer avec une autre `-seed` sur une base existante est refusé, car les positions sauvegardées n'auraient plus de sens ;
-utilisez une autre base (`-db`) pour un nouveau monde.
+**Data.** All persistent state lives in the SQLite file (WAL mode: `.db`, `.db-wal`, `.db-shm`).
+The server saves each player on disconnect, after every fight, every 30 seconds and at shutdown
+(`Ctrl+C` / `SIGTERM`: clean stop, saves flushed). For a hot backup:
+`sqlite3 game.db ".backup backup.db"`, or stop the server and copy the three files.
+Restarting with a different `-seed` on an existing database is refused, because the saved positions would no longer make sense;
+use another database (`-db`) for a new world.
 
-**Sécurité.**
-- Les mots de passe sont hachés avec bcrypt ; un pseudo inconnu et un mauvais mot de passe donnent le même message.
-- Quotas par adresse IP : 8 échecs de connexion par minute, 10 créations de compte par heure ; chat limité à une rafale de 5 messages puis 1 par seconde.
-- **Le mot de passe voyage en clair sur `ws://`.** Hors de votre machine, utilisez `wss://` (option `-tls-*`, ou un proxy inverse).
-- Derrière un proxy inverse, toutes les connexions semblent venir du proxy : les quotas par IP s'appliquent alors à l'ensemble des joueurs.
+**Security.**
+- Passwords are hashed with bcrypt; an unknown username and a wrong password give the same message.
+- Per-IP quotas: 8 failed logins per minute, 10 account creations per hour; chat limited to a burst of 5 messages then 1 per second.
+- **The password travels in clear text over `ws://`.** Outside your machine, use `wss://` (the `-tls-*` options, or a reverse proxy).
+- Behind a reverse proxy, every connection appears to come from the proxy: per-IP quotas then apply to all players together.
 
-**Proxy inverse (exemple nginx)** :
+**Reverse proxy (nginx example)**:
 
 ```nginx
 location /ws {
@@ -395,86 +395,86 @@ location /ws {
 }
 ```
 
-**Supervision.** `GET /healthz` répond `ok`. `GET /stats` renvoie du JSON : joueurs, monstres, nombre de ticks,
-ticks lents (au-delà de 100 ms), durée moyenne/maximale d'un tick, et p99 et maximum sur les 60 dernières secondes.
-Ces deux adresses ne sont pas authentifiées.
+**Monitoring.** `GET /healthz` answers `ok`. `GET /stats` returns JSON: players, monsters, tick count,
+slow ticks (over 100 ms), average/maximum tick duration, and p99 and maximum over the last 60 seconds.
+These two addresses are not authenticated.
 
 ## Architecture
 
 ```
-cmd/server      serveur de jeu            cmd/client    client TUI
-cmd/bot         joueurs automatiques      cmd/worldview affiche une zone du monde en ASCII
+cmd/server      game server               cmd/client    TUI client
+cmd/bot         automated players         cmd/worldview draws an area of the world in ASCII
 internal/
-  world         génération procédurale : terrain par chunks 32×32, lieux, routes, donjons, points d'intérêt (déterministe d'après la seed)
-  resource      catalogue des ressources et métiers de récolte
-  game          boucle de jeu à 10 Hz : joueurs, monstres, garnisons, gardes, donjons, combats, PNJ, instantanés
-  combat        règles du tour par tour et progression (pur, aléa injecté)
-  dice          dés et jets
-  hero          caractéristiques, classes, modificateurs
-  gear          équipement, étalages de repli, butin
-  quest, lore   quêtes, réputation, mémoire et rumeurs des PNJ
-  llm, npcai    client Mistral, modération, dialogues et génération d'étalages
-  textsafe      nettoyage des textes issus du modèle
-  protocol      messages JSON et encodeur rapide des instantanés
-  server        WebSocket, sessions, authentification, chat, quotas
-  store         SQLite : comptes, personnages, écrivain asynchrone
-  client        modèle Bubble Tea et connexion réseau
-  ui, render    composants d'interface, rendu ASCII coloré, sprites de combat
-  i18n          langue du système, catalogues français et anglais
+  world         procedural generation: terrain in 32×32 chunks, places, roads, dungeons, points of interest (deterministic from the seed)
+  resource      resource catalogue and gathering professions
+  game          10 Hz game loop: players, monsters, garrisons, guards, dungeons, fights, NPCs, snapshots
+  combat        turn-based rules and progression (pure, injected randomness)
+  dice          dice and rolls
+  hero          abilities, classes, modifiers
+  gear          equipment, fallback stocks, loot
+  quest, lore   quests, reputation, NPC memory and rumours
+  llm, npcai    Mistral client, moderation, dialogues and stock generation
+  textsafe      cleaning of model-produced texts
+  protocol      JSON messages and fast snapshot encoder
+  server        WebSocket, sessions, authentication, chat, quotas
+  store         SQLite: accounts, characters, asynchronous writer
+  client        Bubble Tea model and network connection
+  ui, render    UI components, coloured ASCII rendering, combat sprites
+  i18n          system language, French and English catalogues
 ```
 
-- **Serveur autoritatif.** Le client n'envoie que des intentions (déplacement, action de combat, message) ; le serveur valide tout.
-- **Une seule goroutine possède l'état du jeu** (`game.Run`) : pas de verrou sur l'état, les sessions lui passent des commandes.
-- **Le client génère le terrain lui-même** à partir de la seed reçue à la connexion : les instantanés ne contiennent que les entités
-  (joueurs, monstres) dans la zone de vision (±40 × ±20 cases), et ne sont envoyés que si leur contenu a changé.
-- **Instantanés fusionnés.** Un client lent saute des images au lieu d'être déconnecté ; seuls les messages fiables (chat, combat)
-  qui s'accumulent font fermer la connexion. L'encodage JSON se fait dans la goroutine d'écriture de chaque session.
-- **Persistance asynchrone.** La boucle de jeu ne touche jamais le disque ; un écrivain regroupe les sauvegardes, et une reconnexion
-  immédiate relit d'abord les sauvegardes encore en attente.
+- **Authoritative server.** The client only sends intents (movement, combat action, message); the server validates everything.
+- **A single goroutine owns the game state** (`game.Run`): no lock on the state, sessions pass it commands.
+- **The client generates the terrain itself** from the seed received at login: snapshots only contain the entities
+  (players, monsters) within the view (±40 × ±20 tiles), and are only sent if their content has changed.
+- **Merged snapshots.** A slow client skips frames instead of being disconnected; only reliable messages (chat, combat)
+  piling up cause the connection to be closed. JSON encoding happens in each session's writer goroutine.
+- **Asynchronous persistence.** The game loop never touches the disk; a writer batches the saves, and an immediate
+  reconnection first reads back the saves still pending.
 
-## Développement
+## Development
 
 ```sh
-make check        # format, analyse statique, tests avec détecteur de courses
-make test         # tests seuls
-make load N=250   # test de charge
+make check        # format, static analysis, tests with the race detector
+make test         # tests only
+make load N=250   # load test
 ```
 
-Les tests couvrent les règles de combat, l'équilibrage, la génération du monde, le protocole (l'encodeur rapide est comparé octet
-pour octet à `encoding/json`), l'authentification, les quotas, la persistance (y compris la reconnexion immédiate) et l'interface.
+The tests cover combat rules, balance, world generation, the protocol (the fast encoder is compared byte for byte
+with `encoding/json`), authentication, quotas, persistence (including immediate reconnection) and the UI.
 
-`go run ./cmd/worldview -seed 42 -x 0 -y 0 -w 120 -h 40` affiche une zone du monde sans lancer le jeu (`-gen`, `-raw -zoom N`, `-sites`, `-territories` pour d'autres vues).
+`go run ./cmd/worldview -seed 42 -x 0 -y 0 -w 120 -h 40` shows an area of the world without starting the game (`-gen`, `-raw -zoom N`, `-sites`, `-territories` for other views).
 
-La liste des fonctionnalités livrées est dans [FEATURES.md](FEATURES.md) ; elle se met à jour avec chaque changement de jeu.
+The list of shipped features is in [FEATURES.md](FEATURES.md); it is updated with every gameplay change.
 
-## Performances
+## Performance
 
-`make load N=…` lance un serveur éphémère, crée `N` bots, les regroupe au point de départ (le pire cas : tous se voient)
-et mesure la cadence réelle du serveur en régime établi. Mesures sur une machine à 8 cœurs, **bots et serveur sur la même machine**
-(les bots consomment une grande part du CPU : un serveur dédié ferait mieux) :
+`make load N=…` starts an ephemeral server, creates `N` bots, gathers them at the starting point (the worst case: everyone sees everyone)
+and measures the server's real tick rate in steady state. Measured on an 8-core machine, with **bots and server on the same machine**
+(the bots consume a large share of the CPU: a dedicated server would do better):
 
-| Joueurs regroupés | Cadence | Tick moyen | Tick p99 | Ticks lents | Trafic sortant |
+| Players gathered | Tick rate | Mean tick | p99 tick | Slow ticks | Outgoing traffic |
 |---|---|---|---|---|---|
-| 100 | 10,0 /s | 2,7 à 3,2 ms | 8 à 23 ms | 0 | ~2,6 à 3 Mo/s |
-| 250 | 10,0 /s | 6,7 ms | 85 ms | 0 | ~13 Mo/s |
+| 100 | 10.0 /s | 2.7 to 3.2 ms | 8 to 23 ms | 0 | ~2.6 to 3 MB/s |
+| 250 | 10.0 /s | 6.7 ms | 85 ms | 0 | ~13 MB/s |
 
-Le budget d'un tick est de 100 ms. Le débit de **connexion** est borné volontairement : chaque connexion exige un hachage bcrypt
-d'environ 60 ms de CPU, plafonné par `-login-workers` pour ne pas affamer la boucle de jeu. Avec 250 clients se connectant en
-quelques secondes, certains attendent plusieurs secondes ; augmenter `-login-workers` accélère les connexions au prix de ticks plus lents.
-*(Ces mesures datent d'avant les gardes, les donjons et les points d'intérêt.)*
+A tick's budget is 100 ms. **Login** throughput is deliberately bounded: each connection requires a bcrypt hash
+of about 60 ms of CPU, capped by `-login-workers` so as not to starve the game loop. With 250 clients connecting within
+a few seconds, some wait several seconds; raising `-login-workers` speeds up logins at the cost of slower ticks.
+*(These measurements predate guards, dungeons and points of interest.)*
 
-## Limites connues et pistes
+## Known limits and ideas
 
-- **Le trafic croît comme le carré du nombre de joueurs dans une même zone** : chaque instantané contient toutes les entités visibles.
-  Une codification en différences (ajouts, retraits, déplacements) et un index spatial des joueurs seraient la prochaine optimisation.
-- **Pas de compétences ni de sorts à apprendre** : la magie est un style d'attaque lié à l'arme. Les ressources récoltées ne servent pas encore (pas d'artisanat).
-- **Le monde n'est pas modifiable** : il se régénère toujours à l'identique depuis la seed, donc ni chunk ni lieu n'est persisté.
-- **Mondes existants** : la version du générateur est fixée à la création de la base ; en revanche, des lieux ou des donjons ajoutés par une évolution du code peuvent apparaître là où il n'y avait que du terrain.
-  Un personnage sauvegardé dans ce qui est devenu un mur est replacé sur la case libre la plus proche à sa connexion.
-- **État en mémoire seulement** : garnisons de forteresse, gardes, donjons (monstres vaincus, coffres ouverts), repaires, cooldowns des points d'intérêt et nœuds de ressources épuisés ne sont pas sauvegardés ; un redémarrage du serveur remet tout en place, y compris le seigneur de guerre et les liches.
-- **Les donjons sont partagés par tous** (pas d'instance privée par groupe) et un serveur qui tourne longtemps garde en mémoire ceux qui ne sont pas terminés.
-- **Un combat oppose un joueur à des monstres** ; pas de combat en groupe entre joueurs.
-- **Pas de reconnexion automatique** : après une coupure, le client revient à l'écran de connexion.
-- Un joueur qui coupe sa connexion en plein combat garde ses PV du moment sans subir la défaite éventuelle.
-- Un seul processus serveur, sans montée en charge horizontale.
-- Seuls les journaux et les options du serveur sont en français ; les messages envoyés aux joueurs sont traduits (voir « Langue »).
+- **Traffic grows as the square of the number of players in the same area**: every snapshot contains all visible entities.
+  Delta encoding (additions, removals, moves) and a spatial index of players would be the next optimisation.
+- **No skills or spells to learn**: magic is an attack style tied to the weapon. Gathered resources aren't used yet (no crafting).
+- **The world can't be modified**: it always regenerates identically from the seed, so no chunk or place is persisted.
+- **Existing worlds**: the generator version is fixed when the database is created; however, places or dungeons added by a code change may appear where there was only terrain.
+  A character saved in what has become a wall is moved to the nearest free tile on login.
+- **In-memory state only**: fortress garrisons, guards, dungeons (defeated monsters, opened chests), lairs, points-of-interest cooldowns and exhausted resource nodes are not saved; a server restart puts everything back, including the warlord and the liches.
+- **Dungeons are shared by everyone** (no private per-group instance) and a long-running server keeps unfinished ones in memory.
+- **A fight pits one player against monsters**; there is no group fight between players.
+- **No automatic reconnection**: after a drop, the client goes back to the login screen.
+- A player who drops the connection mid-fight keeps their current HP without suffering a possible defeat.
+- A single server process, with no horizontal scaling.
+- Server logs, command-line options and tool output are in English; the messages sent to players are translated (see "Language").

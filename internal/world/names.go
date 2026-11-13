@@ -8,17 +8,17 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
-// Identités des lieux et des PNJ.
+// Identities of places and NPCs.
 //
-// Elles sont déterministes (seed + région + rang du PNJ) pour que « le même »
-// soigneur ou « le même » village soit identique pour tous les joueurs et après
-// un redémarrage, sans rien stocker: c'est ce qui donne aux dialogues leur
-// consistance. Elles sont tirées d'un flux aléatoire SÉPARÉ de celui de la
-// génération des plans: y puiser décalerait toutes les valeurs suivantes et
-// modifierait les mondes déjà joués (voir TestExistingLayoutsAreFrozen).
+// They are deterministic (seed + region + NPC rank) so that "the same"
+// healer or "the same" village is identical for all players and after
+// a restart, without storing anything: this is what gives the dialogues their
+// consistency. They are drawn from a random stream SEPARATE from the one used to
+// generate the plans: drawing from it would shift all the following values and
+// alter the worlds already played (see TestExistingLayoutsAreFrozen).
 
-// Tailles des listes du catalogue (clés "persona.temperament.N"…). Elles servent de
-// bornes aux tirages: les changer décalerait toutes les identités déjà jouées.
+// Sizes of the catalogue lists (keys "persona.temperament.N"...). They serve as
+// bounds for the draws: changing them would shift all the identities already played.
 const (
 	numTemperaments = 10
 	numQuirks       = 10
@@ -27,11 +27,11 @@ const (
 	numFortPrefixes = 4
 )
 
-// Persona est la personnalité d'un PNJ, injectée dans le prompt de ses dialogues.
+// Persona is the personality of an NPC, injected into the prompt of its dialogues.
 type Persona struct {
-	Temperament string // humeur générale
-	Quirk       string // manie ou trait distinctif
-	Speech      string // façon de parler
+	Temperament string // general mood
+	Quirk       string // habit or distinctive trait
+	Speech      string // way of speaking
 }
 
 var (
@@ -52,10 +52,10 @@ var (
 	}
 )
 
-// mix64 est le mélangeur de bits splitmix64: chaque bit de l'entrée influence
-// tous ceux de la sortie. Combiner des coordonnées avec des multiplications et
-// un XOR ne suffit pas: les régions (x, y) et (-x, -y) à coordonnées impaires
-// donnaient exactement la même valeur, donc des lieux jumeaux.
+// mix64 is the splitmix64 bit mixer: each input bit influences
+// all those of the output. Combining coordinates with multiplications and
+// an XOR is not enough: regions (x, y) and (-x, -y) with odd coordinates
+// gave exactly the same value, hence twin places.
 func mix64(x uint64) uint64 {
 	x += 0x9E3779B97F4A7C15
 	x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9
@@ -63,8 +63,8 @@ func mix64(x uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
-// identityRNG renvoie un flux aléatoire propre à (seed, région, sel), indépendant
-// de celui de la génération des plans.
+// identityRNG returns a random stream specific to (seed, region, salt), independent
+// of the one used to generate the plans.
 func identityRNG(seed int64, rp RegionPos, salt uint64) *rand.Rand {
 	h := mix64(uint64(seed) ^ 0x1D3A71FE)
 	h = mix64(h + uint64(int64(rp.X)))
@@ -75,11 +75,11 @@ func identityRNG(seed int64, rp RegionPos, salt uint64) *rand.Rand {
 
 func pick[T any](rng *rand.Rand, list []T) T { return list[rng.IntN(len(list))] }
 
-// placeName invente le nom d'un lieu. Pour une forteresse, fort est l'indice de
-// son préfixe (« Fort », « Citadelle »…), à traduire avec fortName.
+// placeName invents the name of a place. For a fortress, fort is the index of
+// its prefix ("Fort", "Citadelle"...), to be translated with fortName.
 //
-// override, s'il n'est pas vide, remplace le radical tiré (voir baseFor) ; le tirage a lieu
-// quand même, pour que les choix suivants (préfixe) ne changent pas.
+// override, if not empty, replaces the drawn stem (see baseFor); the draw still takes place,
+// so that the following choices (prefix) do not change.
 func placeName(kind Kind, rng *rand.Rand, override string) (name string, fort int, base string) {
 	base = pick(rng, placeStart) + pick(rng, placeEnd)
 	if override != "" {
@@ -87,7 +87,7 @@ func placeName(kind Kind, rng *rand.Rand, override string) (name string, fort in
 	}
 	switch kind {
 	case KindTown:
-		// « Port-Valdurne »: la partie après le préfixe garde sa majuscule.
+		// "Port-Valdurne": the part after the prefix keeps its capital letter.
 		return pick(rng, townPrefix) + base, 0, base
 	case KindFortress:
 		fort = rng.IntN(numFortPrefixes)
@@ -96,30 +96,30 @@ func placeName(kind Kind, rng *rand.Rand, override string) (name string, fort in
 	return base, 0, base
 }
 
-// fortName assemble le nom d'une forteresse dans la langue l: « Fort valdurne ».
+// fortName assembles the name of a fortress in language l: "Fort valdurne".
 func fortName(l i18n.Lang, prefix int, base string) string {
 	return i18n.T(l, fmt.Sprintf("place.fort.%d", prefix)) + strings.ToLower(base[:1]) + base[1:]
 }
 
-// ident retient les choix du tirage d'identité d'un PNJ, sous forme d'indices dans
-// les listes du catalogue, pour pouvoir le nommer et le décrire dans toutes les langues.
+// ident keeps the choices of an NPC's identity draw, as indices into
+// the catalogue lists, so that it can be named and described in all languages.
 type ident struct {
-	ok        bool // renseignée par npcIdentity; faux pour un PNJ construit à la main (tests)
-	first     int  // prénom (firstNames; propre à toutes les langues)
-	epithet   int  // trait d'un villageois, -1 sinon
-	female    bool // accord des titres et des épithètes
+	ok        bool // set by npcIdentity; false for an NPC built by hand (tests)
+	first     int  // first name (firstNames; common to all languages)
+	epithet   int  // trait of a villager, -1 otherwise
+	female    bool // agreement of titles and epithets
 	temper    int
 	quirk     int
 	speech    int
-	fortIndex int // préfixe de forteresse du lieu (non utilisé pour un PNJ)
+	fortIndex int // fortress prefix of the place (unused for an NPC)
 }
 
-// npcIdentity invente l'identité d'un PNJ d'après son métier.
+// npcIdentity invents the identity of an NPC from its trade.
 func npcIdentity(kind NPCKind, rng *rand.Rand) ident {
 	fi := rng.IntN(len(firstNames))
 	id := ident{ok: true, first: fi, epithet: -1, female: firstNames[fi].female}
 	if kind == NPCVillager {
-		// Pas de métier ni de titre : un prénom et un trait physique ou d'humeur.
+		// No trade or title: a first name and a physical or mood trait.
 		id.epithet = rng.IntN(numEpithets)
 	}
 	id.temper = rng.IntN(numTemperaments)
@@ -161,8 +161,8 @@ func (id ident) persona(l i18n.Lang) Persona {
 	}
 }
 
-// NameIn renvoie le nom du PNJ dans la langue l (les prénoms ne changent pas, les
-// titres et les épithètes oui). Name est la version française.
+// NameIn returns the name of the NPC in language l (first names do not change,
+// titles and epithets do). Name is the French version.
 func (n NPC) NameIn(l i18n.Lang) string {
 	if !n.id.ok {
 		return n.Name
@@ -170,7 +170,7 @@ func (n NPC) NameIn(l i18n.Lang) string {
 	return n.id.name(l, n.Kind)
 }
 
-// PersonaIn renvoie la personnalité du PNJ dans la langue l.
+// PersonaIn returns the personality of the NPC in language l.
 func (n NPC) PersonaIn(l i18n.Lang) Persona {
 	if !n.id.ok {
 		return n.Persona
@@ -178,45 +178,45 @@ func (n NPC) PersonaIn(l i18n.Lang) Persona {
 	return n.id.persona(l)
 }
 
-// NPCKey identifie un PNJ de façon stable: sa région et son rang dans le lieu.
+// NPCKey identifies an NPC in a stable way: its region and its rank in the place.
 type NPCKey struct {
 	Region RegionPos
 	Index  int
 }
 
-// Key renvoie la clé stable du PNJ.
+// Key returns the stable key of the NPC.
 func (n NPC) Key() NPCKey { return NPCKey{n.Region, n.Index} }
 
-// nameClashRadius : deux lieux à cette distance (en régions, Chebyshev) ou moins ne portent jamais le
-// même radical de nom. C'est le rayon des rumeurs et des quêtes : au-delà, une homonymie reste possible
-// (la table de noms est finie et le monde ne l'est pas), mais ne gêne plus.
+// nameClashRadius: two places at this distance (in regions, Chebyshev) or less never bear the
+// same name stem. This is the radius of rumours and quests: beyond it, a homonym remains possible
+// (the name table is finite and the world is not), but no longer gets in the way.
 const nameClashRadius = 3
 
 type stem struct{ a, b int }
 
 func (s stem) String() string { return placeStart[s.a] + placeEnd[s.b] }
 
-// rawStem est le radical tiré pour une région, indépendamment de ses voisines : les deux premiers
-// tirages de identityRNG(seed, rp, 0), exactement comme avant l'introduction de baseFor.
+// rawStem is the stem drawn for a region, independently of its neighbours: the first two
+// draws of identityRNG(seed, rp, 0), exactly as before baseFor was introduced.
 //
-// Le radical vient de la famille de la contrée du centre de la région : les lieux d'une même
-// contrée ont un air de parenté.
+// The stem comes from the family of the district at the centre of the region: the places of the same
+// district have a family resemblance.
 func rawStem(seed int64, rp RegionPos) stem {
 	starts, ends := familyOf(seed, territoryIDAt(seed, rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2))
 	rng := identityRNG(seed, rp, 0)
 	return stem{starts[rng.IntN(familySize)], ends[rng.IntN(familySize)]}
 }
 
-// baseFor renvoie le radical du nom du lieu de la région rp. Un lieu garde son radical tiré, sauf si une région
-// voisine (rayon nameClashRadius) antérieure dans l'ordre (Y puis X) a le même : il en tire alors un autre, jamais
-// égal à celui d'une voisine. Le test ne regarde que les tirages bruts, pas les structures : pas de génération
-// de plan, et le résultat ne dépend pas de ce que contiennent les voisines.
+// baseFor returns the stem of the name of the place of region rp. A place keeps its drawn stem, unless an earlier
+// neighbouring region (radius nameClashRadius) in the order (Y then X) has the same one: it then draws another, never
+// equal to that of a neighbour. The test only looks at raw draws, not at structures: no plan generation,
+// and the result does not depend on what the neighbours contain.
 func baseFor(seed int64, rp RegionPos) string { return baseForGen(seed, GenV1, rp) }
 
-// baseForGen est baseFor pour une version de générateur: à partir de la v2, quand les quatre candidats de la tranche
-// sont tous pris par des voisines, on cherche dans toute la famille au lieu de retomber sur un radical déjà porté
-// (la v2 a plus de lieux, donc ce cas, rare en v1, s'y voit). La v1 garde son comportement: les noms des mondes
-// existants ne changent pas.
+// baseForGen is baseFor for a generator version: from v2 onwards, when the four candidates of the band
+// are all taken by neighbours, the whole family is searched instead of falling back on an already used stem
+// (v2 has more places, so this case, rare in v1, shows up there). v1 keeps its behaviour: the names of existing
+// worlds do not change.
 func baseForGen(seed int64, gen int, rp RegionPos) string {
 	raw := rawStem(seed, rp)
 	starts, ends := familyOf(seed, territoryIDAt(seed, rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2))
@@ -237,10 +237,10 @@ func baseForGen(seed int64, gen int, rp RegionPos) string {
 	if !displaced {
 		return raw.String()
 	}
-	// Remplaçant : la famille compte 64 radicaux, répartis en 16 tranches de 4 selon la classe de la région
-	// (x mod 4, y mod 4). Deux régions voisines (rayon 3) n'ont jamais la même classe : deux remplaçants
-	// voisins ne peuvent donc jamais être égaux. On prend, dans la tranche, le premier radical qui n'est
-	// celui d'aucune voisine (au pire le premier : cas très rare).
+	// Replacement: the family has 64 stems, split into 16 bands of 4 according to the region's class
+	// (x mod 4, y mod 4). Two neighbouring regions (radius 3) never have the same class: two neighbouring
+	// replacements can therefore never be equal. In the band we take the first stem that is
+	// that of no neighbour (at worst the first one: very rare case).
 	class := ((rp.X%4+4)%4)*4 + (rp.Y%4+4)%4
 	var slice [familySize * familySize / 16]stem
 	for i := range slice {

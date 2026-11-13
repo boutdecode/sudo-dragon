@@ -13,46 +13,46 @@ func TestEveryStructureAndNPCHasAnIdentity(t *testing.T) {
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
 			if s.Name == "" || !unicode.IsUpper([]rune(s.Name)[0]) {
-				t.Fatalf("seed %d %v: nom de lieu %q invalide", seed, s.Kind, s.Name)
+				t.Fatalf("seed %d %v: invalid place name %q", seed, s.Kind, s.Name)
 			}
 			for _, r := range s.Name {
 				if !unicode.IsLetter(r) && r != '-' && r != ' ' {
-					t.Fatalf("nom de lieu %q: caractère %q inattendu", s.Name, r)
+					t.Fatalf("place name %q: unexpected character %q", s.Name, r)
 				}
 			}
 			if n := len([]rune(s.Name)); n < 4 || n > 30 {
-				t.Fatalf("nom de lieu %q: %d caractères", s.Name, n)
+				t.Fatalf("place name %q: %d characters", s.Name, n)
 			}
 			names := map[string]bool{}
 			for i, n := range s.NPCs {
 				checked++
 				if n.Name == "" || n.Region != s.Region || n.Index != i {
-					t.Fatalf("PNJ %d de %s: identité incomplète: %+v", i, s.Name, n)
+					t.Fatalf("NPC %d of %s: incomplete identity: %+v", i, s.Name, n)
 				}
 				if names[n.Name] {
-					t.Fatalf("deux PNJ de %s s'appellent %q", s.Name, n.Name)
+					t.Fatalf("two NPCs of %s are called %q", s.Name, n.Name)
 				}
 				names[n.Name] = true
 				p := n.Persona
 				if p.Temperament == "" || p.Quirk == "" || p.Speech == "" {
-					t.Fatalf("personnalité incomplète pour %s: %+v", n.Name, p)
+					t.Fatalf("incomplete personality for %s: %+v", n.Name, p)
 				}
-				// Le titre reflète le métier.
+				// The title reflects the trade.
 				switch n.Kind {
 				case NPCHealer:
 					if !strings.HasPrefix(n.Name, "Frère ") && !strings.HasPrefix(n.Name, "Sœur ") {
-						t.Fatalf("soigneur %q sans titre religieux", n.Name)
+						t.Fatalf("healer %q without religious title", n.Name)
 					}
 				case NPCMerchant:
 					if !strings.HasPrefix(n.Name, "Maître ") && !strings.HasPrefix(n.Name, "Dame ") {
-						t.Fatalf("marchand %q sans titre de commerce", n.Name)
+						t.Fatalf("merchant %q without trade title", n.Name)
 					}
 				}
 			}
 		}
 	}
 	if checked == 0 {
-		t.Fatal("aucun PNJ vérifié")
+		t.Fatal("no NPC checked")
 	}
 }
 
@@ -70,16 +70,16 @@ func TestFortressNamesLookLikeFortresses(t *testing.T) {
 				ok = ok || strings.HasPrefix(s.Name, p)
 			}
 			if !ok {
-				t.Fatalf("forteresse nommée %q", s.Name)
+				t.Fatalf("fortress named %q", s.Name)
 			}
 		}
 	}
 	if found == 0 {
-		t.Fatal("aucune forteresse")
+		t.Fatal("no fortress")
 	}
 }
 
-// Mêmes identités pour tous, à chaque démarrage et après vidage du cache.
+// Same identities for everyone, at every start and after emptying the cache.
 func TestIdentitiesAreDeterministic(t *testing.T) {
 	a, b := newTestWorld(42), newTestWorld(42)
 	for ry := -4; ry <= 4; ry++ {
@@ -89,16 +89,16 @@ func TestIdentitiesAreDeterministic(t *testing.T) {
 				continue
 			}
 			if sa.Name != sb.Name {
-				t.Fatalf("nom différent: %q / %q", sa.Name, sb.Name)
+				t.Fatalf("different name: %q / %q", sa.Name, sb.Name)
 			}
 			for i := range sa.NPCs {
 				if sa.NPCs[i] != sb.NPCs[i] {
-					t.Fatalf("PNJ différent: %+v / %+v", sa.NPCs[i], sb.NPCs[i])
+					t.Fatalf("different NPC: %+v / %+v", sa.NPCs[i], sb.NPCs[i])
 				}
 			}
 		}
 	}
-	// Vidage du cache: reconstruit à l'identique.
+	// Cache emptied: rebuilt identically.
 	before := allStructures(a, 3)
 	a.smu.Lock()
 	clear(a.structs)
@@ -106,11 +106,11 @@ func TestIdentitiesAreDeterministic(t *testing.T) {
 	after := allStructures(a, 3)
 	for i := range before {
 		if before[i].Name != after[i].Name || len(before[i].NPCs) != len(after[i].NPCs) {
-			t.Fatal("identité différente après reconstruction du cache")
+			t.Fatal("different identity after rebuilding the cache")
 		}
 		for j := range before[i].NPCs {
 			if before[i].NPCs[j] != after[i].NPCs[j] {
-				t.Fatalf("PNJ %d différent après reconstruction", j)
+				t.Fatalf("NPC %d different after rebuilding", j)
 			}
 		}
 	}
@@ -126,7 +126,7 @@ func TestIdentitiesVaryBetweenPlacesAndSeeds(t *testing.T) {
 		}
 	}
 	if len(names) < total*7/10 {
-		t.Fatalf("seulement %d noms de lieux distincts sur %d: trop de répétitions", len(names), total)
+		t.Fatalf("only %d distinct place names out of %d: too many repetitions", len(names), total)
 	}
 	personas := map[Persona]bool{}
 	npcNames := map[string]bool{}
@@ -139,11 +139,11 @@ func TestIdentitiesVaryBetweenPlacesAndSeeds(t *testing.T) {
 		}
 	}
 	if len(personas) < 20 || len(npcNames) < 15 {
-		t.Fatalf("peu de variété: %d personnalités, %d noms de PNJ", len(personas), len(npcNames))
+		t.Fatalf("little variety: %d personalities, %d NPC names", len(personas), len(npcNames))
 	}
 }
 
-// Les identités ne dépendent pas de l'ordre dans lequel on visite les régions.
+// Identities do not depend on the order in which the regions are visited.
 func TestIdentityDoesNotDependOnVisitOrder(t *testing.T) {
 	forward, backward := newTestWorld(7), newTestWorld(7)
 	var regions []RegionPos
@@ -161,7 +161,7 @@ func TestIdentityDoesNotDependOnVisitOrder(t *testing.T) {
 	for _, r := range regions {
 		f, b := forward.structureForRegion(r), backward.structureForRegion(r)
 		if (f == nil) != (b == nil) || (f != nil && f.Name != b.Name) {
-			t.Fatalf("région %v: identité dépendante de l'ordre de visite", r)
+			t.Fatalf("region %v: identity depends on the visit order", r)
 		}
 	}
 }
@@ -175,26 +175,26 @@ func TestNPCKeyIsStableAndResolvable(t *testing.T) {
 			count++
 			k := n.Key()
 			if k != (NPCKey{s.Region, i}) {
-				t.Fatalf("clé %+v, attendue %+v", k, NPCKey{s.Region, i})
+				t.Fatalf("key %+v, want %+v", k, NPCKey{s.Region, i})
 			}
 			if seen[k] {
-				t.Fatalf("clé en double: %+v", k)
+				t.Fatalf("duplicate key: %+v", k)
 			}
 			seen[k] = true
-			// La clé retrouve bien le PNJ.
+			// The key does find the NPC.
 			got := w.structureForRegion(k.Region).NPCs[k.Index]
 			if got != n {
-				t.Fatalf("la clé %+v ne retrouve pas le PNJ", k)
+				t.Fatalf("key %+v does not find the NPC", k)
 			}
-			// NPCAt renvoie l'identité complète.
+			// NPCAt returns the complete identity.
 			at, ok := w.NPCAt(n.Pos.X, n.Pos.Y)
 			if !ok || at != n {
-				t.Fatalf("NPCAt ne renvoie pas l'identité complète: %+v", at)
+				t.Fatalf("NPCAt does not return the complete identity: %+v", at)
 			}
 		}
 	}
 	if count == 0 {
-		t.Fatal("aucun PNJ")
+		t.Fatal("no NPC")
 	}
 }
 
@@ -207,17 +207,17 @@ func TestIdentityRNGIsIndependentPerRegionAndSalt(t *testing.T) {
 		identityRNG(2, RegionPos{0, 0}, 0).Uint64(),
 	} {
 		if a == other {
-			t.Fatal("deux flux d'identité différents produisent la même valeur")
+			t.Fatal("two different identity streams produce the same value")
 		}
 	}
 	if identityRNG(1, RegionPos{3, -4}, 5).Uint64() != identityRNG(1, RegionPos{3, -4}, 5).Uint64() {
-		t.Fatal("le flux d'identité n'est pas déterministe")
+		t.Fatal("the identity stream is not deterministic")
 	}
 }
 
-// Les régions opposées, ou symétriques, ne doivent jamais partager d'identité:
-// avec un mélange par simple XOR de produits, (x, y) et (-x, -y) à coordonnées
-// impaires donnaient le même flux, donc des villes jumelles avec les mêmes PNJ.
+// Opposite or symmetric regions must never share an identity:
+// with a mix by a simple XOR of products, (x, y) and (-x, -y) with odd
+// coordinates gave the same stream, hence twin towns with the same NPCs.
 func TestIdentityRNGHasNoRegionCollisions(t *testing.T) {
 	seen := map[uint64]string{}
 	for _, seed := range []int64{1, 2, 42} {
@@ -227,7 +227,7 @@ func TestIdentityRNGHasNoRegionCollisions(t *testing.T) {
 					v := identityRNG(seed, RegionPos{rx, ry}, salt).Uint64()
 					key := fmt.Sprintf("seed %d salt %d (%d,%d)", seed, salt, rx, ry)
 					if prev, dup := seen[v]; dup {
-						t.Fatalf("même flux pour %s et %s", prev, key)
+						t.Fatalf("same stream for %s and %s", prev, key)
 					}
 					seen[v] = key
 				}
@@ -252,16 +252,16 @@ func TestSymmetricRegionsGetDifferentNames(t *testing.T) {
 		}
 	}
 	if pairs == 0 {
-		t.Fatal("aucune paire de régions symétriques occupées")
+		t.Fatal("no pair of occupied symmetric regions")
 	}
-	// Quelques homonymes fortuits sont normaux (les tables sont finies), pas des dizaines.
+	// A few chance homonyms are normal (the tables are finite), not dozens.
 	if same*10 > pairs {
-		t.Fatalf("%d paires de lieux symétriques sur %d portent le même nom", same, pairs)
+		t.Fatalf("%d pairs of symmetric places out of %d bear the same name", same, pairs)
 	}
 }
 
-// Les noms de PNJ et de forteresses existent dans les deux langues, sans changer
-// l'identité (prénoms, lieux) ni les mondes déjà joués.
+// NPC and fortress names exist in both languages, without changing
+// the identity (first names, places) nor the already played worlds.
 func TestIdentitiesAreTranslated(t *testing.T) {
 	forts, npcs := 0, 0
 	for _, seed := range testSeeds {
@@ -273,47 +273,47 @@ func TestIdentitiesAreTranslated(t *testing.T) {
 				forts++
 				en := s.NameIn(i18n.EN)
 				if en == s.Name && !strings.HasPrefix(s.Name, "Fort ") && !strings.HasPrefix(s.Name, "Bastion ") {
-					t.Fatalf("forteresse non traduite: %q", en)
+					t.Fatalf("untranslated fortress: %q", en)
 				}
 				if strings.HasPrefix(en, "Citadelle") || strings.HasPrefix(en, "Donjon") {
-					t.Fatalf("préfixe français dans %q", en)
+					t.Fatalf("French prefix in %q", en)
 				}
 			} else if s.NameIn(i18n.EN) != s.Name {
-				t.Fatalf("%v: le nom propre %q ne doit pas changer", s.Kind, s.Name)
+				t.Fatalf("%v: the proper name %q must not change", s.Kind, s.Name)
 			}
 			for _, n := range s.NPCs {
 				npcs++
 				if n.NameIn(i18n.FR) != n.Name || n.PersonaIn(i18n.FR) != n.Persona {
-					t.Fatalf("version française incohérente: %q / %q", n.NameIn(i18n.FR), n.Name)
+					t.Fatalf("inconsistent French version: %q / %q", n.NameIn(i18n.FR), n.Name)
 				}
 				en, p := n.NameIn(i18n.EN), n.PersonaIn(i18n.EN)
 				if p.Temperament == "" || p.Quirk == "" || p.Speech == "" || p == n.Persona {
-					t.Fatalf("personnalité non traduite: %+v", p)
+					t.Fatalf("untranslated personality: %+v", p)
 				}
 				switch n.Kind {
 				case NPCHealer:
 					if !strings.HasPrefix(en, "Brother ") && !strings.HasPrefix(en, "Sister ") {
-						t.Fatalf("soigneur %q", en)
+						t.Fatalf("healer %q", en)
 					}
 				case NPCMerchant:
 					if !strings.HasPrefix(en, "Master ") && !strings.HasPrefix(en, "Dame ") {
-						t.Fatalf("marchand %q", en)
+						t.Fatalf("merchant %q", en)
 					}
 				}
-				// Les prénoms accentués (Aélis…) sont des noms propres: seuls titres et épithètes changent.
+				// Accented first names (Aélis...) are proper names: only titles and epithets change.
 				if rest := strings.Replace(en, firstNames[n.id.first].name, "", 1); strings.ContainsAny(rest, "éèêàçœ") {
-					t.Fatalf("français dans %q", en)
+					t.Fatalf("French in %q", en)
 				}
 			}
 		}
 	}
 	if forts == 0 || npcs == 0 {
-		t.Fatalf("rien à vérifier: %d forteresses, %d PNJ", forts, npcs)
+		t.Fatalf("nothing to check: %d fortresses, %d NPCs", forts, npcs)
 	}
 }
 
-// Les tirages d'identité sont bornés par des constantes: elles doivent suivre la taille des
-// listes du catalogue, dans chaque langue, sans quoi un indice tomberait dans le vide.
+// Identity draws are bounded by constants: they must follow the size of the
+// catalogue lists, in each language, otherwise an index would fall into the void.
 func TestIdentityListsMatchTheCatalog(t *testing.T) {
 	lists := map[string]int{
 		"persona.temperament": numTemperaments, "persona.quirk": numQuirks, "persona.speech": numSpeeches,
@@ -322,13 +322,13 @@ func TestIdentityListsMatchTheCatalog(t *testing.T) {
 	for _, l := range i18n.Langs {
 		for prefix, want := range lists {
 			if got := i18n.Count(l, prefix); got != want {
-				t.Errorf("%s %s: %d entrées, attendu %d", l, prefix, got, want)
+				t.Errorf("%s %s: %d entries, want %d", l, prefix, got, want)
 			}
 		}
 	}
 }
 
-// Aucun radical de nom n'est partagé par deux lieux voisins (rayon des rumeurs et des quêtes).
+// No name stem is shared by two neighbouring places (radius of rumours and quests).
 func TestPlaceStemsAreDistinctWithinClashRadius(t *testing.T) {
 	for _, seed := range []int64{1, 2, 7, 42, 1234} {
 		w := newTestWorld(seed)
@@ -348,7 +348,7 @@ func TestPlaceStemsAreDistinctWithinClashRadius(t *testing.T) {
 		for i, a := range all {
 			for _, b := range all[i+1:] {
 				if max(abs(a.rp.X-b.rp.X), abs(a.rp.Y-b.rp.Y)) <= nameClashRadius && a.base == b.base {
-					t.Errorf("seed %d : %q à la fois en %v et en %v", seed, a.base, a.rp, b.rp)
+					t.Errorf("seed %d : %q both in %v and in %v", seed, a.base, a.rp, b.rp)
 				}
 			}
 		}
@@ -369,7 +369,7 @@ func TestMostPlacesKeepTheirOriginalName(t *testing.T) {
 		}
 	}
 	if ratio := float64(changed) / float64(total); ratio > 0.25 {
-		t.Fatalf("%.1f %% des noms changent : trop de remplacements", 100*ratio)
+		t.Fatalf("%.1f %% of the names change: too many replacements", 100*ratio)
 	}
 }
 
@@ -378,7 +378,7 @@ func TestStartVillageHasAStableName(t *testing.T) {
 	pos := a.FindSpawn()
 	sa, sb := a.StructureOfRegion(RegionOf(pos.X, pos.Y)), b.StructureOfRegion(RegionOf(pos.X, pos.Y))
 	if sa == nil || sa.Name == "" || sa.Name != sb.Name {
-		t.Fatalf("village de départ : %v / %v", sa, sb)
+		t.Fatalf("starting village: %v / %v", sa, sb)
 	}
 }
 
@@ -389,7 +389,7 @@ func TestPlaceNamesAreDeterministic(t *testing.T) {
 			rp := RegionPos{rx, ry}
 			sa, sb := a.StructureOfRegion(rp), b.StructureOfRegion(rp)
 			if (sa == nil) != (sb == nil) || (sa != nil && sa.Name != sb.Name) {
-				t.Fatalf("noms différents en %v", rp)
+				t.Fatalf("different names in %v", rp)
 			}
 		}
 	}

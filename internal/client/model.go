@@ -26,14 +26,14 @@ const (
 	minWidth   = 60
 	minHeight  = 20
 	sideWidth  = 34
-	chatLines  = 5 // hauteur par défaut (et minimale) de la discussion
-	chatStep   = 3 // lignes gagnées ou perdues par ctrl+haut / ctrl+bas
-	minMapH    = 8 // hauteur de carte conservée quand la discussion grandit
+	chatLines  = 5 // default (and minimal) height of the chat
+	chatStep   = 3 // lines gained or lost by ctrl+up / ctrl+down
+	minMapH    = 8 // map height kept when the chat grows
 	maxChat    = 200
-	unloadEach = 100 // snapshots entre deux déchargements de chunks côté client
+	unloadEach = 100 // snapshots between two chunk unloads on the client side
 
-	maxCombatLog = 50 // lignes de journal de combat conservées
-	maxNPCLog    = 30 // lignes de journal de dialogue conservées
+	maxCombatLog = 50 // combat log lines kept
+	maxNPCLog    = 30 // dialogue log lines kept
 )
 
 type state int
@@ -41,47 +41,47 @@ type state int
 const (
 	stateLogin state = iota
 	stateConnecting
-	stateCreating // personnage à créer: tirage des caractéristiques et choix de la classe
+	stateCreating // character to create: ability roll and class choice
 	statePlaying
 )
 
-// chanError est un canal purement client, pour afficher les erreurs du serveur.
+// chanError is a purely client-side channel, to display server errors.
 const chanError = "error"
 
 type chatLine struct{ Channel, From, To, Text string }
 
-// Messages internes.
+// Internal messages.
 type (
 	connectedMsg struct {
 		conn    *Conn
 		welcome protocol.Welcome
-		create  *protocol.Create // non nil: le personnage reste à créer (pas encore de welcome)
+		create  *protocol.Create // non-nil: the character is still to be created (no welcome yet)
 	}
 	connectFailedMsg struct{ err error }
 	eventMsg         struct{ Event }
-	// pingTickMsg déclenche une mesure de latence; conn évite qu'une ancienne
-	// connexion continue d'en émettre après une reconnexion.
+	// pingTickMsg triggers a latency measurement; conn prevents an old
+	// connection from continuing to emit them after a reconnection.
 	pingTickMsg struct{ conn *Conn }
 )
 
 const pingEvery = 5 * time.Second
 
-// Un tick de jeu dure 100 ms: 1 heure de jeu = 1 minute réelle. Le monde
-// démarre à 8 h du jour 1.
+// A game tick lasts 100 ms: 1 game hour = 1 real minute. The world
+// starts at 8 am on day 1.
 const (
 	ticksPerGameHour = protocol.TicksPerGameHour
 	startGameHour    = protocol.StartGameHour
 )
 
-// gameClock donne le jour (à partir de 1) et l'heure du jeu pour un tick.
+// gameClock gives the day (starting at 1) and the game time for a tick.
 func gameClock(tick uint64) (day, hour int) {
 	h := int(tick/ticksPerGameHour) + startGameHour
 	return h/24 + 1, h % 24
 }
 
-// clockTick est le tick de jeu estimé maintenant. Le serveur n'envoie un
-// instantané que si la vue change: le tick du dernier reçu est donc prolongé
-// par le temps écoulé depuis (un tick = 100 ms).
+// clockTick is the game tick estimated now. The server only sends a
+// snapshot when the view changes: the tick of the last one received is thus extended
+// by the time elapsed since (one tick = 100 ms).
 func (m Model) clockTick() uint64 {
 	if m.snapAt.IsZero() {
 		return m.snap.Tick
@@ -89,7 +89,7 @@ func (m Model) clockTick() uint64 {
 	return m.snap.Tick + uint64(time.Since(m.snapAt)/(100*time.Millisecond))
 }
 
-// skyIcon est l'indicateur de moment de la journée de l'en-tête (ASCII pur).
+// skyIcon is the time-of-day indicator in the header (pure ASCII).
 func skyIcon(tick uint64) string {
 	switch d := render.Daylight(tick); {
 	case d >= 1:
@@ -107,10 +107,10 @@ func pingTick(c *Conn) tea.Cmd {
 
 var errClosed = errors.New("connection closed")
 
-// t traduit une clé dans la langue de l'interface.
+// t translates a key into the interface language.
 func (m Model) t(key string, args ...any) string { return i18n.T(m.lang, key, args...) }
 
-// Styles de l'interface (voir package ui).
+// Interface styles (see package ui).
 var (
 	titleStyle     = ui.Title
 	dimStyle       = ui.Dim
@@ -123,110 +123,110 @@ var (
 	boxStyle       = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(ui.ColFrame))
 )
 
-// Model est le modèle Bubble Tea du client.
+// Model is the client's Bubble Tea model.
 type Model struct {
-	spent         map[[2]int]bool // nœuds de ressources épuisés annoncés par le serveur (voir applyNodes)
+	spent         map[[2]int]bool // resource nodes depleted as announced by the server (see applyNodes)
 	state         state
 	width, height int
-	lang          i18n.Lang // langue de l'interface (et des messages demandés au serveur)
+	lang          i18n.Lang // interface language (and of the messages requested from the server)
 
-	// transparent laisse le fond du terminal tel quel au lieu de peindre le
-	// fond sombre du thème.
+	// transparent leaves the terminal background as is instead of painting the
+	// theme's dark background.
 	transparent bool
 
-	// Écran de connexion.
+	// Login screen.
 	addr, name, pass textinput.Model
-	focus            int  // 0 = adresse, 1 = pseudo, 2 = mot de passe
-	register         bool // vrai: créer le compte au lieu de s'y connecter
+	focus            int  // 0 = address, 1 = username, 2 = password
+	register         bool // true: create the account instead of logging in
 	errMsg           string
 
-	// Partie en cours.
+	// Game in progress.
 	conn       *Conn
 	self       protocol.Welcome
 	world      *world.World
 	snap       protocol.Snapshot
-	snapAt     time.Time // réception du dernier instantané: sert à prolonger l'horloge entre deux
+	snapAt     time.Time // reception of the last snapshot: used to extend the clock between two
 	hasSnap    bool
 	snapCount  int
 	chat       []chatLine
-	chatScroll int // lignes de recul dans l'historique (0 = en bas)
-	chatH      int // hauteur voulue de la discussion (0 = chatLines), agrandie par ctrl+haut
+	chatScroll int // lines scrolled back in the history (0 = bottom)
+	chatH      int // desired chat height (0 = chatLines), enlarged by ctrl+up
 	chatInput  textinput.Model
-	chatHist   []string        // lignes envoyées depuis le chat (la plus récente en dernier), rappelées par haut/bas
-	histPos    int             // position dans chatHist pendant le rappel (len(chatHist) = saisie en cours)
-	histDraft  string          // saisie en cours mise de côté pendant le rappel
-	markName   textinput.Model // nom d'un repère de la carte en cours de saisie
+	chatHist   []string        // lines sent from the chat (most recent last), recalled with up/down
+	histPos    int             // position in chatHist during recall (len(chatHist) = current input)
+	histDraft  string          // current input set aside during recall
+	markName   textinput.Model // name of a map marker being entered
 	chatting   bool
 
-	// Combat en cours (nil hors combat). Un combat terminé reste affiché
-	// jusqu'à ce que le joueur le ferme.
+	// Combat in progress (nil outside combat). A finished combat stays displayed
+	// until the player closes it.
 	combat       *protocol.Combat
 	combatLog    []string
-	combatSel    int     // entrée choisie dans le menu d'actions
-	fx           fxState // animation des coups (voir fx.go)
-	noFX         bool    // effets coupés (SUDO_DRAGON_NO_FX)
-	combatTarget int     // monstre visé (indice dans Combat.Enemies)
+	combatSel    int     // entry chosen in the action menu
+	fx           fxState // hit animation (see fx.go)
+	noFX         bool    // effects turned off (SUDO_DRAGON_NO_FX)
+	combatTarget int     // targeted monster (index in Combat.Enemies)
 
-	inventory bool // écran d'inventaire ouvert (touche i)
-	sheet     bool // fiche de personnage ouverte (touche c)
-	worldMap  bool // carte du monde ouverte (touche m)
+	inventory bool // inventory screen open (i key)
+	sheet     bool // character sheet open (c key)
+	worldMap  bool // world map open (m key)
 
-	// Donjon (voir dungeon.go): dmap est nil sur la carte principale.
+	// Dungeon (see dungeon.go): dmap is nil on the main map.
 	zone protocol.Zone
-	// dungeons: entrées de donjon que le joueur a découvertes (envoyées par le serveur).
+	// dungeons: dungeon entrances the player has discovered (sent by the server).
 	dungeons []protocol.DungeonInfo
 	dmap     *world.DungeonMap
-	dseen    map[world.Pos]bool // cases du donjon déjà vues
+	dseen    map[world.Pos]bool // dungeon tiles already seen
 	wmap     mapState
 
-	// Création du personnage (état stateCreating).
+	// Character creation (stateCreating state).
 	create *createState
 
-	// Latence mesurée par ping/pong (hasPing faux tant qu'aucune réponse).
+	// Latency measured by ping/pong (hasPing false until a reply).
 	pingSent time.Time
 	pingMS   int
 	hasPing  bool
 
-	// Dialogue avec un PNJ en cours (nil sinon). Le serveur le ferme (Over) ou
-	// le joueur le quitte avec Échap.
+	// Dialogue with an NPC in progress (nil otherwise). The server closes it (Over) or
+	// the player leaves it with Escape.
 	npc      *protocol.NPCDialog
 	npcLog   []string
-	npcSel   int             // offre d'équipement examinée (index dans itemOffers), -1 = aucune
-	npcInput textinput.Model // saisie de la discussion libre (voir npctalk.go)
+	npcSel   int             // equipment offer being examined (index in itemOffers), -1 = none
+	npcInput textinput.Model // free conversation input (see npctalk.go)
 
-	// Livre de quêtes (voir quests.go).
+	// Quest book (see quests.go).
 	quests       protocol.Quests
-	questsAt     time.Time // réception du livre (les pauses des donneurs en partent)
-	questBook    bool      // livre ouvert (touche q)
-	questTab     int       // 0 = quêtes en cours, 1 = réputation et historique
+	questsAt     time.Time // reception of the book (the givers' pauses count from there)
+	questBook    bool      // book open (q key)
+	questTab     int       // 0 = quests in progress, 1 = reputation and history
 	questSel     int
-	questConfirm bool // un premier "x" attend sa confirmation
+	questConfirm bool // a first "x" awaits its confirmation
 
-	// Sac d'équipement (voir bag.go).
+	// Equipment bag (see bag.go).
 	bag    protocol.Bag
-	bagAt  time.Time // réception du sac : les bénédictions de sanctuaire y décomptent leur temps restant
+	bagAt  time.Time // reception of the bag: shrine blessings count down their remaining time from there
 	bagSel int
 
-	// Dernier endroit annoncé dans le journal (contrée, lieu) : voir location.go.
+	// Last place announced in the log (region, place): see location.go.
 	locSeen      bool
 	locTerritory world.TerritoryID
 	locPlace     world.RegionPos
 	locInPlace   bool
-	locBand      int // tranche de niveaux de région de la dernière position
+	locBand      int // region level band of the last position
 
-	// Marche automatique /goto (voir goto.go).
+	// Automatic /goto walk (see goto.go).
 	walking    bool
 	walkTarget world.Pos
 	walkPath   []world.Pos
 	walkGen    int
-	walkLast   world.Pos // position au dernier pas envoyé
-	walkStuck  int       // ticks consécutifs sans progrès
+	walkLast   world.Pos // position at the last step sent
+	walkStuck  int       // consecutive ticks without progress
 }
 
-// New crée le modèle initial, en français. Voir NewLang pour une autre langue.
-func New(addr, name string) Model { return NewLang(addr, name, i18n.FR) }
+// New creates the initial model, in English. See NewLang for another language.
+func New(addr, name string) Model { return NewLang(addr, name, i18n.EN) }
 
-// NewLang crée le modèle initial dans la langue lang.
+// NewLang creates the initial model in language lang.
 func NewLang(addr, name string, lang i18n.Lang) Model {
 	lang = lang.Normalize()
 	a := textinput.New()
@@ -247,7 +247,7 @@ func NewLang(addr, name string, lang i18n.Lang) Model {
 	p.CharLimit = protocol.MaxPassLen
 	p.SetWidth(36)
 
-	// On démarre sur le premier champ à remplir.
+	// We start on the first field to fill in.
 	focus := 0
 	switch {
 	case name != "" && addr != "":
@@ -266,8 +266,8 @@ func NewLang(addr, name string, lang i18n.Lang) Model {
 	return m.setFocus(focus)
 }
 
-// Marges autour de l'interface, supprimées si le terminal est trop petit pour
-// que l'intérieur garde au moins la taille minimale.
+// Margins around the interface, removed if the terminal is too small for
+// the inside to keep at least the minimal size.
 const (
 	marginX = 2
 	marginY = 1
@@ -280,7 +280,7 @@ func (m Model) margins() (mx, my int) {
 	return 0, 0
 }
 
-// addMargin entoure s de mx colonnes et my lignes vides, sur une largeur totale w.
+// addMargin surrounds s with mx columns and my empty lines, over a total width w.
 func addMargin(s string, mx, my, w int) string {
 	if mx == 0 && my == 0 {
 		return s
@@ -303,7 +303,7 @@ func addMargin(s string, mx, my, w int) string {
 
 var sgrRe = regexp.MustCompile("\x1b\\[([0-9;]*)m")
 
-// themeSGR renvoie la séquence SGR qui applique le fond et le texte du thème.
+// themeSGR returns the SGR sequence that applies the theme's background and text.
 func themeSGR() string {
 	rgb := func(hex string) (int, int, int) {
 		var r, g, b int
@@ -315,10 +315,10 @@ func themeSGR() string {
 	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm\x1b[38;2;%d;%d;%dm", br, bg, bb, fr, fg, fb)
 }
 
-// paintBackground peint le fond du thème dans les cellules elles-mêmes (le
-// changement de fond demandé au terminal par OSC 11 n'est pas partout
-// supporté) : chaque ligne est complétée à w colonnes, le tout à h lignes, et
-// le fond est rétabli après chaque remise à zéro des styles internes.
+// paintBackground paints the theme background in the cells themselves (the
+// background change requested from the terminal via OSC 11 is not supported
+// everywhere): each line is padded to w columns, the whole to h lines, and
+// the background is restored after each reset of the inner styles.
 func paintBackground(s string, w, h int) string {
 	base := themeSGR()
 	lines := strings.Split(s, "\n")
@@ -338,16 +338,16 @@ func paintBackground(s string, w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
-// WithTransparent choisit de ne pas peindre le fond du thème.
+// WithTransparent chooses not to paint the theme background.
 func (m Model) WithTransparent(t bool) Model {
 	m.transparent = t
 	return m
 }
 
-// Init implémente tea.Model.
+// Init implements tea.Model.
 func (m Model) Init() tea.Cmd { return nil }
 
-// --- Commandes ---
+// --- Commands ---
 
 func connectCmd(addr, name, password string, register bool, lang i18n.Lang) tea.Cmd {
 	return func() tea.Msg {
@@ -369,9 +369,9 @@ func waitEvent(c *Conn) tea.Cmd {
 	}
 }
 
-// --- Mise à jour ---
+// --- Update ---
 
-// Update implémente tea.Model.
+// Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case shakeTickMsg:
@@ -414,7 +414,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pingTickMsg:
 		if msg.conn == nil || msg.conn != m.conn || m.state != statePlaying {
-			return m, nil // connexion remplacée ou fermée: la chaîne s'arrête
+			return m, nil // connection replaced or closed: the chain stops
 		}
 		m = m.sendPing()
 		return m, pingTick(m.conn)
@@ -437,11 +437,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateEvent(msg.Event)
 	}
 
-	// Autres messages (clignotement du curseur…) : au champ actif.
+	// Other messages (cursor blinking…): to the active field.
 	return m.forwardToInput(msg)
 }
 
-// enterGame passe en jeu une fois la connexion établie et le personnage créé.
+// enterGame switches to the game once the connection is established and the character created.
 func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.Cmd) {
 	m.conn = conn
 	m.self = welcome
@@ -449,7 +449,7 @@ func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.C
 	m.zone, m.dmap, m.dseen, m.dungeons = protocol.Zone{}, nil, nil, nil
 	m.state = statePlaying
 	m.errMsg = ""
-	m.pass.Reset() // le mot de passe n'a plus de raison de rester en mémoire
+	m.pass.Reset() // the password no longer has a reason to stay in memory
 	m.hasSnap = false
 	m.chat = nil
 	m.chatScroll = 0
@@ -467,7 +467,7 @@ func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.C
 	return m, tea.Batch(waitEvent(m.conn), pingTick(m.conn))
 }
 
-// sendPing émet un ping et note l'heure d'envoi.
+// sendPing sends a ping and notes the send time.
 func (m Model) sendPing() Model {
 	if m.conn != nil && m.conn.Send(protocol.TPing, nil) {
 		m.pingSent = time.Now()
@@ -527,7 +527,7 @@ func (m Model) updateLoginKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m.forwardToInput(msg)
 }
 
-// loginFields est le nombre de champs de l'écran de connexion.
+// loginFields is the number of fields on the login screen.
 const loginFields = 3
 
 func (m Model) setFocus(f int) Model {
@@ -546,7 +546,7 @@ func (m Model) setFocus(f int) Model {
 	return m
 }
 
-// dirOf traduit une touche en direction (flèches, ZQSD, WASD, hjkl, yubn).
+// dirOf translates a key into a direction (arrows, ZQSD, WASD, hjkl, yubn).
 func dirOf(key string) (dx, dy int, ok bool) {
 	switch key {
 	case "up", "z", "w", "k":
@@ -579,7 +579,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+up":
 		m.chatH = m.chatHeight() + chatStep
-		m.chatH = m.chatHeight() // borne au plafond actuel
+		m.chatH = m.chatHeight() // bound to the current ceiling
 		m.scrollChat(0)
 		return m, nil
 	case "ctrl+down":
@@ -595,7 +595,7 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateNPCKey(msg)
 	}
 
-	// Une touche de déplacement, Échap, q ou i interrompt la marche automatique.
+	// A movement key, Escape, q or i interrupts the automatic walk.
 	if !m.chatting && m.walking {
 		k := msg.String()
 		if _, _, isDir := dirOf(k); isDir || k == "esc" || k == "q" || k == "i" || k == "p" || k == "m" {
@@ -713,7 +713,7 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		if err := ev.Env.Payload(&s); err == nil {
 			m.snap, m.hasSnap, m.snapAt = s, true, time.Now()
 			if m.dmap != nil {
-				m.revealAround() // sous terre: ni lieux, ni exploration du monde
+				m.revealAround() // underground: neither places nor world exploration
 			} else {
 				m.trackLocation()
 				m.markExplored()
@@ -781,11 +781,11 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(waitEvent(m.conn), saveCmd)
 }
 
-// applyCombat enregistre un nouvel état de combat et accumule son journal.
+// applyCombat records a new combat state and accumulates its log.
 func (m *Model) applyCombat(c protocol.Combat) {
-	if m.combat == nil || m.combat.Over { // nouveau combat
+	if m.combat == nil || m.combat.Over { // new combat
 		m.combatLog = nil
-		m.combatSel, m.combatTarget = 0, -1 // -1: le plus fort, choisi plus bas
+		m.combatSel, m.combatTarget = 0, -1 // -1: the strongest, chosen below
 	}
 	m.chatting, m.inventory, m.questBook, m.sheet = false, false, false, false
 	m.worldMap = false
@@ -800,12 +800,12 @@ func (m *Model) applyCombat(c protocol.Combat) {
 	}
 	m.combatLog = log
 	m.combat = &c
-	if t := m.combatTarget; t < 0 || t >= len(c.Enemies) || c.Enemies[t].HP <= 0 { // cible abattue: le monstre le plus fort
+	if t := m.combatTarget; t < 0 || t >= len(c.Enemies) || c.Enemies[t].HP <= 0 { // target downed: the strongest monster
 		m.combatTarget = max(0, c.Boss)
 	}
 }
 
-// applyNPC enregistre l'état d'un dialogue; un dialogue terminé se ferme aussitôt.
+// applyNPC records a dialogue's state; a finished dialogue closes immediately.
 func (m *Model) applyNPC(d protocol.NPCDialog) {
 	d = cleanNPCDialog(d)
 	if d.Over {
@@ -818,7 +818,7 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 		prevMode = m.npc.Mode
 	}
 	fresh := m.npc == nil
-	if fresh { // nouveau dialogue
+	if fresh { // new dialogue
 		m.npcLog = nil
 	}
 	m.chatting, m.inventory, m.sheet = false, false, false
@@ -837,14 +837,14 @@ func (m *Model) applyNPC(d protocol.NPCDialog) {
 	switch n := len(m.itemOffers()); {
 	case n == 0 || fresh || prevMode != d.Mode:
 		m.npcSel = -1
-	case m.npcSel >= n: // objet vendu ou acheté en fin de liste
+	case m.npcSel >= n: // item sold or bought at the end of the list
 		m.npcSel = n - 1
 	}
 	m.syncNPCInput(prevMode)
 }
 
-// npcKeys associe les touches aux actions d'un dialogue. Seules les actions que
-// le PNJ propose réellement sont envoyées.
+// npcKeys maps keys to a dialogue's actions. Only the actions that
+// the NPC actually offers are sent.
 func (m Model) npcKeys() map[string]string {
 	return map[string]string{
 		strings.ToLower(m.t("npc.key.buy")):    protocol.NPCBuy,
@@ -891,7 +891,7 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if key == "esc" || key == "enter" {
 		if m.conn != nil {
-			// Dans la liste de revente, Échap revient à la boutique ; sinon il quitte le dialogue.
+			// In the resale list, Escape goes back to the shop; otherwise it leaves the dialogue.
 			action := protocol.NPCLeave
 			if m.npc.Mode == protocol.NPCModeSell {
 				action = protocol.NPCBack
@@ -901,7 +901,7 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if n, err := strconv.Atoi(key); err == nil && n >= 1 && m.conn != nil {
-		if offers := m.numberedOffers(); n <= len(offers) { // n-ième offre numérotée : quête à rendre, objet à acheter ou revendre
+		if offers := m.numberedOffers(); n <= len(offers) { // n-th numbered offer: quest to hand in, item to buy or sell
 			m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: offers[n-1].Action, Text: offers[n-1].Arg})
 		}
 		return m, nil
@@ -919,7 +919,7 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return false
 	}
 	if action == protocol.NPCSell && !offered(action) && offered(protocol.NPCSellMenu) {
-		action = protocol.NPCSellMenu // chez un forgeron, la même touche ouvre la revente d'équipement
+		action = protocol.NPCSellMenu // at a blacksmith, the same key opens equipment resale
 	}
 	if offered(action) {
 		m.conn.Send(protocol.TNPCAction, protocol.NPCAction{Action: action})
@@ -927,7 +927,7 @@ func (m Model) updateNPCKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// combatKeys associe les touches aux actions de combat (lettres ou chiffres).
+// combatKeys maps keys to combat actions (letters or digits).
 var combatKeys = map[string]string{
 	"a": "attack", "1": "attack",
 	"i": "item", "2": "item",
@@ -965,7 +965,7 @@ func (m Model) updateCombatKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// nextTarget renvoie le monstre vivant suivant (ou précédent) la cible actuelle.
+// nextTarget returns the next (or previous) living monster after the current target.
 func (m Model) nextTarget(forward bool) int {
 	n, step := len(m.combat.Enemies), 1
 	if !forward {
@@ -980,7 +980,7 @@ func (m Model) nextTarget(forward bool) int {
 	return m.combatTarget
 }
 
-// combatMenu est le menu d'actions, dans l'ordre d'affichage.
+// combatMenu is the action menu, in display order.
 var combatMenu = []struct{ key, action, label string }{
 	{"A", "attack", "fight.act.attack"},
 	{"I", "item", "fight.act.item"},
@@ -988,23 +988,23 @@ var combatMenu = []struct{ key, action, label string }{
 }
 
 func (m *Model) addChat(l chatLine) {
-	// Copie pour ne pas partager le tableau sous-jacent entre copies du modèle.
+	// Copy so as not to share the underlying array between model copies.
 	chat := append(make([]chatLine, 0, len(m.chat)+1), m.chat...)
 	chat = append(chat, l)
 	if len(chat) > maxChat {
 		chat = chat[len(chat)-maxChat:]
 	}
 	m.chat = chat
-	// Si l'on relit l'historique, garder la même page à l'écran.
+	// If the history is being re-read, keep the same page on screen.
 	if m.chatScroll > 0 {
 		m.chatScroll = min(m.chatScroll+1, m.maxScroll())
 	}
 }
 
-// maxScroll est le recul maximal dans l'historique.
+// maxScroll is the maximal scrollback in the history.
 func (m Model) maxScroll() int { return max(0, len(m.chat)-m.chatHeight()) }
 
-// chatHeight est la hauteur de la discussion: celle voulue, bornée pour laisser minMapH lignes à la carte.
+// chatHeight is the chat height: the desired one, bounded to leave minMapH lines for the map.
 func (m Model) chatHeight() int {
 	h := m.chatH
 	if h < chatLines {
@@ -1017,7 +1017,7 @@ func (m *Model) scrollChat(delta int) {
 	m.chatScroll = max(0, min(m.chatScroll+delta, m.maxScroll()))
 }
 
-// formatChat met en forme une ligne selon son canal.
+// formatChat formats a line according to its channel.
 func (m Model) formatChat(l chatLine) string {
 	switch l.Channel {
 	case protocol.ChanGlobal:
@@ -1032,7 +1032,7 @@ func (m Model) formatChat(l chatLine) string {
 	case chanError:
 		return errStyle.Render("! " + l.Text)
 	}
-	if l.From == "" { // système
+	if l.From == "" { // system
 		return dimStyle.Render("* " + l.Text)
 	}
 	return nameStyle.Render(l.From) + ": " + l.Text
@@ -1041,7 +1041,7 @@ func (m Model) formatChat(l chatLine) string {
 func (m Model) unloadWorld() {
 	c := world.ChunkOf(m.snap.Self.X, m.snap.Self.Y)
 	keep := make(map[world.ChunkPos]bool)
-	// Garder au moins ce qui est à l'écran (+1 chunk de marge).
+	// Keep at least what is on screen (+1 chunk of margin).
 	rx := max(3, m.width/2/world.ChunkSize+2)
 	ry := max(3, m.height/2/world.ChunkSize+2)
 	for dy := -ry; dy <= ry; dy++ {
@@ -1052,11 +1052,11 @@ func (m Model) unloadWorld() {
 	m.world.Unload(keep)
 }
 
-// --- Vue ---
+// --- View ---
 
-// View implémente tea.Model.
+// View implements tea.Model.
 func (m Model) View() tea.View {
-	// L'interface est dessinée dans la zone intérieure, entourée d'une marge.
+	// The interface is drawn in the inner area, surrounded by a margin.
 	mx, my := m.margins()
 	inner := m
 	inner.width, inner.height = m.width-2*mx, m.height-2*my
@@ -1086,7 +1086,7 @@ func (m Model) View() tea.View {
 func (m Model) viewLogin() string {
 	panelW := min(m.width, 56)
 	inner := panelW - 2
-	rich := m.height >= 22 && m.width >= ui.LogoWidth()+6 // assez de place pour le logo
+	rich := m.height >= 22 && m.width >= ui.LogoWidth()+6 // enough room for the logo
 
 	var lines []string
 	if rich {
@@ -1102,7 +1102,7 @@ func (m Model) viewLogin() string {
 	}
 	lines = append(lines, "")
 
-	// Mode: Ctrl+R bascule entre les deux entrées.
+	// Mode: Ctrl+R toggles between the two entries.
 	modeEntry := func(label string, on bool) string {
 		if on {
 			return ui.Select.Render(" › " + label + " ")
@@ -1146,10 +1146,10 @@ func (m Model) viewPlaying() string {
 		return m.t("client.loading")
 	}
 
-	// Hauteur: en-tête (1) + panneau central (mapH+2) + discussion (chatHeight+2) + raccourcis (1).
-	// L'interface occupe toute la fenêtre. Le terrain vient de la graine et peut
-	// dépasser la zone de vision du serveur; seules les entités (joueurs,
-	// monstres) sont limitées à cette zone.
+	// Height: header (1) + central panel (mapH+2) + chat (chatHeight+2) + shortcuts (1).
+	// The interface fills the whole window. The terrain comes from the seed and may
+	// extend beyond the server's vision area; only entities (players,
+	// monsters) are limited to that area.
 	mapW := m.width - sideWidth - 4
 	mapH := m.height - m.chatHeight() - 6
 	fullW := mapW + sideWidth + 4
@@ -1157,7 +1157,7 @@ func (m Model) viewPlaying() string {
 	self := m.snap.Self
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
 	night := 0
-	if !m.inDungeon() { // le cycle jour/nuit ne se voit pas sous terre
+	if !m.inDungeon() { // the day/night cycle is not visible underground
 		night = render.NightLevel(m.clockTick())
 	}
 	mapStr := render.ViewportNight(m.terrain(), self.X, self.Y, mapW, mapH, ents, m.snap.Monsters, self.ID, m.readyGivers(), m.giverIdle, night)
@@ -1185,7 +1185,7 @@ func (m Model) viewPlaying() string {
 	return m.headerLine(fullW) + "\n" + top + "\n" + m.chatPanel(fullW) + "\n" + ui.Fit(m.helpLine(), fullW)
 }
 
-// headerLine est la ligne du haut: nom du jeu à gauche, infos de session à droite.
+// headerLine is the top line: game name on the left, session info on the right.
 func (m Model) headerLine(w int) string {
 	parts := []string{m.serverHost()}
 	if m.snap.Online > 0 {
@@ -1205,7 +1205,7 @@ func (m Model) headerLine(w int) string {
 	return ui.Fit(titleStyle.Render("sudo Dragon")+strings.Repeat(" ", pad)+right, w)
 }
 
-// serverHost extrait l'hôte de l'adresse saisie (ws://hote:8080/ws -> hote:8080).
+// serverHost extracts the host from the entered address (ws://host:8080/ws -> host:8080).
 func (m Model) serverHost() string {
 	a := strings.TrimSpace(m.addr.Value())
 	if _, rest, ok := strings.Cut(a, "://"); ok {
@@ -1219,7 +1219,7 @@ func (m Model) sidePanel() string {
 	self := m.snap.Self
 	st := m.snap.Stats
 
-	// Trois jauges au même format : libellé, barre de 10 cases, valeur.
+	// Three gauges in the same format: label, 10-cell bar, value.
 	gauge := func(label, bar string, cur, maxV int) string {
 		return label + bar + fmt.Sprintf(" %d/%d", cur, maxV)
 	}
@@ -1239,7 +1239,7 @@ func (m Model) sidePanel() string {
 		lines = append(lines, "  "+nameStyle.Render("@")+" "+o.Name)
 	}
 
-	// Monstres en vue, du plus proche au plus loin, avec leur position relative.
+	// Monsters in view, from nearest to farthest, with their relative position.
 	mons := slices.Clone(m.snap.Monsters)
 	dist := func(mo protocol.Monster) int { return max(abs(mo.X-self.X), abs(mo.Y-self.Y)) }
 	slices.SortStableFunc(mons, func(a, b protocol.Monster) int { return dist(a) - dist(b) })
@@ -1253,8 +1253,8 @@ func (m Model) sidePanel() string {
 	return strings.Join(lines, "\n")
 }
 
-// chatPanel dessine la discussion: chatHeight lignes dans un cadre, la saisie
-// remplaçant la dernière ligne pendant qu'on écrit.
+// chatPanel draws the chat: chatHeight lines in a frame, the input
+// replacing the last line while typing.
 func (m Model) chatPanel(w int) string {
 	scroll := min(m.chatScroll, m.maxScroll())
 	end := len(m.chat) - scroll
@@ -1275,7 +1275,7 @@ func (m Model) chatPanel(w int) string {
 	return ui.Panel(m.t("chat.title"), strings.Join(out, "\n"), w, ch+2)
 }
 
-// helpLine est la barre de raccourcis, adaptée au contexte.
+// helpLine is the shortcut bar, adapted to the context.
 func (m Model) helpLine() string {
 	scroll := min(m.chatScroll, m.maxScroll())
 	switch {
@@ -1310,7 +1310,7 @@ func abs(a int) int {
 	return a
 }
 
-// journalPanel dessine les dernières lignes d'un journal dans un cadre de w x h.
+// journalPanel draws the last lines of a log in a w x h frame.
 func journalPanel(title string, log []string, w, h int) string {
 	n := max(0, h-2)
 	if len(log) > n {
@@ -1323,7 +1323,7 @@ func journalPanel(title string, log []string, w, h int) string {
 	return ui.Panel(title, strings.Join(lines, "\n"), w, h)
 }
 
-// npcKeyLabel est la lettre affichée pour chaque action de dialogue.
+// npcKeyLabel is the letter displayed for each dialogue action.
 func (m Model) npcKeyLabel(action string) string {
 	switch action {
 	case protocol.NPCBuy:
@@ -1352,8 +1352,8 @@ func (m Model) npcKeyLabel(action string) string {
 	return "?"
 }
 
-// npcView dessine le dialogue avec un PNJ dans exactement w x h cellules:
-// portrait et état à gauche, offres à droite, journal dessous.
+// npcView draws the dialogue with an NPC in exactly w x h cells:
+// portrait and state on the left, offers on the right, log below.
 func (m Model) npcView(w, h int) string {
 	d := m.npc
 	kind := world.NPCKind(d.Kind)
@@ -1368,12 +1368,12 @@ func (m Model) npcView(w, h int) string {
 
 	rightW := min(40, w/2)
 	if len(m.numberedOffers()) > 0 && m.npc.Specialty != "" || m.npc.Mode == protocol.NPCModeSell {
-		rightW = min(70, w*3/5) // étalage d'équipement : une ligne par objet avec ses bonus
+		rightW = min(70, w*3/5) // equipment display: one line per item with its bonuses
 	}
 	leftW := w - rightW
 	logH := max(3, min(6, h-8))
 	if len(m.itemOffers()) > 0 {
-		logH = 3 // l'étalage a besoin de la place : liste + fiche de l'objet
+		logH = 3 // the display needs room: list + item sheet
 	}
 	midH := h - logH
 	iw, ih := leftW-2, midH-2
@@ -1415,7 +1415,7 @@ func (m Model) npcView(w, h int) string {
 			price = ""
 		}
 		var line string
-		if o.Detail != "" { // équipement : nom, bonus et niveau, prix
+		if o.Detail != "" { // equipment: name, bonuses and level, price
 			line = fmt.Sprintf(" [%s] %s %s %s", m.npcOfferKey(o, turnIn), ui.Fit(o.Label, 26), ui.Fit(o.Detail, 24), price)
 		} else {
 			line = fmt.Sprintf(" [%s] %-22s %s", m.npcOfferKey(o, turnIn), o.Label, price)
@@ -1438,10 +1438,10 @@ func (m Model) npcView(w, h int) string {
 
 	leftPanel := ui.Panel(m.npcTitle(), strings.Join(left, "\n"), leftW, midH)
 	right := ui.Panel(m.t("npc.offers"), strings.Join(offers, "\n"), rightW, midH)
-	if items := m.itemOffers(); len(items) > 0 { // étalage d'équipement : fiche de l'objet examiné sous la liste
+	if items := m.itemOffers(); len(items) > 0 { // equipment display: sheet of the examined item under the list
 		listH := len(offers) + 2
 		detailW := rightW
-		if midH-listH < 8 { // écran bas : la fiche remplace le portrait, à gauche, et la liste garde toute la colonne
+		if midH-listH < 8 { // low screen: the sheet replaces the portrait, on the left, and the list keeps the full column
 			detailW = leftW
 		}
 		var detail []string

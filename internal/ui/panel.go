@@ -6,10 +6,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Panel dessine body dans un cadre arrondi de w x h cellules (bordures
-// comprises) avec le titre incrusté dans le bord haut: ╭─ Titre ───╮.
-// Les lignes du corps sont tronquées ou complétées; les lignes en trop sont
-// coupées. w < 4 ou h < 2 donnent une chaîne vide.
+// Panel draws body inside a rounded frame of w x h cells (borders
+// included) with the title inlaid in the top edge: ╭─ Title ───╮.
+// Body lines are truncated or padded; extra lines are
+// cut off. w < 4 or h < 2 yield an empty string.
 func Panel(title, body string, w, h int) string {
 	if w < 4 || h < 2 {
 		return ""
@@ -37,7 +37,7 @@ func Panel(title, body string, w, h int) string {
 	return b.String()
 }
 
-// Fit tronque ou complète s pour qu'il occupe exactement w colonnes.
+// Fit truncates or pads s so that it occupies exactly w columns.
 func Fit(s string, w int) string {
 	if ansi.StringWidth(s) > w {
 		s = ansi.Truncate(s, w, "…")
@@ -48,7 +48,7 @@ func Fit(s string, w int) string {
 	return s
 }
 
-// Center centre s dans une largeur de w colonnes.
+// Center centers s within a width of w columns.
 func Center(s string, w int) string {
 	left := max(0, (w-ansi.StringWidth(s))/2)
 	return Fit(strings.Repeat(" ", left)+s, w)

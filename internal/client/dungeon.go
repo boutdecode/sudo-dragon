@@ -13,17 +13,17 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Donjons côté client. Le serveur annonce l'entrée dans un donjon par un message zone (identifiant, seed, palier,
-// coffres ouverts) ; le plan est recalculé ici d'après la seed, comme le monde, et les coordonnées des instantanés
-// sont locales à ce plan. Seules les cases proches ont été vues: le reste est de la roche.
+// Dungeons on the client side. The server announces entering a dungeon with a zone message (id, seed, tier,
+// opened chests); the layout is recomputed here from the seed, like the world, and snapshot coordinates
+// are local to that layout. Only nearby tiles have been seen: the rest is rock.
 
-// dungeonSight est le rayon (en cases) dans lequel on voit autour de soi sous terre.
+// dungeonSight is the radius (in tiles) within which one sees around oneself underground.
 const dungeonSight = 7
 
-// inDungeon dit si le joueur est dans un donjon.
+// inDungeon tells whether the player is in a dungeon.
 func (m Model) inDungeon() bool { return m.dmap != nil }
 
-// terrain est la carte à dessiner: le monde, ou le donjon vu à travers le brouillard.
+// terrain is the map to draw: the world, or the dungeon seen through the fog.
 func (m Model) terrain() render.Terrain {
 	if m.dmap == nil {
 		return render.WithSpent(render.WithEntrances(m.world, m.entranceKeys()), m.spent, m.world.Terrain)
@@ -32,7 +32,7 @@ func (m Model) terrain() render.Terrain {
 	return render.DungeonTerrain(m.dmap, func(x, y int) bool { return seen[world.Pos{X: x, Y: y}] }, m.zone.Opened)
 }
 
-// entranceKeys liste les entrées de donjon découvertes, en (x, y).
+// entranceKeys lists the discovered dungeon entrances, as (x, y).
 func (m Model) entranceKeys() [][2]int {
 	out := make([][2]int, len(m.dungeons))
 	for i, d := range m.dungeons {
@@ -49,7 +49,7 @@ func (m Model) entrancePositions() []world.Pos {
 	return out
 }
 
-// applyDungeons retient la liste des donjons découverts et annonce le dernier trouvé.
+// applyDungeons keeps the list of discovered dungeons and announces the latest one found.
 func (m *Model) applyDungeons(d protocol.Dungeons) {
 	m.dungeons = d.List
 	for _, info := range d.List {
@@ -59,8 +59,8 @@ func (m *Model) applyDungeons(d protocol.Dungeons) {
 	}
 }
 
-// applyZone change de carte à la réception d'un message zone. Un simple renvoi (coffre ouvert) ne fait que mettre
-// la liste des coffres à jour.
+// applyZone switches map on receiving a zone message. A simple resend (chest opened) only updates
+// the chest list.
 func (m *Model) applyZone(z protocol.Zone) {
 	same := m.dmap != nil && z.Dungeon == m.zone.Dungeon
 	if same || (z.Dungeon == "" && m.dmap == nil) {
@@ -70,7 +70,7 @@ func (m *Model) applyZone(z protocol.Zone) {
 	m.zone = z
 	m.stopWalk("")
 	m.worldMap = false
-	m.hasSnap = false // les coordonnées changent: on attend l'instantané de la nouvelle carte
+	m.hasSnap = false // coordinates change: wait for the new map's snapshot
 	m.locSeen = false
 	if z.Dungeon == "" {
 		m.dmap, m.dseen = nil, nil
@@ -85,9 +85,9 @@ func (m *Model) applyZone(z protocol.Zone) {
 	}
 }
 
-// revealAround marque comme vues les cases proches du joueur, et ne garde dans l'instantané que les monstres
-// et les joueurs qui s'y trouvent: le serveur envoie tout ce qui est dans la fenêtre de vision, mais on ne voit
-// pas à travers la roche.
+// revealAround marks the tiles near the player as seen, and keeps in the snapshot only the monsters
+// and players located there: the server sends everything in the vision window, but one cannot see
+// through rock.
 func (m *Model) revealAround() {
 	if m.dmap == nil {
 		return
@@ -117,7 +117,7 @@ func (m *Model) revealAround() {
 	}
 }
 
-// dungeonTitle est le titre du panneau de carte sous terre: « nom · (x, y) », abrégé si la place manque.
+// dungeonTitle is the map panel title underground: "name · (x, y)", shortened if space is short.
 func (m Model) dungeonTitle(x, y, w int) string {
 	coords := fmt.Sprintf("(%d, %d)", x, y)
 	for _, t := range []string{m.zone.Name + " · " + coords, m.zone.Name, coords} {
@@ -128,12 +128,12 @@ func (m Model) dungeonTitle(x, y, w int) string {
 	return ansi.Truncate(coords, w, "")
 }
 
-// dungeonMapView dessine le plan du donjon déjà exploré dans exactement w x h cellules.
+// dungeonMapView draws the already explored dungeon layout in exactly w x h cells.
 func (m Model) dungeonMapView(w, h int) string {
 	cols, rows := w-2, h-1-2
 	self := m.snap.Self
 	cx, cy := self.X, self.Y
-	if cols >= m.dmap.W && rows >= m.dmap.H { // tout tient: on le centre
+	if cols >= m.dmap.W && rows >= m.dmap.H { // everything fits: center it
 		cx, cy = m.dmap.W/2, m.dmap.H/2
 	}
 	ents := append([]protocol.Entity{self}, m.snap.Others...)
@@ -149,8 +149,8 @@ func (m Model) dungeonMapView(w, h int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, ui.Panel(m.zone.Name, grid, w, h-1))
 }
 
-// dungeonTarget résout, sous terre, une destination de /goto par son nom: l'escalier de sortie ou un coffre
-// pas encore ouvert déjà vu (le plus proche). Renvoie le nombre de correspondances (0 ou 1).
+// dungeonTarget resolves, underground, a /goto destination by name: the exit stairs or a chest
+// not yet opened already seen (the nearest). It returns the number of matches (0 or 1).
 func (m Model) dungeonTarget(query string) (target, int) {
 	q := strings.ToLower(strings.TrimSpace(query))
 	if q == "" {
@@ -185,10 +185,10 @@ func (m Model) dungeonTarget(query string) (target, int) {
 	return target{}, 0
 }
 
-// maxSpentNodes borne les nœuds épuisés retenus (le serveur n'en envoie pas plus).
+// maxSpentNodes bounds the depleted nodes kept (the server does not send more).
 const maxSpentNodes = 1024
 
-// applyNodes remplace la liste des nœuds de ressources épuisés.
+// applyNodes replaces the list of depleted resource nodes.
 func (m *Model) applyNodes(n protocol.Nodes) {
 	m.spent = make(map[[2]int]bool, min(len(n.Spent), maxSpentNodes))
 	for i, p := range n.Spent {

@@ -8,24 +8,24 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Cartes au trésor : une carte retient les coordonnées d'une case à creuser (voir world.DigSpot). On les trouve dans
-// les coffres des ruines et des repaires, ou sur des monstres. Arriver exactement sur la case la déterre : or,
-// potions et un équipement du rang de la région + 1. Les cartes appartiennent au personnage (sauvegardées avec lui),
-// elles ne sont pas des objets du sac, qui ne contient que de l'équipement.
+// Treasure maps: a map remembers the coordinates of a tile to dig (see world.DigSpot). They are found in
+// the chests of ruins and lairs, or on monsters. Arriving exactly on the tile unearths it: gold,
+// potions and a piece of gear of the region's rank + 1. Maps belong to the character (saved with them),
+// they are not bag items, the bag only holding equipment.
 
 const (
-	maxMaps        = 5    // cartes détenues au plus
-	mapRegionReach = 2    // la case est dans une région à 2 régions au plus de la source
-	mapMinDistance = 40   // ... et à 40 cases au moins de la source
-	mapChestRuin   = 0.6  // part des coffres de ruine qui contiennent une carte
-	mapChestLair   = 0.25 // idem pour un coffre de repaire
-	mapDropMonster = 0.02 // part des monstres de surface qui en lâchent une
-	mapDropElite   = 0.06 // idem pour un chevalier ou un boss
-	digGold        = 25   // or minimal par niveau de région ; le maximum est le double
+	maxMaps        = 5    // maximum number of maps held
+	mapRegionReach = 2    // the tile is in a region at most 2 regions from the source
+	mapMinDistance = 40   // ... and at least 40 tiles from the source
+	mapChestRuin   = 0.6  // share of ruin chests that contain a map
+	mapChestLair   = 0.25 // same for a lair chest
+	mapDropMonster = 0.02 // share of surface monsters that drop one
+	mapDropElite   = 0.06 // same for a knight or a boss
+	digGold        = 25   // minimum gold per region level; the maximum is double
 )
 
-// giveMap tire une nouvelle case à creuser près de from et l'ajoute aux cartes de p. Renvoie la ligne de journal
-// qui l'annonce, ou "" s'il n'y en a pas eu (trop de cartes, pas de case valable).
+// giveMap draws a new tile to dig near from and adds it to p's maps. Returns the journal line
+// that announces it, or "" if there was none (too many maps, no valid tile).
 func (g *Game) giveMap(p *player, from world.Pos) string {
 	if len(p.maps) >= maxMaps {
 		return ""
@@ -44,7 +44,7 @@ func (g *Game) giveMap(p *player, from world.Pos) string {
 	return ""
 }
 
-// monsterMap tire la carte au trésor que m laisse peut-être à p. Seuls les monstres de la surface en lâchent.
+// monsterMap draws the treasure map that m may leave to p. Only surface monsters drop them.
 func (g *Game) monsterMap(p *player, m *monster) string {
 	if m.zone != 0 || m.sp.Dungeon {
 		return ""
@@ -59,8 +59,8 @@ func (g *Game) monsterMap(p *player, m *monster) string {
 	return g.giveMap(p, m.pos)
 }
 
-// dig déterre le trésor si p vient d'arriver sur la case d'une de ses cartes. Un sac plein laisse la carte : on
-// peut revenir.
+// dig unearths the treasure if p has just arrived on the tile of one of their maps. A full bag leaves the map: one
+// can come back.
 func (g *Game) dig(p *player, pos world.Pos) {
 	i := slices.Index(p.maps, pos)
 	if i < 0 {

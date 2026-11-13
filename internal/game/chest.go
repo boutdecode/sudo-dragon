@@ -6,18 +6,18 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Coffres de donjon : on les ouvre en marchant dessus, une seule fois par instance (le premier arrivé les vide).
-// Ils donnent de l'or, parfois des potions et parfois une pièce d'équipement. Le coffre du boss est verrouillé
-// tant que le boss vit, et contient toujours un objet, un cran au-dessus du palier du donjon.
+// Dungeon chests: opened by walking onto them, once per instance (the first to arrive empties them).
+// They give gold, sometimes potions and sometimes a piece of gear. The boss chest is locked
+// while the boss lives, and always holds an item, one rank above the dungeon tier.
 
 const (
-	chestGoldPerTier = 15   // or minimal par palier ; le maximum est le double
-	chestGearChance  = 0.35 // part des coffres ordinaires qui contiennent un objet
+	chestGoldPerTier = 15   // gold minimum per tier; the maximum is double
+	chestGearChance  = 0.35 // share of ordinary chests that contain an item
 	chestPotionLuck  = 0.40
 )
 
-// openChest ouvre le coffre en pos pour p. Un coffre verrouillé, ou qui contient un objet que le sac plein ne peut
-// recevoir, reste fermé : on peut revenir.
+// openChest opens the chest at pos for p. A locked chest, or one holding an item that a full bag cannot
+// receive, stays closed: the player can come back.
 func (g *Game) openChest(p *player, inst *instance, pos world.Pos) {
 	if inst.opened[pos] {
 		return
@@ -50,12 +50,12 @@ func (g *Game) openChest(p *player, inst *instance, pos world.Pos) {
 	}
 	p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "dungeon.chest.open", gold, potions))
 	if loot != nil {
-		added, _ := p.inv.Add(*loot) // la place a été vérifiée plus haut
+		added, _ := p.inv.Add(*loot) // room was checked above
 		p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "dungeon.chest.item", added.Name))
 		p.gearDirty = true
 	}
 	g.sendBag(p)
-	g.sendZoneToAll(inst) // tous voient le coffre vidé
+	g.sendZoneToAll(inst) // everyone sees the emptied chest
 	g.save(p)
 }
 

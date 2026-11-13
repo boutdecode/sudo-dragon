@@ -8,36 +8,36 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Deed est une quête rendue : un fait vérifié, inscrit par le serveur (pas par le joueur).
-// Les PNJ du lieu s'en souviennent et la rumeur voyage comme celle des présentations.
+// Deed is a completed quest: a verified fact, recorded by the server (not by the player).
+// The place's NPCs remember it and the rumor travels like that of introductions.
 type Deed struct {
 	Account string
-	Place   world.RegionPos // lieu du donneur
+	Place   world.RegionPos // giver's place
 	Title   string
 	DoneAt  time.Time
 }
 
-// HeardDeed est une quête rendue telle qu'un PNJ en a connaissance.
+// HeardDeed is a completed quest as an NPC knows of it.
 type HeardDeed struct {
 	Deed
 	Distance int
 	Age      time.Duration
 }
 
-// Local indique que la quête a été rendue dans le lieu même du PNJ.
+// Local reports that the quest was completed in the NPC's own place.
 func (h HeardDeed) Local() bool { return h.Distance == 0 }
 
-// DeedRepo est le stockage des quêtes rendues (implémenté par internal/store).
+// DeedRepo is the storage of completed quests (implemented by internal/store).
 type DeedRepo interface {
-	// DeedsNear renvoie les quêtes rendues dans le carré de côté 2*radius+1 centré sur at,
-	// à partir de notBefore, les plus récentes d'abord.
+	// DeedsNear returns the quests completed in the square of side 2*radius+1 centered on at,
+	// from notBefore on, most recent first.
 	DeedsNear(ctx context.Context, at world.RegionPos, radius int, notBefore time.Time, limit int) ([]Deed, error)
 }
 
-// MaxHeardDeeds borne les faits rapportés dans un prompt.
+// MaxHeardDeeds bounds the facts reported in a prompt.
 const MaxHeardDeeds = 6
 
-// ReachesDeed : même règle que Reaches pour une quête rendue.
+// ReachesDeed: same rule as Reaches for a completed quest.
 func ReachesDeed(d Deed, at world.RegionPos, now time.Time) bool {
 	dist := Distance(d.Place, at)
 	if dist > RumorRadius {
@@ -47,8 +47,8 @@ func ReachesDeed(d Deed, at world.RegionPos, now time.Time) bool {
 	return age >= time.Duration(dist)*HopDelay && age <= Forgetting
 }
 
-// HeardDeeds renvoie ce qu'un PNJ du lieu at sait des quêtes rendues : celles de son
-// interlocuteur (mine) et celles des autres (others, en rumeur). Rien si Deeds est nil.
+// HeardDeeds returns what an NPC of place at knows of completed quests: those of its
+// interlocutor (mine) and those of others (others, as rumor). Nothing if Deeds is nil.
 func (b *Book) HeardDeeds(ctx context.Context, at world.RegionPos, speaker string) (mine, others []HeardDeed, err error) {
 	if b.Deeds == nil {
 		return nil, nil, nil

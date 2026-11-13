@@ -1,40 +1,40 @@
-// Package hero contient les règles des caractéristiques d'un personnage : tirage des dés,
-// modificateurs, classes, points de vie et mana. Il ne dépend d'aucun autre paquet du jeu et
-// reçoit son aléa en paramètre.
+// Package hero contains the rules for a character's ability scores: dice rolls,
+// modifiers, classes, hit points and mana. It depends on no other game package and
+// receives its randomness as a parameter.
 package hero
 
 import (
 	"math/rand/v2"
 )
 
-// Ability est l'une des six caractéristiques.
+// Ability is one of the six abilities.
 type Ability int
 
 const (
-	STR Ability = iota // force : attaques de mêlée
-	AGI                // agilité : attaques à distance
-	INT                // intelligence : attaques magiques
-	CON                // constitution : points de vie
-	WIS                // sagesse : mana
-	CHA                // charisme : perception par les PNJ
+	STR Ability = iota // strength: melee attacks
+	AGI                // agility: ranged attacks
+	INT                // intelligence: magic attacks
+	CON                // constitution: hit points
+	WIS                // wisdom: mana
+	CHA                // charisma: how NPCs perceive the character
 	NumAbilities
 )
 
-// Key est l'identifiant (clé de traduction) d'une caractéristique.
+// Key is the identifier (translation key) of an ability.
 func (a Ability) Key() string {
 	return [...]string{"str", "agi", "int", "con", "wis", "cha"}[a]
 }
 
-// Scores est la valeur des six caractéristiques (3 à 20 et plus).
+// Scores holds the value of the six abilities (3 to 20 and beyond).
 type Scores [NumAbilities]int
 
 const (
 	MinScore = 3
-	MaxScore = 30 // borne de lecture d'une sauvegarde
-	MaxRolls = 3  // relances autorisées à la création, au total
+	MaxScore = 30 // upper bound when reading a save file
+	MaxRolls = 3  // rerolls allowed at creation, in total
 )
 
-// Set indique si des caractéristiques ont été tirées (une fiche à zéro n'a pas été créée).
+// Set reports whether abilities have been rolled (an all-zero sheet has not been created).
 func (s Scores) Set() bool {
 	for _, v := range s {
 		if v != 0 {
@@ -44,10 +44,10 @@ func (s Scores) Set() bool {
 	return false
 }
 
-// Default est la fiche neutre (10 partout), pour un personnage sans création.
+// Default is the neutral sheet (10 everywhere), for a character without creation.
 func Default() Scores { return Scores{10, 10, 10, 10, 10, 10} }
 
-// Mod est le modificateur d'une valeur : 3 → −4, 4-5 → −3, 6-7 → −2, 8-9 → −1, 10-11 → 0,
+// Mod is the modifier of a value: 3 → −4, 4-5 → −3, 6-7 → −2, 8-9 → −1, 10-11 → 0,
 // 12-13 → +1, etc.
 func Mod(v int) int {
 	d := v - 10
@@ -57,10 +57,10 @@ func Mod(v int) int {
 	return -((-d + 1) / 2)
 }
 
-// Mod renvoie le modificateur de la caractéristique a.
+// Mod returns the modifier of ability a.
 func (s Scores) Mod(a Ability) int { return Mod(s[a]) }
 
-// Sanitize ramène chaque valeur dans [MinScore, MaxScore] ; une fiche non créée reste à zéro.
+// Sanitize clamps each value into [MinScore, MaxScore]; a sheet not created stays at zero.
 func (s Scores) Sanitize() Scores {
 	if !s.Set() {
 		return Scores{}
@@ -71,12 +71,12 @@ func (s Scores) Sanitize() Scores {
 	return s
 }
 
-// Roll3d6 lance trois dés à six faces et les additionne (3 à 18).
+// Roll3d6 rolls three six-sided dice and adds them (3 to 18).
 func Roll3d6(rng *rand.Rand) int {
 	return rng.IntN(6) + rng.IntN(6) + rng.IntN(6) + 3
 }
 
-// RollScores tire les six caractéristiques.
+// RollScores rolls the six abilities.
 func RollScores(rng *rand.Rand) Scores {
 	var s Scores
 	for i := range s {
@@ -85,20 +85,20 @@ func RollScores(rng *rand.Rand) Scores {
 	return s
 }
 
-// Creation est un tirage en cours de validation.
+// Creation is a roll pending validation.
 type Creation struct {
 	Scores Scores
-	Rolls  int // relances utilisées
+	Rolls  int // rerolls used
 }
 
-// NewCreation tire une fiche.
+// NewCreation rolls a sheet.
 func NewCreation(rng *rand.Rand) Creation { return Creation{Scores: RollScores(rng)} }
 
-// Left est le nombre de relances restantes.
+// Left is the number of rerolls remaining.
 func (c Creation) Left() int { return MaxRolls - c.Rolls }
 
-// Reroll relance une caractéristique. Renvoie false, sans rien changer, si l'indice est
-// invalide ou si les relances sont épuisées.
+// Reroll rerolls one ability. It returns false, changing nothing, if the index is
+// invalid or if rerolls are exhausted.
 func (c *Creation) Reroll(a Ability, rng *rand.Rand) bool {
 	if a < 0 || a >= NumAbilities || c.Rolls >= MaxRolls {
 		return false
@@ -108,7 +108,7 @@ func (c *Creation) Reroll(a Ability, rng *rand.Rand) bool {
 	return true
 }
 
-// Class est la base d'un personnage.
+// Class is the base of a character.
 type Class string
 
 const (
@@ -117,13 +117,13 @@ const (
 	Mage    Class = "mage"
 )
 
-// Classes dans l'ordre d'affichage.
+// Classes in display order.
 var Classes = []Class{Warrior, Rogue, Mage}
 
-// Valid indique si c est une classe connue.
+// Valid reports whether c is a known class.
 func (c Class) Valid() bool { return c == Warrior || c == Rogue || c == Mage }
 
-// OrDefault renvoie c, ou guerrier si elle est inconnue.
+// OrDefault returns c, or warrior if it is unknown.
 func (c Class) OrDefault() Class {
 	if c.Valid() {
 		return c
@@ -131,7 +131,7 @@ func (c Class) OrDefault() Class {
 	return Warrior
 }
 
-// HitDie est le dé de vie de la classe.
+// HitDie is the hit die of the class.
 func (c Class) HitDie() int {
 	switch c {
 	case Rogue:
@@ -142,7 +142,7 @@ func (c Class) HitDie() int {
 	return 12
 }
 
-// ManaBase est la mana de départ de la classe.
+// ManaBase is the starting mana of the class.
 func (c Class) ManaBase() int {
 	switch c {
 	case Rogue:
@@ -153,15 +153,15 @@ func (c Class) ManaBase() int {
 	return 2
 }
 
-// FirstHP : PV au niveau 1 (dé de vie au maximum + modificateur de CON, au moins 1).
+// FirstHP: HP at level 1 (hit die at maximum + CON modifier, at least 1).
 func FirstHP(c Class, s Scores) int { return max(1, c.OrDefault().HitDie()+s.Mod(CON)) }
 
-// LevelHP : PV gagnés à un niveau (dé de vie lancé + modificateur de CON, au moins 1).
+// LevelHP: HP gained at a level (hit die rolled + CON modifier, at least 1).
 func LevelHP(c Class, s Scores, rng *rand.Rand) int {
 	return max(1, rng.IntN(c.OrDefault().HitDie())+1+s.Mod(CON))
 }
 
-// RollHP calcule les PV d'un personnage de niveau level, un dé par niveau au-delà du premier.
+// RollHP computes the HP of a character of level level, one die per level beyond the first.
 func RollHP(c Class, s Scores, level int, rng *rand.Rand) int {
 	hp := FirstHP(c, s)
 	for l := 2; l <= level; l++ {
@@ -170,20 +170,20 @@ func RollHP(c Class, s Scores, level int, rng *rand.Rand) int {
 	return hp
 }
 
-// SanitizeHP ramène des PV maximaux lus d'une sauvegarde dans les bornes possibles.
+// SanitizeHP clamps max HP read from a save file into the possible bounds.
 func SanitizeHP(hp int, c Class, s Scores, level int) int {
 	level = max(1, level)
 	hi := max(level, FirstHP(c, s)+(level-1)*max(1, c.OrDefault().HitDie()+s.Mod(CON)))
 	return max(level, min(hp, hi))
 }
 
-// MaxMana est la réserve de mana (SAG la fait varier).
+// MaxMana is the mana reserve (WIS makes it vary).
 func MaxMana(c Class, s Scores, level int) int {
 	level = max(1, level)
 	return max(0, c.OrDefault().ManaBase()+2*(level-1)+level*s.Mod(WIS))
 }
 
-// Kind est le style d'attaque d'une arme.
+// Kind is the attack style of a weapon.
 type Kind string
 
 const (
@@ -192,10 +192,10 @@ const (
 	Magic  Kind = "magic"
 )
 
-// Valid indique si k est un style connu.
+// Valid reports whether k is a known style.
 func (k Kind) Valid() bool { return k == Melee || k == Ranged || k == Magic }
 
-// OrMelee renvoie k, ou mêlée s'il est inconnu (ou vide : sans arme).
+// OrMelee returns k, or melee if it is unknown (or empty: no weapon).
 func (k Kind) OrMelee() Kind {
 	if k.Valid() {
 		return k
@@ -203,7 +203,7 @@ func (k Kind) OrMelee() Kind {
 	return Melee
 }
 
-// Stat est la caractéristique qui dirige ce style.
+// Stat is the ability that drives this style.
 func (k Kind) Stat() Ability {
 	switch k {
 	case Ranged:
@@ -214,19 +214,19 @@ func (k Kind) Stat() Ability {
 	return STR
 }
 
-// SpellCost est la mana dépensée par une attaque magique.
+// SpellCost is the mana spent by a magic attack.
 const SpellCost = 2
 
-// Size est la taille d'une créature : elle fixe sa DEF de base.
+// Size is the size of a creature: it sets its base DEF.
 type Size string
 
 const (
-	Small  Size = "small"  // petites créatures
-	Medium Size = "medium" // humanoïdes et créatures moyennes (les joueurs)
-	Large  Size = "large"  // grandes créatures
+	Small  Size = "small"  // small creatures
+	Medium Size = "medium" // humanoids and medium creatures (the players)
+	Large  Size = "large"  // large creatures
 )
 
-// DefBase est la DEF de base d'une taille (8, 10 ou 12) ; une taille inconnue vaut moyenne.
+// DefBase is the base DEF of a size (8, 10 or 12); an unknown size is medium.
 func DefBase(s Size) int {
 	switch s {
 	case Small:
@@ -237,11 +237,11 @@ func DefBase(s Size) int {
 	return 10
 }
 
-// DefenseBonus est le bonus de DEF de l'agilité (le modificateur d'AGI).
+// DefenseBonus is the DEF bonus from agility (the AGI modifier).
 func (s Scores) DefenseBonus() int { return s.Mod(AGI) }
 
-// Hits indique si un jet de d20 touche : le 20 naturel touche toujours, le 1 naturel échoue toujours,
-// sinon il faut faire strictement plus que la DEF avec le bonus.
+// Hits reports whether a d20 roll hits: a natural 20 always hits, a natural 1 always misses,
+// otherwise it must be strictly greater than the DEF with the bonus.
 func Hits(roll, bonus, def int) bool {
 	switch roll {
 	case 20:
@@ -252,7 +252,7 @@ func Hits(roll, bonus, def int) bool {
 	return roll+bonus > def
 }
 
-// HitChance est la probabilité (0 à 1) de toucher une DEF avec un bonus, selon Hits.
+// HitChance is the probability (0 to 1) of hitting a DEF with a bonus, per Hits.
 func HitChance(bonus, def int) float64 {
 	n := 0
 	for r := 1; r <= 20; r++ {
@@ -263,11 +263,11 @@ func HitChance(bonus, def int) float64 {
 	return float64(n) / 20
 }
 
-// PriceAdjust est l'ajustement des prix (en %) selon le modificateur de CHA : −2 % par point
-// positif, +2 % par point négatif, borné à ±10 %.
+// PriceAdjust is the price adjustment (in %) from the CHA modifier: −2% per positive
+// point, +2% per negative point, capped at ±10%.
 func PriceAdjust(mod int) int { return max(-10, min(10, -2*mod)) }
 
-// AdjustPrice applique le charisme à un prix (jamais moins de 1 pour un prix positif).
+// AdjustPrice applies charisma to a price (never less than 1 for a positive price).
 func AdjustPrice(price, chaMod int) int {
 	if price <= 0 {
 		return price
@@ -275,7 +275,7 @@ func AdjustPrice(price, chaMod int) int {
 	return max(1, price*(100+PriceAdjust(chaMod))/100)
 }
 
-// Impression est la clé de traduction du palier d'impression que fait le personnage.
+// Impression is the translation key of the impression tier the character makes.
 func Impression(mod int) string {
 	switch {
 	case mod <= -3:

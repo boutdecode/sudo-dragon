@@ -16,32 +16,32 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// apiKeyEnv est la variable d'environnement qui porte la clé d'API. La clé n'est
-// volontairement JAMAIS une option de ligne de commande : elle apparaîtrait dans la
-// liste des processus et dans l'historique du shell.
+// apiKeyEnv is the environment variable that carries the API key. The key is
+// deliberately NEVER a command-line option: it would show up in the
+// process list and in the shell history.
 const apiKeyEnv = "MISTRAL_API_KEY"
 
-// superviseEvery est l'intervalle entre deux nouvelles sondes quand l'API est indisponible.
+// superviseEvery is the interval between two new probes when the API is unavailable.
 var superviseEvery = 5 * time.Minute
 
-// llmOptions regroupe les réglages des dialogues de PNJ.
+// llmOptions groups the settings of NPC dialogues.
 type llmOptions struct {
-	Mode            string // "auto", "on" ou "off"
+	Mode            string // "auto", "on" or "off"
 	Model           string
 	ModerationModel string
-	BaseURL         string // pour un faux serveur en développement ; vide = API officielle
+	BaseURL         string // for a fake server in development; empty = official API
 	DailyTokens     int
 	Workers         int
 }
 
-// setupTalker construit le service de dialogue des PNJ, ou renvoie nil s'il est désactivé.
+// setupTalker builds the NPC dialogue service, or returns nil if it is disabled.
 //
-//	off  : jamais
-//	auto : seulement si MISTRAL_API_KEY est définie
-//	on   : exige la clé, sinon erreur (démarrage refusé)
+//	off:  never
+//	auto: only if MISTRAL_API_KEY is set
+//	on:   requires the key, otherwise an error (startup refused)
 //
-// Une API injoignable ou une clé refusée ne bloque pas le démarrage : le jeu fonctionne
-// sans dialogues, et le service reprend tout seul si l'API redevient disponible.
+// An unreachable API or a rejected key does not block startup: the game works
+// without dialogues, and the service resumes by itself if the API becomes available again.
 func setupTalker(ctx context.Context, o llmOptions, st *store.Store, w *world.World, log *slog.Logger, getenv func(string) string) (*npcai.Service, error) {
 	key := strings.TrimSpace(getenv(apiKeyEnv))
 	switch o.Mode {
@@ -49,15 +49,15 @@ func setupTalker(ctx context.Context, o llmOptions, st *store.Store, w *world.Wo
 		return nil, nil
 	case "on":
 		if key == "" {
-			return nil, fmt.Errorf("-llm=on exige la variable d'environnement %s", apiKeyEnv)
+			return nil, fmt.Errorf("-llm=on requires the %s environment variable", apiKeyEnv)
 		}
 	case "auto", "":
 		if key == "" {
-			log.Info("dialogues de PNJ désactivés : " + apiKeyEnv + " n'est pas définie")
+			log.Info("NPC dialogues disabled: " + apiKeyEnv + " is not set")
 			return nil, nil
 		}
 	default:
-		return nil, fmt.Errorf("valeur de -llm inconnue : %q (attendu auto, on ou off)", o.Mode)
+		return nil, fmt.Errorf("unknown -llm value: %q (expected auto, on or off)", o.Mode)
 	}
 
 	opts := []llm.Option{}
@@ -95,14 +95,14 @@ func setupTalker(ctx context.Context, o llmOptions, st *store.Store, w *world.Wo
 	res := svc.Probe(ctx)
 	switch {
 	case res.Chat:
-		log.Info("dialogues de PNJ activés",
-			"modèle", orDefault(o.Model, llm.DefaultModel), "garde-fous", res.Guardrails, "modération", res.Moderation)
+		log.Info("NPC dialogues enabled",
+			"model", orDefault(o.Model, llm.DefaultModel), "guardrails", res.Guardrails, "moderation", res.Moderation)
 		if !res.Moderation {
-			log.Warn("modération indisponible : les PNJ parlent mais ne retiennent aucune présentation", "err", errText(res.ModerationErr))
+			log.Warn("moderation unavailable: NPCs talk but retain no introduction", "err", errText(res.ModerationErr))
 		}
 	default:
-		// La clé n'apparaît jamais dans une erreur de llm (voir TestAPIKeyNeverAppearsInErrors).
-		log.Warn("dialogues de PNJ indisponibles pour l'instant : l'API ne répond pas comme attendu", "err", errText(res.ChatErr))
+		// The key never appears in an llm error (see TestAPIKeyNeverAppearsInErrors).
+		log.Warn("NPC dialogues unavailable for now: the API is not responding as expected", "err", errText(res.ChatErr))
 	}
 	go svc.Supervise(ctx, superviseEvery)
 	return svc, nil

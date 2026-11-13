@@ -9,22 +9,22 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Récolte de matières premières (voir internal/resource et world/resources.go). Un nœud (arbre, filon, touffe) se
-// récolte avec la touche d'action, depuis sa case ou une case voisine. Il est ensuite épuisé pour tout le monde
-// pendant nodeRespawn ticks, puis repousse.
+// Gathering raw materials (see internal/resource and world/resources.go). A node (tree, vein, tuft) is
+// gathered with the action key, from its tile or an adjacent tile. It is then depleted for everyone
+// for nodeRespawn ticks, then grows back.
 const (
-	nodeRespawn    = 6000 // 10 min (10 ticks par seconde)
-	gatherCooldown = 8    // délai minimal entre deux récoltes d'un joueur
-	maxResourceQty = 99   // plafond d'une pile relue d'une sauvegarde (le sac est borné par le métier)
-	nodeNearby     = 160  // rayon (en cases) des nœuds épuisés envoyés au client
-	nodeResync     = 40   // distance parcourue qui force un nouvel envoi
+	nodeRespawn    = 6000 // 10 min (10 ticks per second)
+	gatherCooldown = 8    // minimum delay between two gatherings by a player
+	maxResourceQty = 99   // cap of a stack reloaded from a save (the bag is bounded by the job)
+	nodeNearby     = 160  // radius (in tiles) of depleted nodes sent to the client
+	nodeResync     = 40   // distance travelled that forces a new send
 	maxNodesSent   = 512
 )
 
-// gatherReach liste les cases où un nœud peut être récolté: sous le joueur, puis ses quatre voisines.
+// gatherReach lists the tiles where a node can be gathered: under the player, then their four neighbours.
 var gatherReach = [...][2]int{{0, 0}, {0, -1}, {0, 1}, {-1, 0}, {1, 0}}
 
-// Gather fait récolter au joueur le nœud de ressource à sa portée.
+// Gather makes the player gather the resource node within reach.
 func (g *Game) Gather(id int) { g.do(func() { g.gather(id) }) }
 
 func (g *Game) gather(id int) {
@@ -49,11 +49,11 @@ func (g *Game) gather(id int) {
 		}
 		info, _ := resource.Lookup(kind)
 		level := resource.LevelOf(p.skills[info.Cat])
-		if usedIn(p.resources, info.Cat) >= resource.Capacity(level) { // sac de la catégorie plein: le nœud n'est pas touché
+		if usedIn(p.resources, info.Cat) >= resource.Capacity(level) { // category bag full: the node is untouched
 			g.poiNotice(p, "gather.full", jobName(p, info.Cat))
 			return
 		}
-		g.spent[pos] = g.tick // réussie ou non, la tentative épuise le nœud
+		g.spent[pos] = g.tick // successful or not, the attempt depletes the node
 		g.spentVer++
 		if g.rng.IntN(100) >= resource.Chance(level) {
 			g.poiNotice(p, "gather.fail", resourceName(p, kind))
@@ -83,7 +83,7 @@ func (g *Game) gather(id int) {
 	g.poiNotice(p, "gather.none")
 }
 
-// expireNodes remet en place les nœuds dont le délai est écoulé.
+// expireNodes restores the nodes whose delay has elapsed.
 func (g *Game) expireNodes() {
 	if g.tick%50 != 0 || len(g.spent) == 0 {
 		return
@@ -96,8 +96,8 @@ func (g *Game) expireNodes() {
 	}
 }
 
-// syncNodes envoie au client la liste des nœuds épuisés autour de lui quand elle a changé, ou quand il s'est
-// éloigné du point où elle a été calculée.
+// syncNodes sends the client the list of depleted nodes around them when it has changed, or when they have
+// moved away from the point where it was computed.
 func (g *Game) syncNodes(p *player) {
 	if p.sendNodesMsg == nil || p.zone != 0 {
 		return
@@ -106,7 +106,7 @@ func (g *Game) syncNodes(p *player) {
 	if p.nodesVer == g.spentVer && !moved {
 		return
 	}
-	// Une liste vide déjà annoncée n'a pas besoin d'être répétée.
+	// An empty list already announced need not be repeated.
 	empty := len(g.spent) == 0 && p.nodesVer == g.spentVer
 	p.nodesVer, p.nodesAt = g.spentVer, p.pos
 	if empty {
@@ -127,10 +127,10 @@ func (g *Game) syncNodes(p *player) {
 	p.sendNodesMsg(n)
 }
 
-// resourceName est le nom d'une ressource dans la langue du joueur.
+// resourceName is the name of a resource in the player's language.
 func resourceName(p *player, k resource.Kind) string { return i18n.T(p.lang, "resource."+string(k)) }
 
-// resourceStacks met le sac de matières en forme pour le client: par catégorie, puis par identifiant.
+// resourceStacks formats the materials bag for the client: by category, then by identifier.
 func resourceStacks(m map[resource.Kind]int) []protocol.ResourceStack {
 	var out []protocol.ResourceStack
 	for _, info := range resource.All() {
@@ -141,7 +141,7 @@ func resourceStacks(m map[resource.Kind]int) []protocol.ResourceStack {
 	return out
 }
 
-// loadResources relit le sac sauvegardé en écartant les ressources inconnues et les quantités absurdes.
+// loadResources reloads the saved bag, discarding unknown resources and absurd quantities.
 func loadResources(saved map[string]int) map[resource.Kind]int {
 	out := map[resource.Kind]int{}
 	for id, n := range saved {
@@ -152,7 +152,7 @@ func loadResources(saved map[string]int) map[resource.Kind]int {
 	return out
 }
 
-// saveResources est l'inverse de loadResources.
+// saveResources is the inverse of loadResources.
 func saveResources(m map[resource.Kind]int) map[string]int {
 	if len(m) == 0 {
 		return nil
@@ -164,7 +164,7 @@ func saveResources(m map[resource.Kind]int) map[string]int {
 	return out
 }
 
-// usedIn est le nombre d'unités portées pour une catégorie, toutes déclinaisons confondues.
+// usedIn is the number of units carried for a category, all variants combined.
 func usedIn(m map[resource.Kind]int, cat resource.Category) int {
 	n := 0
 	for k, q := range m {
@@ -175,10 +175,10 @@ func usedIn(m map[resource.Kind]int, cat resource.Category) int {
 	return n
 }
 
-// jobName est le nom du métier associé à une catégorie, dans la langue du joueur.
+// jobName is the name of the job associated with a category, in the player's language.
 func jobName(p *player, c resource.Category) string { return i18n.T(p.lang, "job."+c.Key()) }
 
-// jobInfos décrit les métiers du joueur pour le client, dans l'ordre des catégories.
+// jobInfos describes the player's jobs for the client, in category order.
 func jobInfos(p *player) []protocol.JobInfo {
 	out := make([]protocol.JobInfo, 0, resource.NumCategories)
 	for c := resource.Category(0); c < resource.NumCategories; c++ {
@@ -189,7 +189,7 @@ func jobInfos(p *player) []protocol.JobInfo {
 	return out
 }
 
-// loadSkills relit l'expérience sauvegardée en écartant les catégories inconnues.
+// loadSkills reloads the saved experience, discarding unknown categories.
 func loadSkills(saved map[string]int) map[resource.Category]int {
 	out := map[resource.Category]int{}
 	for c := resource.Category(0); c < resource.NumCategories; c++ {
@@ -200,7 +200,7 @@ func loadSkills(saved map[string]int) map[resource.Category]int {
 	return out
 }
 
-// saveSkills est l'inverse de loadSkills.
+// saveSkills is the inverse of loadSkills.
 func saveSkills(m map[resource.Category]int) map[string]int {
 	var out map[string]int
 	for c, xp := range m {

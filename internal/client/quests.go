@@ -15,15 +15,15 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Livre de quêtes (touche Q) et carte de proposition d'un PNJ. Tout ce qui s'y affiche vient
-// du serveur : les quantités sont celles qu'il versera réellement, jamais celles d'un PNJ.
+// Quest book (Q key) and an NPC's offer card. Everything displayed there comes
+// from the server: the amounts are those it will actually pay out, never those of an NPC.
 
 const (
 	maxQuestText = 300
 	maxQuestRows = 60
 )
 
-// cleanQuest nettoie les textes d'une quête reçue (le client ne se fie pas au serveur).
+// cleanQuest cleans the texts of a received quest (the client does not trust the server).
 func cleanQuest(q protocol.QuestInfo) protocol.QuestInfo {
 	q.Title = textsafe.Clean(q.Title, 80)
 	q.Story = textsafe.Clean(q.Story, maxQuestText)
@@ -68,7 +68,7 @@ func cleanQuests(b protocol.Quests) protocol.Quests {
 	return b
 }
 
-// applyQuests enregistre le livre reçu et affiche ses notifications dans le journal.
+// applyQuests records the book received and shows its notifications in the log.
 func (m *Model) applyQuests(b protocol.Quests) {
 	b = cleanQuests(b)
 	m.quests = b
@@ -80,7 +80,7 @@ func (m *Model) applyQuests(b protocol.Quests) {
 	}
 }
 
-// readyQuests compte les quêtes à rendre.
+// readyQuests counts the quests ready to be handed in.
 func (m Model) readyQuests() (open, ready int) {
 	for _, q := range m.quests.Open {
 		if q.State == "ready" {
@@ -90,7 +90,7 @@ func (m Model) readyQuests() (open, ready int) {
 	return len(m.quests.Open), ready
 }
 
-// readyGivers renvoie les PNJ à qui une quête prête peut être rendue (affichés « ? » sur la carte).
+// readyGivers returns the NPCs to whom a ready quest can be handed in (shown as "?" on the map).
 func (m Model) readyGivers() map[world.NPCKey]bool {
 	var out map[world.NPCKey]bool
 	for _, q := range m.quests.Open {
@@ -105,9 +105,9 @@ func (m Model) readyGivers() map[world.NPCKey]bool {
 	return out
 }
 
-// giverIdle dit si un donneur n'a rien à confier maintenant (quête déjà ouverte chez lui, pause après
-// une remise, ou quota atteint): son « ! » disparaît. Les pauses se décomptent en local, le « ! »
-// revient donc sans nouveau message du serveur.
+// giverIdle tells whether a giver has nothing to entrust right now (quest already open with them, pause after
+// a hand-in, or quota reached): their "!" disappears. Pauses are counted down locally, so the "!"
+// comes back without a new server message.
 func (m Model) giverIdle(k world.NPCKey) bool {
 	if m.quests.Full {
 		return true
@@ -126,7 +126,7 @@ func (m Model) giverIdle(k world.NPCKey) bool {
 	return false
 }
 
-// questSummary est la ligne du panneau latéral ("" s'il n'y a aucune quête).
+// questSummary is the side panel line ("" if there is no quest).
 func (m Model) questSummary() string {
 	open, ready := m.readyQuests()
 	if open == 0 {
@@ -135,7 +135,7 @@ func (m Model) questSummary() string {
 	return " " + goldStyle.Render(m.t("quest.hud", open, ready))
 }
 
-// updateQuestKey traite une touche dans le livre de quêtes.
+// updateQuestKey handles a key in the quest book.
 func (m Model) updateQuestKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	confirm := m.questConfirm
@@ -153,7 +153,7 @@ func (m Model) updateQuestKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.questTab != 0 || m.questSel >= len(m.quests.Open) || m.conn == nil {
 			break
 		}
-		if !confirm { // un abandon est définitif : il faut appuyer deux fois
+		if !confirm { // an abandon is final: it takes two presses
 			m.questConfirm = true
 			break
 		}
@@ -166,7 +166,7 @@ func (m Model) questRewardLine(q protocol.QuestInfo) string {
 	return m.t("quest.book.reward", q.Gold, q.XP, q.Potions)
 }
 
-// questView dessine le livre de quêtes dans exactement w x h cellules.
+// questView draws the quest book in exactly w x h cells.
 func (m Model) questView(w, h int) string {
 	if m.questTab == 1 {
 		return m.questStandingView(w, h)
@@ -227,7 +227,7 @@ func ansiStripPad(s string, w int) string {
 	return ui.Fit(s, w)
 }
 
-// questStandingView montre la réputation par lieu et les dernières quêtes rendues.
+// questStandingView shows reputation per place and the latest quests handed in.
 func (m Model) questStandingView(w, h int) string {
 	leftW := w / 2
 	var rep []string
@@ -255,7 +255,7 @@ func (m Model) questStandingView(w, h int) string {
 	)
 }
 
-// npcQuestView dessine la carte de proposition d'une quête dans exactement w x h cellules.
+// npcQuestView draws a quest offer card in exactly w x h cells.
 func (m Model) npcQuestView(w, h int) string {
 	d := m.npc
 	var body []string
@@ -281,8 +281,8 @@ func (m Model) npcQuestView(w, h int) string {
 	return ui.Panel(m.t("quest.card.title"), strings.Join(body, "\n"), w, h)
 }
 
-// updateNPCQuestKey traite une touche pendant une proposition de quête. Entrée ne fait rien :
-// accepter doit être un geste délibéré.
+// updateNPCQuestKey handles a key during a quest offer. Enter does nothing:
+// accepting must be a deliberate gesture.
 func (m Model) updateNPCQuestKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.conn == nil {
 		return m, nil
@@ -296,8 +296,8 @@ func (m Model) updateNPCQuestKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// npcOfferKey donne la touche d'une offre. Les remises de quête, qui partagent la même action,
-// se choisissent par un chiffre (1, 2…) selon leur rang parmi les remises.
+// npcOfferKey gives the key of an offer. Quest hand-ins, which share the same action,
+// are chosen by a digit (1, 2…) according to their rank among the hand-ins.
 func (m Model) npcOfferKey(o protocol.NPCOffer, turnInRank int) string {
 	switch o.Action {
 	case protocol.NPCQuestAccept:
@@ -310,12 +310,12 @@ func (m Model) npcOfferKey(o protocol.NPCOffer, turnInRank int) string {
 	return m.npcKeyLabel(o.Action)
 }
 
-// isNumbered : les offres qui portent un argument (quête à rendre, objet à acheter ou à revendre) se choisissent par un chiffre.
+// isNumbered: offers that carry an argument (quest to hand in, item to buy or sell) are chosen by a digit.
 func isNumbered(action string) bool {
 	return action == protocol.NPCTurnIn || action == protocol.NPCBuyItem || action == protocol.NPCSellItem || action == protocol.NPCWhere
 }
 
-// itemOffers renvoie les offres d'équipement (celles qui portent une fiche d'objet), dans l'ordre.
+// itemOffers returns the equipment offers (those carrying an item sheet), in order.
 func (m Model) itemOffers() []protocol.NPCOffer {
 	var out []protocol.NPCOffer
 	for _, o := range m.npc.Offers {
@@ -326,7 +326,7 @@ func (m Model) itemOffers() []protocol.NPCOffer {
 	return out
 }
 
-// numberedOffers renvoie, dans l'ordre, les offres choisies par un chiffre.
+// numberedOffers returns, in order, the offers chosen by a digit.
 func (m Model) numberedOffers() []protocol.NPCOffer {
 	var out []protocol.NPCOffer
 	for _, o := range m.npc.Offers {

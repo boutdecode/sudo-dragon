@@ -6,42 +6,42 @@ import (
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
-// Donjons : une entrée secrète sur la carte principale mène à une carte à part, générée
-// d'après la seed du donjon. Tout est déterministe : le serveur et le client calculent les
-// mêmes donjons et les mêmes plans à partir de la seed du monde, sans rien s'échanger.
+// Dungeons: a secret entrance on the main map leads to a separate map, generated
+// from the dungeon's seed. Everything is deterministic: the server and the client compute the
+// same dungeons and the same plans from the world seed, without exchanging anything.
 //
-// Les tirages viennent de flux d'identité dédiés (identityRNG avec un sel propre), jamais du
-// flux de génération des plans : ajouter des donjons ne modifie aucun lieu existant.
+// The draws come from dedicated identity streams (identityRNG with its own salt), never from the
+// plan generation stream: adding dungeons changes no existing place.
 
 const (
-	dungeonChance     = 0.2 // part des régions qui cachent un donjon
+	dungeonChance     = 0.2 // share of the regions that hide a dungeon
 	dungeonSalt       = 7000
 	dungeonNameSalt   = 7100
 	dungeonSeedSalt   = 7200
 	dungeonSpotSalt   = 7300
-	dungeonMargin     = 16 // distance minimale de l'entrée au bord de sa région
-	dungeonTries      = 48 // sites d'entrée essayés avant d'abandonner
-	dungeonClash      = 3  // rayon (en régions) dans lequel deux donjons n'ont pas le même nom
+	dungeonMargin     = 16 // minimum distance from the entrance to the edge of its region
+	dungeonTries      = 48 // entrance sites tried before giving up
+	dungeonClash      = 3  // radius (in regions) within which two dungeons do not share the same name
 	dungeonMaxTier    = 5
 	dungeonCacheMax   = 4096
 	numDungeonNames   = 8
 	numDungeonRerolls = 8
 )
 
-// Dungeon est un donjon caché dans une région.
+// Dungeon is a dungeon hidden in a region.
 type Dungeon struct {
-	ID       string    // identifiant unique et stable, « x,y » de sa région
-	Name     string    // nom en français (voir NameIn pour les autres langues)
-	Region   RegionPos // région qui le cache
-	Entrance Pos       // case de la carte principale qui y mène
-	Seed     int64     // seed du plan (voir NewDungeonMap)
-	Tier     int       // difficulté, de 1 à dungeonMaxTier : croît avec l'éloignement de l'origine
+	ID       string    // unique, stable identifier, "x,y" of its region
+	Name     string    // name in French (see NameIn for the other languages)
+	Region   RegionPos // region that hides it
+	Entrance Pos       // tile of the main map that leads to it
+	Seed     int64     // seed of the plan (see NewDungeonMap)
+	Tier     int       // difficulty, from 1 to dungeonMaxTier: grows with distance from the origin
 
 	nameIdx int
 	stem    stem
 }
 
-// NameIn renvoie le nom du donjon dans la langue l.
+// NameIn returns the name of the dungeon in language l.
 func (d *Dungeon) NameIn(l i18n.Lang) string {
 	return dungeonName(l, d.nameIdx, d.stem)
 }
@@ -50,7 +50,7 @@ func dungeonName(l i18n.Lang, idx int, s stem) string {
 	return fmt.Sprintf(i18n.T(l, fmt.Sprintf("dungeon.name.%d", idx)), s.String())
 }
 
-// DungeonOfRegion renvoie le donjon caché dans la région rp, ou nil s'il n'y en a pas.
+// DungeonOfRegion returns the dungeon hidden in region rp, or nil if there is none.
 func (w *World) DungeonOfRegion(rp RegionPos) *Dungeon {
 	w.dmu.Lock()
 	if d, ok := w.dungeons[rp]; ok {
@@ -59,7 +59,7 @@ func (w *World) DungeonOfRegion(rp RegionPos) *Dungeon {
 	}
 	w.dmu.Unlock()
 
-	d := w.buildDungeon(rp) // hors verrou : touche aux structures et aux routes
+	d := w.buildDungeon(rp) // outside the lock: touches the structures and the roads
 	w.dmu.Lock()
 	if len(w.dungeons) >= dungeonCacheMax {
 		clear(w.dungeons)
@@ -69,7 +69,7 @@ func (w *World) DungeonOfRegion(rp RegionPos) *Dungeon {
 	return d
 }
 
-// DungeonByID retrouve un donjon d'après son identifiant.
+// DungeonByID finds a dungeon from its identifier.
 func (w *World) DungeonByID(id string) *Dungeon {
 	var rp RegionPos
 	if n, err := fmt.Sscanf(id, "%d,%d", &rp.X, &rp.Y); err != nil || n != 2 {
@@ -82,7 +82,7 @@ func (w *World) DungeonByID(id string) *Dungeon {
 	return d
 }
 
-// DungeonsNear renvoie les donjons des régions situées à au plus radius régions de la tuile (x, y).
+// DungeonsNear returns the dungeons of the regions lying at most radius regions from tile (x, y).
 func (w *World) DungeonsNear(x, y, radius int) []*Dungeon {
 	c := RegionOf(x, y)
 	var out []*Dungeon
@@ -96,8 +96,8 @@ func (w *World) DungeonsNear(x, y, radius int) []*Dungeon {
 	return out
 }
 
-// DungeonsWithin renvoie les donjons dont l'entrée est à au plus r cases (distance de Chebyshev) de (x, y). Il ne
-// regarde que les régions que ce carré touche: c'est la recherche à faire à chaque pas d'un joueur.
+// DungeonsWithin returns the dungeons whose entrance is at most r tiles (Chebyshev distance) from (x, y). It only
+// looks at the regions that this square touches: this is the search to run at every step of a player.
 func (w *World) DungeonsWithin(x, y, r int) []*Dungeon {
 	lo, hi := RegionOf(x-r, y-r), RegionOf(x+r, y+r)
 	var out []*Dungeon
@@ -111,7 +111,7 @@ func (w *World) DungeonsWithin(x, y, r int) []*Dungeon {
 	return out
 }
 
-// DungeonAt renvoie le donjon dont l'entrée est exactement sur la tuile (x, y).
+// DungeonAt returns the dungeon whose entrance is exactly on tile (x, y).
 func (w *World) DungeonAt(x, y int) *Dungeon {
 	d := w.DungeonOfRegion(RegionOf(x, y))
 	if d != nil && d.Entrance.X == x && d.Entrance.Y == y {
@@ -120,21 +120,21 @@ func (w *World) DungeonAt(x, y int) *Dungeon {
 	return nil
 }
 
-// mayHideDungeon dit si le tirage de la région lui promet un donjon. Il ne dépend que de la
-// seed (pas du terrain), pour pouvoir comparer les noms des voisines sans générer de plan.
+// mayHideDungeon tells whether the region's draw promises it a dungeon. It depends only on the
+// seed (not on the terrain), so that neighbours' names can be compared without generating a plan.
 func mayHideDungeon(seed int64, rp RegionPos) bool {
 	return identityRNG(seed, rp, dungeonSalt).Float64() < dungeonChance
 }
 
-// rawDungeonName est le nom tiré pour (région, essai), sans souci des voisines.
+// rawDungeonName is the name drawn for (region, attempt), regardless of the neighbours.
 func rawDungeonName(seed int64, rp RegionPos, attempt int) (int, stem) {
 	rng := identityRNG(seed, rp, dungeonNameSalt+uint64(attempt))
 	return rng.IntN(numDungeonNames), stem{rng.IntN(len(placeStart)), rng.IntN(len(placeEnd))}
 }
 
-// uniqueDungeonName choisit le nom de la région rp : le premier essai que ne porte aucun donjon
-// voisin (rayon dungeonClash) déjà nommé avant elle dans l'ordre Y puis X. Comme pour les lieux,
-// seuls les tirages bruts des voisines comptent, ce qui évite toute récursion.
+// uniqueDungeonName chooses the name of region rp: the first attempt that no neighbouring dungeon
+// (radius dungeonClash) already named before it, in Y then X order, bears. As for places,
+// only the neighbours' raw draws count, which avoids any recursion.
 func uniqueDungeonName(seed int64, rp RegionPos) (int, stem) {
 	taken := make(map[[3]int]bool, 8)
 	for dy := -dungeonClash; dy <= dungeonClash; dy++ {
@@ -160,7 +160,7 @@ func uniqueDungeonName(seed int64, rp RegionPos) (int, stem) {
 	return idx, s
 }
 
-// dungeonTier croît avec le niveau de la région (voir LevelAt), mesuré en son centre.
+// dungeonTier grows with the level of the region (see LevelAt), measured at its centre.
 func dungeonTier(rp RegionPos) int {
 	return min(1+LevelAt(rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2)/4, dungeonMaxTier)
 }
@@ -187,8 +187,8 @@ func (w *World) buildDungeon(rp RegionPos) *Dungeon {
 	return d
 }
 
-// dungeonEntrance cherche une case d'entrée : du terrain naturel praticable, loin des lieux, de l'eau et du point
-// de départ des joueurs.
+// dungeonEntrance looks for an entrance tile: walkable natural terrain, far from places, water and the players'
+// starting point.
 func (w *World) dungeonEntrance(rp RegionPos) (Pos, bool) {
 	rng := identityRNG(w.Seed, rp, dungeonSpotSalt)
 	anchor := w.spawnAnchor()
@@ -205,10 +205,10 @@ func (w *World) dungeonEntrance(rp RegionPos) (Pos, bool) {
 	return Pos{}, false
 }
 
-// dungeonSpotOK : la case et ses huit voisines sont du terrain naturel praticable (ni eau, ni montagne), et loin du
-// lieu de la région. Seuls le terrain brut et l'emprise du lieu comptent: chercher aussi les routes (TileAt) fait
-// tracer celles de toutes les régions voisines, ce qui coûtait environ 10 ms par donjon et gelait la boucle de jeu
-// quand un PNJ cherchait les donjons de 49 régions d'un coup. Une entrée peut donc se trouver sur une route.
+// dungeonSpotOK: the tile and its eight neighbours are walkable natural terrain (no water, no mountain), and far from the
+// place of the region. Only the raw terrain and the footprint of the place count: also looking for roads (TileAt) makes
+// it trace those of all the neighbouring regions, which cost about 10 ms per dungeon and froze the game loop
+// when an NPC looked for the dungeons of 49 regions at once. An entrance may therefore lie on a road.
 func (w *World) dungeonSpotOK(rp RegionPos, x, y int) bool {
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
@@ -217,8 +217,8 @@ func (w *World) dungeonSpotOK(rp RegionPos, x, y int) bool {
 			}
 		}
 	}
-	// Un lieu ne sort jamais de sa région (regionMargin): seule celle de l'entrée est à vérifier. On garde une marge
-	// qui dépasse la zone sûre.
+	// A place never leaves its region (regionMargin): only that of the entrance has to be checked. We keep a margin
+	// that exceeds the safe zone.
 	const clear = safeMargin + 2
 	if s := w.structureForRegion(rp); s != nil &&
 		x >= s.Origin.X-clear && x < s.Origin.X+s.W+clear && y >= s.Origin.Y-clear && y < s.Origin.Y+s.H+clear {

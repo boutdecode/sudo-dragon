@@ -11,11 +11,11 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Store implémente lore.Repo.
+// Store implements lore.Repo.
 var _ lore.Repo = (*Store)(nil)
 
-// ErrNoAccount est renvoyée quand on écrit pour un compte qui n'existe pas.
-var ErrNoAccount = errors.New("store: compte inconnu")
+// ErrNoAccount is returned when writing for an account that does not exist.
+var ErrNoAccount = errors.New("store: unknown account")
 
 const cardColumns = `account, region_x, region_y, alias, role, origin, goal, trait, level, boss_kills, deaths, created_at, updated_at`
 
@@ -28,7 +28,7 @@ func scanCard(sc interface{ Scan(...any) error }) (lore.Card, error) {
 	return c, err
 }
 
-// UpsertCard écrit une fiche puis écarte les plus anciennes du compte au-delà du plafond.
+// UpsertCard writes a card, then drops the account's oldest ones beyond the cap.
 func (s *Store) UpsertCard(ctx context.Context, c lore.Card) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *Store) UpsertCard(ctx context.Context, c lore.Card) error {
 		return ErrNoAccount
 	}
 
-	// Au plus MaxCardsPerAccount lieux par compte: on garde les plus récents.
+	// At most MaxCardsPerAccount places per account: keep the most recent ones.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM npc_cards WHERE account = ?
 		AND (region_x, region_y) NOT IN (
 			SELECT region_x, region_y FROM npc_cards WHERE account = ? ORDER BY updated_at DESC, rowid DESC LIMIT ?)`,
@@ -62,7 +62,7 @@ func (s *Store) UpsertCard(ctx context.Context, c lore.Card) error {
 	return tx.Commit()
 }
 
-// GetCard renvoie la fiche d'un compte dans un lieu.
+// GetCard returns an account's card for a place.
 func (s *Store) GetCard(ctx context.Context, account string, place world.RegionPos) (lore.Card, bool, error) {
 	c, err := scanCard(s.db.QueryRowContext(ctx, `SELECT `+cardColumns+` FROM npc_cards
 		WHERE account = ? AND region_x = ? AND region_y = ?`, account, place.X, place.Y))
@@ -72,7 +72,7 @@ func (s *Store) GetCard(ctx context.Context, account string, place world.RegionP
 	return c, err == nil, err
 }
 
-// CardsNear renvoie les fiches du carré autour de at, mises à jour depuis notBefore.
+// CardsNear returns the cards of the square around at, updated since notBefore.
 func (s *Store) CardsNear(ctx context.Context, at world.RegionPos, radius int, notBefore time.Time, limit int) ([]lore.Card, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+cardColumns+` FROM npc_cards
 		WHERE region_x BETWEEN ? AND ? AND region_y BETWEEN ? AND ? AND updated_at >= ?
@@ -93,14 +93,14 @@ func (s *Store) CardsNear(ctx context.Context, at world.RegionPos, radius int, n
 	return out, rows.Err()
 }
 
-// UpdateFacts met à jour les faits vérifiés des fiches d'un compte, sans toucher à leur date.
+// UpdateFacts updates the verified facts of an account's cards, without touching their date.
 func (s *Store) UpdateFacts(ctx context.Context, account string, f lore.Facts) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE npc_cards SET level = ?, boss_kills = ?, deaths = ? WHERE account = ?`,
 		f.Level, f.BossKills, f.Deaths, account)
 	return err
 }
 
-// AccountExists dit si un pseudo existe (insensible à la casse).
+// AccountExists tells whether a name exists (case-insensitive).
 func (s *Store) AccountExists(ctx context.Context, name string) (bool, error) {
 	var one int
 	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM accounts WHERE name = ?`, name).Scan(&one)
@@ -110,7 +110,7 @@ func (s *Store) AccountExists(ctx context.Context, name string) (bool, error) {
 	return err == nil, err
 }
 
-// GetMemory renvoie le souvenir d'un PNJ sur un joueur.
+// GetMemory returns an NPC's memory of a player.
 func (s *Store) GetMemory(ctx context.Context, npc world.NPCKey, account string) (lore.Memory, bool, error) {
 	m := lore.Memory{NPC: npc}
 	var updated int64
@@ -124,7 +124,7 @@ func (s *Store) GetMemory(ctx context.Context, npc world.NPCKey, account string)
 	return m, err == nil, err
 }
 
-// PutMemory écrit (ou remplace) le souvenir d'un PNJ sur un joueur.
+// PutMemory writes (or replaces) an NPC's memory of a player.
 func (s *Store) PutMemory(ctx context.Context, m lore.Memory) error {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO npc_memories(region_x, region_y, npc_index, account, summary, updated_at)
 		SELECT ?, ?, ?, name, ?, ? FROM accounts WHERE name = ?
@@ -140,10 +140,10 @@ func (s *Store) PutMemory(ctx context.Context, m lore.Memory) error {
 	return nil
 }
 
-// --- Exploitation (commandes de l'opérateur) ---
+// --- Operations (operator commands) ---
 
-// ListCards renvoie les fiches, de la plus récente à la plus ancienne, éventuellement
-// limitées à un compte (account != "").
+// ListCards returns the cards, from most recent to oldest, optionally
+// limited to one account (account != "").
 func (s *Store) ListCards(ctx context.Context, account string, limit int) ([]lore.Card, error) {
 	q := `SELECT ` + cardColumns + ` FROM npc_cards`
 	var args []any
@@ -169,16 +169,16 @@ func (s *Store) ListCards(ctx context.Context, account string, limit int) ([]lor
 	return out, rows.Err()
 }
 
-// PurgeAccount supprime les fiches, les souvenirs, les quêtes et la réputation d'un joueur.
+// PurgeAccount deletes a player's cards, memories, quests and reputation.
 func (s *Store) PurgeAccount(ctx context.Context, account string) (cards, memories, quests int64, err error) {
 	cards, memories, quests, err = s.purge(ctx, `account = ?`, `account = ?`, `account = ?`, account)
-	if err == nil { // le sac d'équipement part aussi
+	if err == nil { // the equipment bag goes too
 		_, err = s.db.ExecContext(ctx, `DELETE FROM items WHERE account = ?`, account)
 	}
 	return
 }
 
-// PurgePlace supprime les fiches, les souvenirs, les quêtes rendues et la réputation d'un lieu.
+// PurgePlace deletes a place's cards, memories, handed-in quests and reputation.
 func (s *Store) PurgePlace(ctx context.Context, place world.RegionPos) (cards, memories, quests int64, err error) {
 	return s.purge(ctx, `region_x = ? AND region_y = ?`, `region_x = ? AND region_y = ?`,
 		`giver_rx = ? AND giver_ry = ?`, place.X, place.Y)
@@ -192,22 +192,22 @@ func (s *Store) purge(ctx context.Context, cardWhere, memWhere, questWhere strin
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `DELETE FROM npc_cards WHERE `+cardWhere, args...)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("fiches: %w", err)
+		return 0, 0, 0, fmt.Errorf("cards: %w", err)
 	}
 	cards, _ = res.RowsAffected()
 	res, err = tx.ExecContext(ctx, `DELETE FROM npc_memories WHERE `+memWhere, args...)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("souvenirs: %w", err)
+		return 0, 0, 0, fmt.Errorf("memories: %w", err)
 	}
 	memories, _ = res.RowsAffected()
 	res, err = tx.ExecContext(ctx, `DELETE FROM quests WHERE `+questWhere, args...)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("quêtes: %w", err)
+		return 0, 0, 0, fmt.Errorf("quests: %w", err)
 	}
 	quests, _ = res.RowsAffected()
-	// La réputation suit le lieu ou le compte (mêmes colonnes que les fiches).
+	// Reputation follows the place or the account (same columns as the cards).
 	if _, err = tx.ExecContext(ctx, `DELETE FROM reputation WHERE `+cardWhere, args...); err != nil {
-		return 0, 0, 0, fmt.Errorf("réputation: %w", err)
+		return 0, 0, 0, fmt.Errorf("reputation: %w", err)
 	}
 	return cards, memories, quests, tx.Commit()
 }

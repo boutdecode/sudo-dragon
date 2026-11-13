@@ -8,44 +8,44 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Donjons : zones à part, instanciées pour un groupe de joueurs (voir world/dungeon.go pour la
-// génération). La carte principale est la zone 0 ; chaque instance a son identifiant, son plan,
-// et ses propres index de joueurs et de monstres : les coordonnées d'un donjon sont locales à son
-// plan, deux instances ou la carte principale peuvent donc se recouvrir sans jamais se heurter.
+// Dungeons: separate zones, instantiated for a group of players (see world/dungeon.go for
+// generation). The main map is zone 0; each instance has its own identifier, its layout,
+// and its own player and monster indexes: a dungeon's coordinates are local to its
+// layout, so two instances or the main map can overlap without ever colliding.
 
-// ZoneID identifie une zone : 0 pour la carte principale, sinon une instance de donjon.
+// ZoneID identifies a zone: 0 for the main map, otherwise a dungeon instance.
 type ZoneID int
 
-// instance est l'état d'un donjon: ses monstres vivants, ses coffres ouverts. Un donjon n'a qu'une instance, partagée
-// par tous les joueurs, qui garde son état d'une visite à l'autre (en mémoire: un redémarrage du serveur la refait à
-// neuf). Elle repart à neuf quand son boss meurt: voir bossSlain.
+// instance is the state of a dungeon: its living monsters, its opened chests. A dungeon has only one instance, shared
+// by all players, which keeps its state from one visit to the next (in memory: a server restart makes it
+// new again). It starts afresh when its boss dies: see bossSlain.
 type instance struct {
 	id   ZoneID
 	d    *world.Dungeon
 	dmap *world.DungeonMap
 
-	byPos     map[world.Pos]int // joueurs
+	byPos     map[world.Pos]int // players
 	monsterAt map[world.Pos]int
 
-	opened   map[world.Pos]bool // coffres déjà ouverts
-	bossDown bool               // le boss est vaincu: son coffre n'est plus verrouillé, et l'instance est « épuisée »
-	resetAt  uint64             // tick à partir duquel un épuisé peut être remplacé par un donjon neuf (bossDown seulement)
+	opened   map[world.Pos]bool // chests already opened
+	bossDown bool               // the boss is defeated: its chest is no longer locked, and the instance is "exhausted"
+	resetAt  uint64             // tick from which an exhausted instance can be replaced by a fresh dungeon (bossDown only)
 }
 
-// dungeonResetTicks est le délai, après la mort du boss, avant que le donjon puisse repartir à neuf: un jour de jeu,
-// pour qu'on n'enchaîne pas les mêmes donjons.
+// dungeonResetTicks is the delay, after the boss dies, before the dungeon can start afresh: one game day,
+// so that the same dungeons cannot be chained.
 const dungeonResetTicks = 24 * protocol.TicksPerGameHour
 
-// resettable dit si l'instance, épuisée, peut être remplacée par un donjon neuf.
+// resettable says whether the exhausted instance can be replaced by a fresh dungeon.
 func (g *Game) resettable(inst *instance) bool { return inst.bossDown && g.tick >= inst.resetAt }
 
-// coolingDown dit si le boss du donjon d est vaincu depuis moins d'un jour de jeu.
+// coolingDown says whether the boss of dungeon d was defeated less than one game day ago.
 func (g *Game) coolingDown(d *world.Dungeon) bool {
 	inst := g.instances[g.dungeonZone[d.ID]]
 	return inst != nil && inst.bossDown && !g.resettable(inst)
 }
 
-// playerIndex renvoie l'index des joueurs de la zone z (la carte principale, ou une instance).
+// playerIndex returns the player index of zone z (the main map, or an instance).
 func (g *Game) playerIndex(z ZoneID) map[world.Pos]int {
 	if z == 0 {
 		return g.byPos
@@ -53,10 +53,10 @@ func (g *Game) playerIndex(z ZoneID) map[world.Pos]int {
 	if inst := g.instances[z]; inst != nil {
 		return inst.byPos
 	}
-	return map[world.Pos]int{} // zone disparue: un index jetable évite de salir les autres
+	return map[world.Pos]int{} // zone is gone: a throwaway index avoids polluting the others
 }
 
-// monsterIndex est playerIndex pour les monstres.
+// monsterIndex is playerIndex for monsters.
 func (g *Game) monsterIndex(z ZoneID) map[world.Pos]int {
 	if z == 0 {
 		return g.monsterAt
@@ -67,8 +67,8 @@ func (g *Game) monsterIndex(z ZoneID) map[world.Pos]int {
 	return map[world.Pos]int{}
 }
 
-// surfacePos est la position du joueur sur la carte principale: la sienne, ou l'entrée du donjon
-// où il se trouve. C'est celle qu'on sauvegarde.
+// surfacePos is the player's position on the main map: their own, or the entrance of the dungeon
+// they are in. This is the one that gets saved.
 func (p *player) surfacePos() world.Pos {
 	if p.zone != 0 {
 		return p.ret
@@ -76,10 +76,10 @@ func (p *player) surfacePos() world.Pos {
 	return p.pos
 }
 
-// discoverRadius est la distance (en cases) à laquelle on remarque l'entrée secrète d'un donjon en passant.
+// discoverRadius is the distance (in tiles) at which a dungeon's secret entrance is noticed in passing.
 const discoverRadius = 3
 
-// discoveredList renvoie les régions des donjons découverts, dans un ordre stable (Y puis X).
+// discoveredList returns the regions of the discovered dungeons, in a stable order (Y then X).
 func (p *player) discoveredList() []world.RegionPos {
 	out := make([]world.RegionPos, 0, len(p.discovered))
 	for rp := range p.discovered {
@@ -89,7 +89,7 @@ func (p *player) discoveredList() []world.RegionPos {
 	return out
 }
 
-// noticeDungeons découvre les donjons dont l'entrée est à portée de p, sans le dire à personne d'autre.
+// noticeDungeons discovers the dungeons whose entrance is within range of p, without telling anyone else.
 func (g *Game) noticeDungeons(p *player) {
 	if !g.Dungeons {
 		return
@@ -99,7 +99,7 @@ func (g *Game) noticeDungeons(p *player) {
 	}
 }
 
-// discover note que p connaît l'entrée de d, l'en informe et sauvegarde. Sans effet s'il la connaissait déjà.
+// discover records that p knows the entrance of d, informs them and saves. No effect if they already knew it.
 func (g *Game) discover(p *player, d *world.Dungeon) {
 	if p.discovered[d.Region] {
 		return
@@ -110,7 +110,7 @@ func (g *Game) discover(p *player, d *world.Dungeon) {
 	g.save(p)
 }
 
-// sendDungeons envoie à p la liste des donjons qu'il a découverts ; newID, non vide, est celui qu'il vient de trouver.
+// sendDungeons sends p the list of dungeons they have discovered; newID, if non-empty, is the one just found.
 func (g *Game) sendDungeons(p *player, newID string) {
 	if p.sendDungeonsMsg == nil {
 		return
@@ -124,9 +124,9 @@ func (g *Game) sendDungeons(p *player, newID string) {
 	p.sendDungeonsMsg(msg)
 }
 
-// enterDungeon fait entrer p dans le donjon d, avec les joueurs libres qui l'entourent (même rayon que l'attraction
-// d'un combat). Tous retrouvent l'instance du donjon dans l'état où elle est, ou en ouvrent une neuve s'il n'y en a
-// pas (premier visiteur, ou boss vaincu depuis).
+// enterDungeon makes p enter dungeon d, with the free players around them (same radius as combat
+// attraction). All find the dungeon instance in its current state, or open a new one if there is
+// none (first visitor, or boss defeated since).
 func (g *Game) enterDungeon(p *player, d *world.Dungeon) {
 	party := []*player{p}
 	for _, id := range g.sortedIDs() {
@@ -137,22 +137,22 @@ func (g *Game) enterDungeon(p *player, d *world.Dungeon) {
 	}
 	inst := g.instanceOf(d)
 	for _, m := range party {
-		g.discover(m, d) // on connaît le chemin une fois qu'on l'a pris
+		g.discover(m, d) // the way is known once taken
 		m.ret = d.Entrance
 		g.teleport(m, inst.id, inst.dmap.Spawn, 0)
 	}
 }
 
-// leaveDungeon ramène p devant l'entrée du donjon, sur la carte principale.
+// leaveDungeon brings p back in front of the dungeon entrance, on the main map.
 func (g *Game) leaveDungeon(p *player) {
 	inst := g.instances[p.zone]
-	g.teleport(p, 0, p.ret, 1) // pas sur l'entrée même, qui le ferait rentrer en la quittant
+	g.teleport(p, 0, p.ret, 1) // not on the entrance itself, which would make them re-enter on leaving
 	if inst != nil {
 		g.closeIfEmpty(inst)
 	}
 }
 
-// teleport place p dans la zone z, sur la case libre la plus proche de c à au moins minR.
+// teleport places p in zone z, on the free tile nearest to c at least minR away.
 func (g *Game) teleport(p *player, z ZoneID, c world.Pos, minR int) {
 	at := g.playerIndex(p.zone)
 	if at[p.pos] == p.id {
@@ -160,12 +160,12 @@ func (g *Game) teleport(p *player, z ZoneID, c world.Pos, minR int) {
 	}
 	p.zone = z
 	p.hasPending = false
-	p.lastSent = nil // le client doit recevoir une vue neuve
+	p.lastSent = nil // the client must receive a fresh view
 	g.setPos(p, g.freeNearIn(z, c, minR))
 	g.sendZone(p)
 }
 
-// sendZone dit au client dans quelle carte il est. Appelée avant l'instantané qui suit un changement de zone.
+// sendZone tells the client which map it is in. Called before the snapshot that follows a zone change.
 func (g *Game) sendZone(p *player) {
 	if p.sendZoneMsg == nil {
 		return
@@ -184,7 +184,7 @@ func (g *Game) sendZone(p *player) {
 	p.sendZoneMsg(z)
 }
 
-// sendZoneToAll renvoie la zone à tous les joueurs de l'instance (un coffre vient de s'ouvrir).
+// sendZoneToAll resends the zone to all players of the instance (a chest has just been opened).
 func (g *Game) sendZoneToAll(inst *instance) {
 	for _, id := range g.sortedIDs() {
 		if p := g.players[id]; p.zone == inst.id {
@@ -193,8 +193,8 @@ func (g *Game) sendZoneToAll(inst *instance) {
 	}
 }
 
-// instanceOf renvoie l'instance en cours du donjon d, ou en ouvre une neuve (premier visiteur, ou boss vaincu depuis
-// plus d'un jour de jeu). Pendant ce délai, le donjon reste tel que l'a laissé la victoire: boss mort, coffres vidés.
+// instanceOf returns the current instance of dungeon d, or opens a new one (first visitor, or boss defeated
+// more than a game day ago). During that delay, the dungeon stays as the victory left it: boss dead, chests emptied.
 func (g *Game) instanceOf(d *world.Dungeon) *instance {
 	old := g.instances[g.dungeonZone[d.ID]]
 	if old != nil && !g.resettable(old) {
@@ -202,20 +202,20 @@ func (g *Game) instanceOf(d *world.Dungeon) *instance {
 	}
 	inst := g.newInstance(d)
 	if old != nil {
-		g.closeIfEmpty(old) // l'ancienne ne sert plus qu'à ceux qui y sont encore
+		g.closeIfEmpty(old) // the old one now only serves those still in it
 	}
 	return inst
 }
 
-// bossSlain note la mort du boss de l'instance: son coffre se déverrouille, et le donjon pourra repartir à neuf un jour
-// de jeu plus tard, pour le premier visiteur suivant. D'ici là, il reste tel quel pour tous. Plus tard, ceux qui sont
-// encore dans l'ancienne instance finissent tranquillement, et elle se ferme avec son dernier joueur.
+// bossSlain records the death of the instance's boss: its chest unlocks, and the dungeon can start afresh one game
+// day later, for the next first visitor. Until then, it stays as is for everyone. Later, those still
+// in the old instance finish in peace, and it closes with its last player.
 func (g *Game) bossSlain(inst *instance) {
 	inst.bossDown = true
 	inst.resetAt = g.tick + dungeonResetTicks
 }
 
-// newInstance ouvre une instance du donjon d et la peuple.
+// newInstance opens an instance of dungeon d and populates it.
 func (g *Game) newInstance(d *world.Dungeon) *instance {
 	inst := &instance{
 		id:        g.nextZone,
@@ -239,8 +239,8 @@ func (g *Game) newInstance(d *world.Dungeon) *instance {
 	return inst
 }
 
-// dungeonSpecies choisit l'espèce qui occupe l'emplacement n° i du plan : gardes et élites alternent entre
-// les monstres de garnison et ceux du donjon, le boss est toujours une liche.
+// dungeonSpecies chooses the species that occupies slot no. i of the layout: guards and elites alternate between
+// garrison monsters and dungeon monsters, the boss is always a lich.
 func dungeonSpecies(r world.SlotRole, i int) (species, bool) {
 	kind := ""
 	switch r {
@@ -259,8 +259,8 @@ func dungeonSpecies(r world.SlotRole, i int) (species, bool) {
 	return species{}, false
 }
 
-// scaledForTier adapte un monstre au palier du donjon (1 à 5) : 80 % de ses PV et de son XP au palier 1, jusqu'à
-// 160 % au palier 5, et un point de toucher de plus tous les deux paliers.
+// scaledForTier adapts a monster to the dungeon tier (1 to 5): 80% of its HP and XP at tier 1, up to
+// 160% at tier 5, and one extra point of hit every two tiers.
 func scaledForTier(sp species, tier int) species {
 	pct := 60 + 20*tier
 	sp.HP = max(1, sp.HP*pct/100)
@@ -269,9 +269,9 @@ func scaledForTier(sp species, tier int) species {
 	return sp
 }
 
-// scaledForLevel adapte un monstre de surface au niveau de sa région (voir world.LevelAt), de 1 à 20 : PV et XP
-// augmentent de 25 % par niveau au-delà du premier, et le toucher, les dégâts et la DEF suivent à un rythme plus
-// lent. Au niveau 1, l'espèce reste telle quelle.
+// scaledForLevel adapts a surface monster to the level of its region (see world.LevelAt), from 1 to 20: HP and XP
+// increase by 25% per level beyond the first, and hit, damage and DEF follow at a slower
+// rate. At level 1, the species stays as is.
 func scaledForLevel(sp species, level int) species {
 	level = max(1, level)
 	pct := 100 + 25*(level-1)
@@ -284,9 +284,9 @@ func scaledForLevel(sp species, level int) species {
 	return sp
 }
 
-// closeIfEmpty détruit l'instance, avec ses monstres, si elle peut être remplacée (boss mort depuis plus d'un jour de
-// jeu) et que plus aucun joueur ne s'y trouve. Tant que le boss vit, ou que le délai court, un donjon vide garde
-// son état: sinon on referait le donjon aussitôt en sortant.
+// closeIfEmpty destroys the instance, with its monsters, if it can be replaced (boss dead for more than a game
+// day) and no player is in it any more. While the boss lives, or the delay runs, an empty dungeon keeps
+// its state: otherwise the dungeon would be rebuilt as soon as one leaves.
 func (g *Game) closeIfEmpty(inst *instance) {
 	if !g.resettable(inst) {
 		return
@@ -299,7 +299,7 @@ func (g *Game) closeIfEmpty(inst *instance) {
 	g.closeInstance(inst)
 }
 
-// closeInstance détruit l'instance et ses monstres, quels que soient les joueurs.
+// closeInstance destroys the instance and its monsters, whatever the players.
 func (g *Game) closeInstance(inst *instance) {
 	if g.dungeonZone[inst.d.ID] == inst.id {
 		delete(g.dungeonZone, inst.d.ID)

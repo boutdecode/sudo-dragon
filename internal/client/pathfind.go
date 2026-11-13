@@ -30,26 +30,26 @@ func absInt(a int) int {
 	return a
 }
 
-// findPath cherche un chemin de from à to (8 directions, comme le clavier).
-// free indique si une case est praticable. Le résultat exclut from et finit
-// par to; nil si aucun chemin n'a été trouvé dans la limite maxNodes.
-// Comme côté serveur, les diagonales ne sont pas gênées par les coins.
+// findPath looks for a path from from to to (8 directions, like the keyboard).
+// free tells whether a tile is walkable. The result excludes from and ends
+// with to; nil if no path was found within the maxNodes limit.
+// As on the server, diagonals are not blocked by corners.
 func findPath(from, to world.Pos, free func(world.Pos) bool, maxNodes int) []world.Pos {
 	return findPathCost(from, to, free, func(world.Pos) int { return 1 }, 1, maxNodes)
 }
 
-// Coûts de marche de /goto: une case de route coûte moins qu'une case hors
-// route, donc le chemin fait un détour (jusqu'à 1,5 fois plus long) pour la suivre.
+// Walking costs of /goto: a road tile costs less than an off-road tile,
+// so the path takes a detour (up to 1.5 times longer) to follow it.
 const (
 	roadStepCost = 2
 	offRoadCost  = 3
-	walkMaxNodes = 60000 // la heuristique est moins serrée avec des coûts: on explore plus
-	// fallbackMaxNodes borne la recherche sans préférence de route, utilisée
-	// quand la recherche pondérée échoue (longues marches hors route).
+	walkMaxNodes = 60000 // the heuristic is looser with costs: explore more
+	// fallbackMaxNodes bounds the search without road preference, used
+	// when the weighted search fails (long off-road walks).
 	fallbackMaxNodes = 250000
 )
 
-// findWalkPath cherche un chemin de /goto qui préfère les routes.
+// findWalkPath looks for a /goto path that prefers roads.
 func (m Model) findWalkPath(from, to world.Pos, free func(world.Pos) bool) []world.Pos {
 	cost := func(p world.Pos) int {
 		if m.dmap == nil && m.world.At(p.X, p.Y) == world.Road {
@@ -60,12 +60,12 @@ func (m Model) findWalkPath(from, to world.Pos, free func(world.Pos) bool) []wor
 	if path := findPathCost(from, to, free, cost, roadStepCost, walkMaxNodes); path != nil {
 		return path
 	}
-	// Budget dépassé (longue marche hors route): chemin le plus court, sans route.
+	// Budget exceeded (long off-road walk): shortest path, ignoring roads.
 	return findPath(from, to, free, fallbackMaxNodes)
 }
 
-// findPathCost est findPath avec un coût d'entrée par case. minStep est le coût
-// minimal d'un pas (il garde l'heuristique admissible).
+// findPathCost is findPath with a per-tile entry cost. minStep is the minimal
+// cost of one step (it keeps the heuristic admissible).
 func findPathCost(from, to world.Pos, free func(world.Pos) bool, cost func(world.Pos) int, minStep, maxNodes int) []world.Pos {
 	if from == to || !free(to) {
 		return nil
@@ -86,7 +86,7 @@ func findPathCost(from, to world.Pos, free func(world.Pos) bool, cost func(world
 			return path
 		}
 		if cur.g > best[cur.pos] {
-			continue // entrée périmée
+			continue // stale entry
 		}
 		for dy := -1; dy <= 1; dy++ {
 			for dx := -1; dx <= 1; dx++ {

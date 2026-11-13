@@ -12,20 +12,20 @@ func TestEveryResourceHasDistinctColour(t *testing.T) {
 	for _, r := range resource.All() {
 		hex, ok := resourceHex[r.Kind]
 		if !ok {
-			t.Errorf("%s sans couleur", r.Kind)
+			t.Errorf("%s without a colour", r.Kind)
 			continue
 		}
 		if _, ok := resourceStyle[r.Kind]; !ok {
-			t.Errorf("%s sans style", r.Kind)
+			t.Errorf("%s without a style", r.Kind)
 		}
 		if other, dup := seen[hex]; dup {
-			t.Errorf("%s et %s ont la même couleur %s", r.Kind, other, hex)
+			t.Errorf("%s and %s have the same colour %s", r.Kind, other, hex)
 		}
 		seen[hex] = r.Kind
 	}
 }
 
-// Un nœud garde le glyphe de son terrain: ni a, ni 0, ni h.
+// A node keeps the glyph of its terrain: neither a, nor 0, nor h.
 func TestNodeKeepsTerrainGlyph(t *testing.T) {
 	w := world.NewVersion(1, world.GenV3)
 	for y := -150; y < 150; y++ {
@@ -37,15 +37,15 @@ func TestNodeKeepsTerrainGlyph(t *testing.T) {
 			line := plain(Viewport(w, x, y, 3, 3, nil, nil, 0))[1]
 			want := glyphIn(w.ClimateAt(x, y), base, x, y)
 			if rune(line[1]) != want {
-				t.Fatalf("arbre %s en (%d,%d): glyphe %q, attendu %q", kind, x, y, line[1], want)
+				t.Fatalf("tree %s at (%d,%d): glyph %q, expected %q", kind, x, y, line[1], want)
 			}
 			return
 		}
 	}
-	t.Skip("aucun arbre près de l'origine")
+	t.Skip("no tree near the origin")
 }
 
-// Un banc de poissons garde le glyphe de la rivière qui le porte.
+// A fish shoal keeps the glyph of the river that carries it.
 func TestFishNodeKeepsRiverGlyph(t *testing.T) {
 	w := world.NewVersion(1, world.GenV3)
 	for y := -300; y < 300; y++ {
@@ -55,14 +55,14 @@ func TestFishNodeKeepsRiverGlyph(t *testing.T) {
 			}
 			kind, base, _ := w.NodeAt(x, y)
 			if base != world.River {
-				t.Fatalf("banc %s sur %d", kind, base)
+				t.Fatalf("shoal %s on %d", kind, base)
 			}
 			line := plain(Viewport(w, x, y, 3, 3, nil, nil, 0))[1]
 			if want := glyphIn(w.ClimateAt(x, y), world.River, x, y); rune(line[1]) != want {
-				t.Fatalf("glyphe %q, attendu %q", line[1], want)
+				t.Fatalf("glyph %q, expected %q", line[1], want)
 			}
 			return
 		}
 	}
-	t.Skip("aucun banc près de l'origine")
+	t.Skip("no shoal near the origin")
 }

@@ -47,20 +47,20 @@ func TestLoreListShowsCardsAndFilters(t *testing.T) {
 	if err := runLoreList(context.Background(), st, "", &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"aldric", "brenna", "Aldric le Rouge", "forgeron", "région (0,0)", "région (2,-1)", "quête rendue : « Les loups »"} {
+	for _, want := range []string{"aldric", "brenna", "Aldric le Rouge", "forgeron", "region (0,0)", "region (2,-1)", "quest handed in: \"Les loups\""} {
 		if !strings.Contains(out.String(), want) {
-			t.Errorf("liste sans %q :\n%s", want, out.String())
+			t.Errorf("list without %q:\n%s", want, out.String())
 		}
 	}
 	out.Reset()
 	_ = runLoreList(context.Background(), st, "brenna", &out)
 	if strings.Contains(out.String(), "aldric") || !strings.Contains(out.String(), "Brenna") {
-		t.Fatalf("filtre par compte :\n%s", out.String())
+		t.Fatalf("filter by account:\n%s", out.String())
 	}
 	out.Reset()
 	_ = runLoreList(context.Background(), seededEmpty(t), "", &out)
-	if !strings.Contains(out.String(), "aucune présentation") {
-		t.Fatalf("base vide : %q", out.String())
+	if !strings.Contains(out.String(), "no recorded introductions") {
+		t.Fatalf("empty database: %q", out.String())
 	}
 }
 
@@ -76,22 +76,22 @@ func TestLorePurgeByAccountAndPlace(t *testing.T) {
 	if err := runLorePurge(ctx, st, "account:aldric", &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "2 présentation(s), 1 souvenir(s) et 1 quête(s)") {
-		t.Fatalf("compte rendu : %q", out.String())
+	if !strings.Contains(out.String(), "2 introduction(s), 1 memory(ies) and 1 quest(s)") {
+		t.Fatalf("report: %q", out.String())
 	}
 	if left, _ := st.ListCards(ctx, "", 10); len(left) != 1 || left[0].Account != "brenna" {
-		t.Fatalf("après purge du compte : %+v", left)
+		t.Fatalf("after account purge: %+v", left)
 	}
 
 	out.Reset()
 	if err := runLorePurge(ctx, st, "place:0,0", &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "1 présentation(s)") {
-		t.Fatalf("compte rendu : %q", out.String())
+	if !strings.Contains(out.String(), "1 introduction(s)") {
+		t.Fatalf("report: %q", out.String())
 	}
 	if left, _ := st.ListCards(ctx, "", 10); len(left) != 0 {
-		t.Fatalf("après purge du lieu : %+v", left)
+		t.Fatalf("after place purge: %+v", left)
 	}
 }
 
@@ -101,11 +101,11 @@ func TestLorePurgeRejectsBadTargetsWithoutDeletingAnything(t *testing.T) {
 	for _, bad := range []string{"", "aldric", "account:", ":aldric", "joueur:aldric", "place:", "place:1", "place:a,b", "place:1,2,3x", "place:,"} {
 		var out bytes.Buffer
 		if err := runLorePurge(ctx, st, bad, &out); err == nil {
-			t.Errorf("%q accepté", bad)
+			t.Errorf("%q accepted", bad)
 		}
 	}
 	if left, _ := st.ListCards(ctx, "", 10); len(left) != 3 {
-		t.Fatalf("une cible invalide a supprimé des données : %d fiches restantes", len(left))
+		t.Fatalf("an invalid target deleted data: %d cards left", len(left))
 	}
 }
 
@@ -122,7 +122,7 @@ func TestWaresListAndReset(t *testing.T) {
 	st := seededStore(t)
 	ctx := context.Background()
 	var out bytes.Buffer
-	if err := runWaresList(ctx, st, &out); err != nil || !strings.Contains(out.String(), "aucun étalage") {
+	if err := runWaresList(ctx, st, &out); err != nil || !strings.Contains(out.String(), "no generated wares") {
 		t.Fatalf("%v %q", err, out.String())
 	}
 	key := world.NPCKey{Region: world.RegionPos{X: 2, Y: -1}, Index: 7}
@@ -132,26 +132,26 @@ func TestWaresListAndReset(t *testing.T) {
 	}
 	out.Reset()
 	_ = runWaresList(ctx, st, &out)
-	for _, want := range []string{"vendeur 2,-1,7", "haches", "Hache en fer", "1d6+1"} {
+	for _, want := range []string{"vendor 2,-1,7", "haches", "Hache en fer", "1d6+1"} {
 		if !strings.Contains(out.String(), want) {
-			t.Errorf("liste sans %q:\n%s", want, out.String())
+			t.Errorf("list without %q:\n%s", want, out.String())
 		}
 	}
 	for _, bad := range []string{"", "1,2", "a,b,c", "1,2,3,4"} {
 		if err := runWaresReset(ctx, st, bad, &out); err == nil {
-			t.Errorf("%q accepté", bad)
+			t.Errorf("%q accepted", bad)
 		}
 	}
 	out.Reset()
-	if err := runWaresReset(ctx, st, "2,-1,7", &out); err != nil || !strings.Contains(out.String(), "effacé") {
+	if err := runWaresReset(ctx, st, "2,-1,7", &out); err != nil || !strings.Contains(out.String(), "deleted") {
 		t.Fatalf("%v %q", err, out.String())
 	}
 	if _, ok, _ := st.GetWares(ctx, key); ok {
-		t.Fatal("étalage encore présent")
+		t.Fatal("wares still present")
 	}
 	out.Reset()
 	_ = runWaresReset(ctx, st, "2,-1,7", &out)
-	if !strings.Contains(out.String(), "aucun étalage") {
+	if !strings.Contains(out.String(), "no wares recorded") {
 		t.Fatalf("%q", out.String())
 	}
 }

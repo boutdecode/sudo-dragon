@@ -6,11 +6,11 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Climats: chaque contrée a le sien (voir world.Climate). Seuls les terrains naturels changent de teinte et de
-// glyphes; neige, structures, sols et murs restent identiques. Le tempéré reprend les couleurs d'origine
-// (baseStyles), si bien qu'il se rend exactement comme avant.
+// Climates: each region has its own (see world.Climate). Only natural terrains change hue and
+// glyphs; snow, structures, floors and walls stay identical. Temperate keeps the original colours
+// (baseStyles), so it renders exactly as before.
 
-// climateHex donne, pour chaque climat et chaque terrain naturel, la couleur qui remplace celle de baseStyles.
+// climateHex gives, for each climate and each natural terrain, the colour that replaces the one in baseStyles.
 var climateHex = [world.NumClimates]map[world.Tile]string{
 	world.Tropical: {
 		world.DeepWater: "#0e7490",
@@ -44,7 +44,7 @@ var climateHex = [world.NumClimates]map[world.Tile]string{
 	},
 }
 
-// climateVariants remplace les glyphes de variants selon le climat (ASCII, hors des lettres des monstres).
+// climateVariants replaces the glyphs of variants according to the climate (ASCII, outside the monster letters).
 var climateVariants = [world.NumClimates]map[world.Tile][]rune{
 	world.Tropical: {
 		world.Plain:  []rune("\"\"\"\"\"'\"\""),
@@ -64,11 +64,11 @@ var climateVariants = [world.NumClimates]map[world.Tile][]rune{
 	},
 }
 
-// climateStyleBase[c] est l'indice du premier style du climat c dans styles (le tempéré utilise les tuiles).
+// climateStyleBase[c] is the index of the first style of climate c in styles (temperate uses the tiles).
 var climateStyleBase [world.NumClimates]int
 
-// addClimateStyles ajoute à styles les styles des climats non tempérés. Appelée en dernier par init (render.go):
-// les init de plusieurs fichiers s'exécutent dans l'ordre alphabétique de leurs noms, pas celui des dépendances.
+// addClimateStyles adds to styles the styles of the non-temperate climates. Called last by init (render.go):
+// the init functions of several files run in alphabetical order of their names, not in dependency order.
 func addClimateStyles() {
 	for c := world.Climate(1); c < world.NumClimates; c++ {
 		climateStyleBase[c] = len(styles)
@@ -82,7 +82,7 @@ func addClimateStyles() {
 	}
 }
 
-// styleFor est l'indice du style de la tuile t sous le climat c.
+// styleFor is the style index of tile t under climate c.
 func styleFor(c world.Climate, t world.Tile) int {
 	if c == world.Temperate || c >= world.NumClimates || t >= world.NumTiles {
 		return int(t)
@@ -90,7 +90,7 @@ func styleFor(c world.Climate, t world.Tile) int {
 	return climateStyleBase[c] + int(t)
 }
 
-// TileHex renvoie la couleur (« #rrggbb ») du terrain t sous le climat c, ou "" s'il garde sa couleur d'origine.
+// TileHex returns the colour ("#rrggbb") of terrain t under climate c, or "" if it keeps its original colour.
 func TileHex(c world.Climate, t world.Tile) string {
 	if c >= world.NumClimates {
 		return ""
@@ -98,7 +98,7 @@ func TileHex(c world.Climate, t world.Tile) string {
 	return climateHex[c][t]
 }
 
-// glyphIn choisit le glyphe de la tuile t en (x, y) sous le climat c.
+// glyphIn chooses the glyph of tile t at (x, y) under climate c.
 func glyphIn(c world.Climate, t world.Tile, x, y int) rune {
 	if c < world.NumClimates {
 		if v := climateVariants[c][t]; len(v) > 0 {
@@ -108,12 +108,12 @@ func glyphIn(c world.Climate, t world.Tile, x, y int) rune {
 	return pick(variants[t], x, y)
 }
 
-// climated est ce que Terrain peut offrir en plus: le climat d'une case (le monde en a un, un donjon non).
+// climated is what Terrain can offer in addition: the climate of a cell (the world has one, a dungeon does not).
 type climated interface {
 	ClimateAt(x, y int) world.Climate
 }
 
-// ClimateAt fait suivre le climat du terrain décoré, s'il en a un.
+// ClimateAt passes on the climate of the decorated terrain, if it has one.
 func (e entranceTerrain) ClimateAt(x, y int) world.Climate {
 	if c, ok := e.Terrain.(climated); ok {
 		return c.ClimateAt(x, y)

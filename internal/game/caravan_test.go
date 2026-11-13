@@ -11,35 +11,35 @@ import (
 )
 
 func TestCaravanIndexCycle(t *testing.T) {
-	const n = 5 // 4 cases à parcourir
+	const n = 5 // 4 tiles to walk
 	leg := uint64((n - 1) * caravanStep)
 	cases := []struct {
 		t    uint64
 		want int
 	}{
 		{0, 0}, {caravanStep - 1, 0}, {caravanStep, 1}, {leg - 1, 3},
-		{leg, n - 1}, {leg + caravanPause - 1, n - 1}, // arrêt au bout
+		{leg, n - 1}, {leg + caravanPause - 1, n - 1}, // stop at the end
 		{leg + caravanPause, n - 1}, {leg + caravanPause + caravanStep, n - 2},
-		{2*leg + caravanPause - 1, 1}, {2*leg + caravanPause, 0}, // retour puis arrêt au départ
-		{caravanPeriod(n) - 1, 0}, {caravanPeriod(n), 0}, {caravanPeriod(n) + caravanStep, 1}, // le cycle recommence
+		{2*leg + caravanPause - 1, 1}, {2*leg + caravanPause, 0}, // return then stop at the start
+		{caravanPeriod(n) - 1, 0}, {caravanPeriod(n), 0}, {caravanPeriod(n) + caravanStep, 1}, // the cycle restarts
 	}
 	for _, c := range cases {
 		if got := caravanIndex(n, c.t); got != c.want {
-			t.Errorf("t=%d: case %d, attendu %d", c.t, got, c.want)
+			t.Errorf("t=%d: tile %d, expected %d", c.t, got, c.want)
 		}
 	}
-	// Jamais plus d'une case d'écart d'un tick de pas à l'autre : la caravane ne saute pas.
+	// Never more than one tile apart from one tick to the next: the caravan does not jump.
 	prev := caravanIndex(n, 0)
 	for tt := uint64(0); tt < 3*caravanPeriod(n); tt += caravanStep {
 		idx := caravanIndex(n, tt)
 		if d := idx - prev; d < -1 || d > 1 {
-			t.Fatalf("t=%d: saut de %d à %d", tt, prev, idx)
+			t.Fatalf("t=%d: jump from %d to %d", tt, prev, idx)
 		}
 		prev = idx
 	}
 }
 
-// caravanGame renvoie un jeu avec un joueur sur la route d'une caravane, la caravane suivie.
+// caravanGame returns a game with a player on a caravan's road, the caravan tracked.
 func caravanGame(t *testing.T) (*Game, *player, *caravan) {
 	t.Helper()
 	g := newGame()
@@ -51,14 +51,14 @@ func caravanGame(t *testing.T) (*Game, *player, *caravan) {
 		}
 	}
 	if route == nil {
-		t.Fatal("aucune caravane près de l'origine")
+		t.Fatal("no caravan near the origin")
 	}
 	p, _ := joinRec(g, "a")
 	g.setPos(p, route.Path[len(route.Path)/2])
 	g.activateCaravans()
 	c := g.car.active[route.ID]
 	if c == nil {
-		t.Fatal("caravane non suivie près d'un joueur")
+		t.Fatal("caravan not tracked near a player")
 	}
 	return g, p, c
 }
@@ -69,13 +69,13 @@ func TestCaravanFollowsItsRouteAndShowsInSnapshots(t *testing.T) {
 		g.tick++
 		g.stepCaravans()
 		if !slices.Contains(c.route.Path, c.pos) {
-			t.Fatalf("la caravane a quitté sa route: %v", c.pos)
+			t.Fatalf("the caravan left its road: %v", c.pos)
 		}
 		if g.caravanAt(c.pos) != c {
-			t.Fatalf("index de position faux pour %v", c.pos)
+			t.Fatalf("wrong position index for %v", c.pos)
 		}
 	}
-	// Elle bouge : sur un cycle entier, elle occupe plusieurs cases.
+	// It moves: over a full cycle, it occupies several tiles.
 	seen := map[world.Pos]bool{}
 	for i := uint64(0); i < caravanPeriod(len(c.route.Path)); i += caravanStep {
 		g.tick = i
@@ -83,10 +83,10 @@ func TestCaravanFollowsItsRouteAndShowsInSnapshots(t *testing.T) {
 		seen[c.pos] = true
 	}
 	if len(seen) < 2 {
-		t.Fatalf("la caravane ne s'est jamais déplacée (%d case)", len(seen))
+		t.Fatalf("the caravan never moved (%d tile)", len(seen))
 	}
 
-	// Elle est visible quand elle est dans la vue, avec un identifiant hors de la plage des monstres.
+	// It is visible when in view, with an identifier outside the monsters' range.
 	g.setPos(p, g.freeNear(c.pos))
 	var found *protocol.Monster
 	for _, m := range g.appendCaravans(nil, p) {
@@ -96,23 +96,23 @@ func TestCaravanFollowsItsRouteAndShowsInSnapshots(t *testing.T) {
 		}
 	}
 	if found == nil || found.Kind != "caravan" || found.ID < caravanIDBase {
-		t.Fatalf("caravane absente du snapshot: %+v", found)
+		t.Fatalf("caravan missing from the snapshot: %+v", found)
 	}
 
-	// Loin de tout joueur, elle n'est plus suivie.
+	// Far from any player, it is no longer tracked.
 	g.setPos(p, world.Pos{X: 50 * world.RegionSize, Y: 50 * world.RegionSize})
 	g.activateCaravans()
 	if len(g.car.active) != 0 {
-		t.Fatalf("%d caravane(s) encore suivie(s) loin des joueurs", len(g.car.active))
+		t.Fatalf("%d caravan(s) still tracked far from players", len(g.car.active))
 	}
 }
 
 func TestCaravanStopsWhileTalkedToAndWaitsWhenBlocked(t *testing.T) {
 	g, p, c := caravanGame(t)
-	// Place la caravane au milieu d'un trajet, et le joueur sur la case précédente de la route.
+	// Place the caravan mid-route, and the player on the previous tile of the road.
 	i := slices.Index(c.route.Path, c.pos)
 	if i < 1 {
-		t.Skip("caravane au bout de sa route")
+		t.Skip("caravan at the end of its road")
 	}
 	g.tick = uint64(i*caravanStep) - c.seed%caravanPeriod(len(c.route.Path)) + 1000*caravanPeriod(len(c.route.Path))
 	g.activateCaravans()
@@ -127,27 +127,27 @@ func TestCaravanStopsWhileTalkedToAndWaitsWhenBlocked(t *testing.T) {
 	g.move(p.id, c.pos.X-prev.X, c.pos.Y-prev.Y)
 	g.step()
 	if p.talk == nil || p.talk.npc.Index < world.CaravanIndexBase {
-		t.Fatalf("marcher sur la caravane n'ouvre pas sa boutique (talk=%v, pos %v, caravane %v)", p.talk, p.pos, c.pos)
+		t.Fatalf("walking onto the caravan does not open its shop (talk=%v, pos %v, caravan %v)", p.talk, p.pos, c.pos)
 	}
 	if p.pos != prev {
-		t.Errorf("le joueur a marché sur la caravane: %v", p.pos)
+		t.Errorf("the player walked onto the caravan: %v", p.pos)
 	}
 
-	// Elle ne bouge pas pendant la conversation, même sur plusieurs pas.
+	// It does not move during the conversation, even over several steps.
 	at := c.pos
 	for range 5 * caravanStep {
-		p.talk.lastAct = g.tick // la conversation ne doit pas expirer
+		p.talk.lastAct = g.tick // the conversation must not expire
 		g.step()
 	}
 	if c.pos != at {
-		t.Fatalf("la caravane a marché pendant la conversation: %v -> %v", at, c.pos)
+		t.Fatalf("the caravan moved during the conversation: %v -> %v", at, c.pos)
 	}
 	g.closeTalk(p, "")
 	for range 2 * caravanStep {
 		g.step()
 	}
 	if c.pos == at && len(c.route.Path) > 2 {
-		t.Log("la caravane est restée à la même case après la conversation (bout de route ?)")
+		t.Log("the caravan stayed on the same tile after the conversation (end of road?)")
 	}
 }
 
@@ -158,20 +158,20 @@ func TestCaravanSellsHigherTierAndRotatesDaily(t *testing.T) {
 
 	w1, rev1 := g.waresFor(p, npc)
 	if len(w1.Items) == 0 {
-		t.Fatal("caravane sans marchandise")
+		t.Fatal("caravan without wares")
 	}
 	for _, it := range w1.Items {
 		if it.Tier < min(ctx.MinTier+1, gear.MaxTier) {
-			t.Errorf("%s : rang %d, moins que le plancher de la région + 1 (%d)", it.Name, it.Tier, ctx.MinTier+1)
+			t.Errorf("%s: rank %d, less than the region floor + 1 (%d)", it.Name, it.Tier, ctx.MinTier+1)
 		}
 	}
 	if again, rev := g.waresFor(p, npc); rev != rev1 || len(again.Items) != len(w1.Items) || again.Items[0].ID != w1.Items[0].ID {
-		t.Fatal("l'assortiment change sans que le jour change")
+		t.Fatal("the selection changes without the day changing")
 	}
 	g.tick += 24 * protocol.TicksPerGameHour
 	w2, rev2 := g.waresFor(p, npc)
 	if rev2 == rev1 {
-		t.Fatalf("la révision ne change pas d'un jour à l'autre (%d)", rev2)
+		t.Fatalf("the revision does not change from one day to the next (%d)", rev2)
 	}
 	same := len(w2.Items) == len(w1.Items)
 	for i := range w1.Items {
@@ -180,23 +180,23 @@ func TestCaravanSellsHigherTierAndRotatesDaily(t *testing.T) {
 		}
 	}
 	if same {
-		t.Error("l'assortiment est identique le lendemain")
+		t.Error("the selection is identical the next day")
 	}
 
-	// Un achat décidé sur l'étalage d'hier est refusé (révision périmée).
+	// A purchase decided on yesterday's stall is refused (stale revision).
 	p.stats.AddGold(5000)
 	if out := g.buyItem(p, npc, itoaRev(rev1, w1.Items[0].ID)); len(out) == 0 || out[0] == "" {
-		t.Fatal("pas de réponse à un achat périmé")
+		t.Fatal("no response to a stale purchase")
 	}
-	if len(p.inv.Items) != 0 && len(p.inv.Items) != 1 { // l'arme de départ éventuelle
-		t.Logf("sac : %d objets", len(p.inv.Items))
+	if len(p.inv.Items) != 0 && len(p.inv.Items) != 1 { // the possible starting weapon
+		t.Logf("bag: %d items", len(p.inv.Items))
 	}
 
-	// Le marchand ne propose ni vol, ni quête, ni discussion libre.
+	// The merchant offers neither theft, nor quest, nor free discussion.
 	for _, o := range g.offers(p, npc) {
 		switch o.Action {
 		case protocol.NPCSteal, protocol.NPCTalk, protocol.NPCAskWork, protocol.NPCTurnIn:
-			t.Errorf("offre inattendue chez un marchand ambulant: %s", o.Action)
+			t.Errorf("unexpected offer from a travelling merchant: %s", o.Action)
 		}
 	}
 }

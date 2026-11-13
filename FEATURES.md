@@ -1,264 +1,265 @@
-# Fonctionnalités de sudo Dragon
+# sudo Dragon features
 
-Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), établi d'après le code. Pour l'installation, les options du serveur et l'exploitation, voir le [README](README.md) ([English version](README.en.md)).
+Inventory of the game's features (formerly "ASCII Adventure"), established from the code. For installation, server options and operation, see the [README](README.md), which is the English reference ([version française](README.fr.md)). This file is in English; both READMEs must be kept in sync.
 
-## Monde et génération (`internal/world/`)
+## World and generation (`internal/world/`)
 
-- **Monde infini** généré par bruit simplex depuis une seed, par chunks de 32×32.
-- **Versions du générateur** (`World.GenVersion`) : un monde garde la version de terrain avec laquelle il a été créé (clé `gen` de la table `meta` ; une base sans cette clé est en **v1**, un nouveau monde en **v3**). Le serveur annonce la version dans le message `welcome` (`gen`, absent = 1) et le client construit le même terrain. La v1 est figée (`layout_golden_test`), la v2 l'est aussi ; la v3 reprend exactement le terrain de la v2.
-  - **v1** : une élévation et une humidité à une seule échelle (lacs, mers et reliefs en patchwork), sans rivières.
-  - **v2** (`world/terrain2.go`) : **continents** et **océans** (~600 cases, côtes déformées), **îles et archipels** en mer peu profonde, un continent garanti autour de l'origine, **chaînes de montagnes** (crêtes linéaires interrompues, bordées de collines), **rivières** qui serpentent (deux échelles de méandres, largeur de 2 à 5 cases mesurée à la distance de la ligne, variable le long du cours), naissent et meurent, et s'élargissent vers les côtes ; les chaînes de montagnes sont déformées de même, **lacs**, et un **climat** (température en bandes de latitude et en altitude, humidité à deux échelles et plus forte près de la mer, adouci autour de l'origine) qui donne les **biomes**. Les échelles sont resserrées pour que le paysage change toutes les 1 à 2 minutes de marche, et chaque biome contient ses **motifs locaux** (bosquets et clairières de 10 à 20 cases qui déchiquettent les lisières entre forêt et plaine, dunes, mares, taches de neige). La neige couvre les sommets des régions froides ; la plaine très froide est de la neige, puis de la toundra.
-  - **v3** (`world/resources.go`) : ajoute les **nœuds de ressources** (voir plus bas) sur le terrain de la v2, sans le modifier.
-- **Ressources et récolte** (`internal/resource/`, `world/resources.go`, `game/gather.go`) : en v3, des **nœuds** parsèment le terrain naturel, une pure fonction de la seed et de la position (le client les recalcule, aucun message). Ils sont franchissables, jamais sur une structure, un point d'intérêt, une route, une entrée de donjon ni à 16 cases du point de départ. Quatre tuiles (**arbre**, **filon**, **touffe**, **banc de poissons**) qui gardent **le glyphe du terrain qu'elles recouvrent** (`T`, `P`, `J`… pour un arbre, `n` pour un filon de collines, `"` pour une plante de plaine) : seule leur **couleur**, en gras, dit la ressource (chêne ocre, pin turquoise, bouleau blanc, ébène violet, cuivre orange, or jaune, argent presque blanc, lavande lilas, ortie bleu, champignon rouge…, une couleur par ressource ; le glyphe schématique `a` / `0` / `h` ne sert qu'aux outils comme `worldview`). Densité faible : forêt et jungle ~2 % d'arbres, collines ~1,2 % de filons, plaines ~0,3 % d'arbres et ~1,2 % de **plantes** (elles ne poussent **qu'en plaine**), toundra, désert et sable quelques filons rares.
-  - **Déclinaisons** (18 hors pêche, catalogue statique, un palier de rareté de 1 à 4) : **bois** — chêne, pin, bouleau, if, ébène ; **minerais** — pierre, charbon, cuivre, étain, fer, argent, or ; **plantes** — sauge, ortie, menthe, lavande, champignon, mandragore. La variante d'un nœud dépend du **climat** de la contrée (ébène en tropical, pin en boréal ou aride, sauge en tempéré ou aride…) et du **niveau de région** : le palier maximal vaut 1 aux niveaux 1-5 puis monte d'un cran par tranche (or et mandragore dès le niveau 16), les paliers communs restant les plus fréquents.
-  - **Récolte** : touche **`G`** en jeu libre, sur la case du nœud ou sur une case voisine (4 directions). Chaque tentative demande un **jet de réussite** (voir *Métiers de récolte*) et **épuise le nœud pour tous pendant 10 min**, qu'elle réussisse ou non (état en mémoire, perdu au redémarrage) ; une réussite donne **1 unité**. Si le sac de la catégorie est plein, la tentative est refusée avant le jet et le nœud reste intact. Un délai de 0,8 s sépare deux tentatives ; impossible sous terre, en combat ou en conversation. Le serveur envoie au client les nœuds épuisés à moins de 160 cases (message `nodes`, renvoyé quand la liste change ou après 40 cases de marche) : ils sont dessinés comme le terrain nu.
-  - **Métiers de récolte** (`resource/job.go`, `game/gather.go`) : un métier par catégorie — **bûcheron** (bois), **mineur** (minerais, pierre comprise), **herboriste** (plantes), **pêcheur** (poissons). Niveau 1 à 10 ; l'expérience (cumulée) vient des **réussites** seulement : 5 × le palier de la ressource (1 à 4) ; il faut 25 × niveau² XP pour passer au niveau suivant (25 au niveau 1, 225 au niveau 3…). Le niveau fixe la **chance de réussite** (40 % au niveau 1, +6 % par niveau, 94 % au niveau 10) et la **taille du sac** de la catégorie (5 unités au niveau 1, +3 par niveau, 32 au niveau 10, toutes déclinaisons confondues). Une montée de niveau est annoncée dans le journal.
-  - **Pêche** : des **bancs de poissons** (~2,5 % des cases de rivière, glyphe de la rivière `-` / `~`, couleur de l'espèce) se pêchent avec la même touche **`G`**, depuis le banc ou une case voisine, comme n'importe quel nœud (jet de réussite du métier de pêcheur) ; le banc est épuisé 10 min, qu'on ait réussi ou non. Le reste de la rivière ne donne rien. Poissons (catégorie **poissons**, mêmes paliers et règles de climat et de niveau que le reste) : goujon, truite (tempéré, boréal), carpe (tempéré, tropical, aride), brochet, saumon (tempéré, boréal, dès le niveau 11), anguille (dès le niveau 11), esturgeon (dès le niveau 16). Ils vont dans le sac de matières. Pas de canne à pêche pour l'instant.
-  - Sur la carte du monde, les nœuds ne sont pas dessinés (on voit le terrain qui les porte).
-- **Terrains** : eau profonde, eau, sable, plaine, forêt, collines, montagne, neige ; en v2, aussi **rivière** (`-`, praticable : un gué, et un pont quand une route la traverse), **toundra** (`,`), **désert** (`;`), **marais** (`m`) et **jungle** (`J`), tous praticables ; en v3, aussi les nœuds **arbre**, **filon** et **touffe** (dessinés avec le glyphe du terrain, voir plus bas). Tuiles de structures : chemin, sol intérieur, mur, porte. Tuiles de donjon : coffre, escalier. Tuiles de points d'intérêt : feu de camp, sanctuaire, tour de guet, pierre dressée, coffre de repaire, source, ruines (voir plus bas).
-- **Lieux** : au plus un par région de 256×256 (en v1 55 % des régions ont un lieu, 70 % en v2 ; les régions en partie sous l'eau en ont moins).
-  - **Village** (~32×26), **ville** (~58×46, avec muraille), **forteresse** (48×40).
-  - Les plans sont recalculés à l'identique côté client et serveur : rien n'est envoyé ni stocké.
-- **Niveau de région** (`world/level.go`) : il croît avec l'éloignement de l'origine (0, 0), en distance de Chebyshev, de 1 à 20 : un niveau toutes les ~154 tuiles, soit quatre **tranches** de cinq niveaux (1-5, 6-10, 11-15, 16-20) larges de 3 régions (768 tuiles). Il ne dépend pas de la graine, donc le client le recalcule sans message. Il règle la force des monstres, le rang de l'équipement vendu et lâché, et le palier des donjons.
-- **Contrées** : pays nommés aux frontières irrégulières (Voronoi), noms selon le terrain dominant (côtes, plaines, forêts, collines, monts, et en v2 déserts, jungles, marais, toundras), en français et en anglais.
-- **Climats** (`world/climate.go`) : chaque contrée a un climat : en v1 tiré de la graine (40 % **tempéré**, 20 % **tropical**, 20 % **aride**, 20 % **boréal**) ; en v2 déduit de la température et de l'humidité réelles moyennes de ses terres (chaud et humide : tropical, chaud et sec : aride, froid : boréal, sinon tempéré), pour que les couleurs suivent les biomes. Il est purement visuel (terrain, monstres et génération ne changent pas) et se recalcule des deux côtés sans message : franchir la frontière d'une contrée change les couleurs et les glyphes du terrain (tropical : verts vifs et mers turquoise ; aride : plaines jaunes, forêts olive clairsemées, collines rouges ; boréal : verts froids et bleutés). La neige, les routes des lieux, les structures et les donjons gardent leurs couleurs.
-- **Routes entre lieux** (`roads.go`) : deux régions voisines (côte à côte, pas en diagonale) qui ont chacune un lieu sont reliées par une route.
-  - Tracé par A* sur le terrain brut, confiné aux deux régions, donc identique quel que soit l'ordre de génération.
-  - Les routes s'arrêtent au bord d'un lieu et rejoignent son chemin intérieur ; elles ne touchent jamais son emprise.
-  - Pont sur les rivières (tuile `Road`) ; jamais d'eau profonde ni de montagne, et en v2 jamais d'eau du tout (mer, lacs, mares : les routes les contournent, des ports viendront plus tard) ; en v1 les routes gardent leur pont sur l'eau peu profonde. Coût croissant selon le terrain (plaine < forêt < collines < neige ; en v2 toundra et désert 2, marais 3, jungle 4, rivière 5).
-- **Donjons** (`dungeon.go`, `dungeonmap.go`) : environ une région sur cinq cache un donjon, dont l'**entrée secrète** est une case de terrain ordinaire (hors lieux et eau ; une route peut la croiser).
-  - **Nom unique** dans un rayon de 3 régions (« Crypte de Valmor »…), en français et en anglais ; identifiant stable `x,y` de la région.
-  - **Palier** de 1 à 5, tiré du niveau de région au centre de la région du donjon (1 + niveau / 4, soit un de plus toutes les 4 niveaux) ; il règle le nombre de salles (6 ou 7 au palier 1, jusqu'à 11 au palier 5), de gardes et d'élites.
-  - **Plan** (64×40) tiré de la **seed du donjon** : des salles reliées par des couloirs, escalier d'entrée dans la première, **boss** et son **coffre** dans la dernière, gardes et coffres entre les deux. Recalculé à l'identique côté client et serveur.
-  - **Instance partagée** (`game/dungeon.go`) : chaque donjon a une seule instance, avec ses propres index de joueurs et de monstres (coordonnées locales au plan, donc deux donjons ne se heurtent jamais). Marcher sur l'entrée y emmène, avec les joueurs libres à moins de 5 cases ; tous les joueurs d'un même donjon se retrouvent dedans.
-  - **Le donjon garde son état tant que son boss vit** : monstres vaincus et coffres ouverts le restent, qu'on sorte, qu'on meure ou qu'on se déconnecte, même quand il est vide (il est alors figé, sans calcul). Il **repart à neuf quand quelqu'un tue la liche, mais un jour de jeu plus tard** (24 heures de jeu, soit 24 minutes réelles ; une heure de jeu = 600 ticks, voir `protocol.TicksPerGameHour`), pour qu'on n'enchaîne pas les donjons.
-  - Pendant ce délai, le donjon reste tel que la victoire l'a laissé, pour tous : boss mort, coffres vidés, rien ne revient, même s'il se vide. À l'entrée, le journal annonce « le donjon ne se reformera pas avant N h de jeu » (message `zone`, champ `reset`, arrondi à l'heure supérieure).
-  - L'échéance passée, le premier visiteur trouve un donjon complet, boss et coffres compris, tandis que ceux qui étaient restés dans l'ancien finissent tranquillement dedans ; l'ancien se ferme avec son dernier joueur.
-  - Un donjon dont la liche vient de tomber n'est pas confié en quête (elle ne pourrait pas être vaincue avant son retour).
-  - L'état n'est qu'en mémoire : un redémarrage du serveur refait tout à neuf, délai compris.
-  - Le donjon est peuplé à l'ouverture d'après les emplacements du plan : **gardes** (squelettes et spectres), **élites** (chevaliers et golems) et la **liche**, le boss. Aucun monstre de biome ni de garnison n'y apparaît, et rien ne repousse.
-  - **Mise à l'échelle** : les monstres ont 80 % (palier 1) à 160 % (palier 5) de leurs PV et de leur XP, et un point de toucher de plus tous les deux paliers. Les combats de groupe y rassemblent 2 monstres au plus.
-  - **Coffres** : on les ouvre en marchant dessus, une fois chacun tant que la liche vit (le premier arrivé les vide ; ils se refont avec le donjon). Ils donnent de l'or (15 à 30 par palier), parfois des potions (40 %) et, dans 35 % des cas, une pièce d'équipement du palier du donjon.
-  - **Coffre du boss** : verrouillé tant que la liche vit, il contient toujours un objet, un rang au-dessus du palier (5 au plus). La liche laisse en plus 100 or + 40 par palier et 3 potions.
-  - Un sac plein laisse le coffre fermé : on peut revenir. Le butin est fabriqué sans modèle de langage (`gear.DungeonLoot`), au maximum des bonus permis ; il n'a pas de vendeur d'origine (description « Trouvé au fond d'un donjon »).
-  - Tuer la liche ne valide pas une quête de « seigneur de guerre ».
-  - On sort par l'**escalier** ; vaincu, on se réveille devant l'entrée (le donjon garde son état). Déconnecté sous terre, on est sauvegardé devant l'entrée.
-  - **Côté client** (`client/dungeon.go`) : le plan est recalculé d'après la seed du message `zone`, comme le monde. Seules les cases à moins de 7 cases du joueur ont été vues (le reste est de la roche, tuile `Rock` dessinée en `#` gris sombre ; seule la première couche de roche, au contact d'une salle ou d'un couloir diagonales comprises, reste en `#` blanc pour souligner les murs) ; un coffre ouvert apparaît vide. Le titre du panneau donne le nom du donjon et les coordonnées du plan ; `M` ouvre le plan déjà exploré avec le palier, et se referme avec `M` ou Échap.
-  - Les donjons sont activés sur le serveur (`Game.Dungeons`, désactivé par défaut dans `game.New`, comme dans les tests).
-  - **Découverte** : passer à 3 cases ou moins d'une entrée la révèle, pour ce personnage seulement. Le serveur le dit au joueur (« Vous découvrez l'entrée secrète de… »), mémorise la découverte (table `discoveries`, sauvegardée tout de suite) et la renvoie à chaque connexion. Entrer dans un donjon révèle aussi l'entrée à tout le groupe.
-  - Une entrée découverte s'affiche `>` sur la carte principale et sur la carte du monde (`M`), figure dans la légende et dans la liste des lieux proches (avec le palier), et se rejoint par `/goto <nom ou début du nom>` : la marche s'arrête devant l'entrée, sans y entrer. Une entrée non découverte reste une case de terrain ordinaire.
-  - Les quêtes de donjon (voir *PNJ, dialogues et quêtes*) révèlent aussi l'entrée du donjon visé, dès l'acceptation.
-- **Points d'intérêt** (`world/poi.go`, `game/poi.go`) : de petits repères en plein air, **une case chacun**, au plus un par région en v1 (~78 % des régions) ; la v2 en ajoute jusqu'à **deux de plus** par région (55 % puis 30 %, à 40 cases au moins les uns des autres, jamais des pierres dressées : le réseau de pierres reste d'une par région), soit environ le double de points au total. Leur état (délais des feux, sources et sanctuaires ; repaires vidés) est tenu par point (région et indice). Position, type et nom (« Menhir de Valmor »…, en français et en anglais) viennent de la seed par des flux dédiés : le client les recalcule sans message et aucun lieu ni donjon existant ne bouge. Ils sont **visibles d'emblée** (pas de découverte) ; on les place sur du terrain praticable, loin des lieux, du point de départ et des entrées de donjon, et les routes les contournent. Ils s'affichent sur la carte principale et sur la carte du monde (`M`, une fois la zone explorée), avec leur ligne de légende. On interagit en **marchant sur la case** :
+- **Infinite world** generated by simplex noise from a seed, in 32×32 chunks.
+- **Generator versions** (`World.GenVersion`): a world keeps the terrain version it was created with (`gen` key of the `meta` table; a database without this key is **v1**, a new world is **v3**). The server announces the version in the `welcome` message (`gen`, absent = 1) and the client builds the same terrain. v1 is frozen (`layout_golden_test`), v2 is frozen too; v3 reuses the v2 terrain exactly.
+  - **v1**: single-scale elevation and humidity (lakes, seas and reliefs in a patchwork), no rivers.
+  - **v2** (`world/terrain2.go`): **continents** and **oceans** (~600 tiles, distorted coasts), **islands and archipelagos** in shallow sea, a guaranteed continent around the origin, **mountain ranges** (broken linear ridges, bordered by hills), **rivers** that meander (two meander scales, width of 2 to 5 tiles measured from the distance to the centre line, varying along the course), spring up and die out, and widen towards the coasts; mountain ranges are distorted the same way, **lakes**, and a **climate** (temperature in latitude bands and with altitude, two-scale humidity that is stronger near the sea, softened around the origin) that yields the **biomes**. The scales are tightened so that the landscape changes every 1 to 2 minutes of walking, and each biome contains its **local patterns** (groves and clearings of 10 to 20 tiles that jag the edges between forest and plain, dunes, ponds, snow patches). Snow covers the peaks of cold regions; very cold plain is snow, then tundra.
+  - **v3** (`world/resources.go`): adds the **resource nodes** (see below) on top of the v2 terrain, without changing it.
+- **Resources and gathering** (`internal/resource/`, `world/resources.go`, `game/gather.go`): in v3, **nodes** are scattered over natural terrain, a pure function of the seed and position (the client recomputes them, no message). They are walkable, never on a structure, a point of interest, a road, a dungeon entrance, nor within 16 tiles of the starting point. Four tiles (**tree**, **vein**, **tuft**, **fish shoal**) that keep **the glyph of the terrain they cover** (`T`, `P`, `J`… for a tree, `n` for a hill vein, `"` for a plain plant): only their **colour**, in bold, tells the resource (ochre oak, turquoise pine, white birch, violet ebony, orange copper, yellow gold, almost white silver, lilac lavender, blue nettle, red mushroom…, one colour per resource; the schematic glyph `a` / `0` / `h` is only used by tools such as `worldview`). Low density: forest and jungle ~2% trees, hills ~1.2% veins, plains ~0.3% trees and ~1.2% **plants** (they grow **only on plains**), tundra, desert and sand a few rare veins.
+  - **Variants** (18 excluding fishing, static catalogue, a rarity tier from 1 to 4): **wood** — oak, pine, birch, yew, ebony; **ores** — stone, coal, copper, tin, iron, silver, gold; **plants** — sage, nettle, mint, lavender, mushroom, mandrake. A node's variant depends on the **climate** of the territory (ebony in tropical, pine in boreal or arid, sage in temperate or arid…) and on the **region level**: the maximum tier is 1 at levels 1-5 then rises by one per band (gold and mandrake from level 16), the common tiers remaining the most frequent.
+  - **Gathering**: key **`G`** in free play, on the node's tile or on an adjacent tile (4 directions). Each attempt requires a **success roll** (see *Gathering jobs*) and **depletes the node for everyone for 10 min**, whether it succeeds or not (in-memory state, lost on restart); a success yields **1 unit**. If the bag for the category is full, the attempt is refused before the roll and the node stays intact. A 0.8 s delay separates two attempts; impossible underground, in combat or in conversation. The server sends the client the depleted nodes within 160 tiles (`nodes` message, resent when the list changes or after 40 tiles of walking): they are drawn like bare terrain.
+  - **Gathering jobs** (`resource/job.go`, `game/gather.go`): one job per category — **lumberjack** (wood), **miner** (ores, stone included), **herbalist** (plants), **fisher** (fish). Level 1 to 10; (cumulative) experience comes from **successes** only: 5 × the resource's tier (1 to 4); it takes 25 × level² XP to reach the next level (25 at level 1, 225 at level 3…). The level sets the **success chance** (40% at level 1, +6% per level, 94% at level 10) and the **bag size** of the category (5 units at level 1, +3 per level, 32 at level 10, all variants combined). A level-up is announced in the log.
+  - **Fishing**: **fish shoals** (~2.5% of river tiles, river glyph `-` / `~`, species colour) are fished with the same **`G`** key, from the shoal or an adjacent tile, like any node (fisher job success roll); the shoal is depleted for 10 min, whether or not you succeeded. The rest of the river yields nothing. Fish (category **fish**, same tiers and climate and level rules as the rest): gudgeon, trout (temperate, boreal), carp (temperate, tropical, arid), pike, salmon (temperate, boreal, from level 11), eel (from level 11), sturgeon (from level 16). They go in the materials bag. No fishing rod for now.
+  - On the world map, nodes are not drawn (you see the terrain that carries them).
+- **Terrains**: deep water, water, sand, plain, forest, hills, mountain, snow; in v2, also **river** (`-`, walkable: a ford, and a bridge where a road crosses it), **tundra** (`,`), **desert** (`;`), **swamp** (`m`) and **jungle** (`J`), all walkable; in v3, also the **tree**, **vein** and **tuft** nodes (drawn with the terrain glyph, see above). Structure tiles: path, interior floor, wall, door. Dungeon tiles: chest, stairs. Point-of-interest tiles: campfire, shrine, watchtower, standing stone, lair chest, spring, ruins (see below).
+- **Places**: at most one per 256×256 region (in v1 55% of regions have a place, 70% in v2; regions partly under water have fewer).
+  - **Village** (~32×26), **town** (~58×46, with a wall), **fortress** (48×40).
+  - Layouts are recomputed identically on client and server: nothing is sent or stored.
+- **Region level** (`world/level.go`): it grows with the distance from the origin (0, 0), in Chebyshev distance, from 1 to 20: one level every ~154 tiles, i.e. four **bands** of five levels (1-5, 6-10, 11-15, 16-20) each 3 regions wide (768 tiles). It does not depend on the seed, so the client recomputes it without a message. It sets monster strength, the rank of equipment sold and dropped, and the dungeon tier.
+- **Territories**: named countries with irregular borders (Voronoi), names depending on the dominant terrain (coasts, plains, forests, hills, mountains, and in v2 deserts, jungles, swamps, tundras), in French and English.
+- **Climates** (`world/climate.go`): each territory has a climate: in v1 drawn from the seed (40% **temperate**, 20% **tropical**, 20% **arid**, 20% **boreal**); in v2 deduced from the real average temperature and humidity of its lands (hot and humid: tropical, hot and dry: arid, cold: boreal, otherwise temperate), so that colours follow the biomes. It is purely visual (terrain, monsters and generation do not change) and recomputed on both sides without a message: crossing a territory's border changes the terrain colours and glyphs (tropical: vivid greens and turquoise seas; arid: yellow plains, sparse olive forests, red hills; boreal: cold, bluish greens). Snow, place roads, structures and dungeons keep their colours.
+- **Roads between places** (`roads.go`): two neighbouring regions (side by side, not diagonal) that each have a place are linked by a road.
+  - Traced by A* on the raw terrain, confined to the two regions, hence identical whatever the generation order.
+  - Roads stop at the edge of a place and join its inner path; they never touch its footprint.
+  - Bridge over rivers (`Road` tile); never deep water or mountain, and in v2 never water at all (sea, lakes, ponds: roads go around them, ports will come later); in v1 roads keep their bridge over shallow water. Cost increasing with terrain (plain < forest < hills < snow; in v2 tundra and desert 2, swamp 3, jungle 4, river 5).
+- **Dungeons** (`dungeon.go`, `dungeonmap.go`): about one region in five hides a dungeon, whose **secret entrance** is an ordinary terrain tile (outside places and water; a road may cross it).
+  - **Unique name** within a radius of 3 regions ("Crypt of Valmor"…), in French and English; stable identifier `x,y` of the region.
+  - **Tier** from 1 to 5, drawn from the region level at the centre of the dungeon's region (1 + level / 4, i.e. one more every 4 levels); it sets the number of rooms (6 or 7 at tier 1, up to 11 at tier 5), guards and elites.
+  - **Layout** (64×40) drawn from the **dungeon seed**: rooms linked by corridors, entrance stairs in the first, **boss** and its **chest** in the last, guards and chests in between. Recomputed identically on client and server.
+  - **Shared instance** (`game/dungeon.go`): each dungeon has a single instance, with its own player and monster indices (coordinates local to the layout, so two dungeons never collide). Stepping on the entrance takes you in, with the free players within 5 tiles; all players of the same dungeon meet inside.
+  - **The dungeon keeps its state while its boss lives**: defeated monsters and opened chests stay that way, whether you leave, die or disconnect, even when it is empty (it is then frozen, with no computation). It **starts afresh when someone kills the lich, but one game day later** (24 game hours, i.e. 24 real minutes; one game hour = 600 ticks, see `protocol.TicksPerGameHour`), so that dungeons cannot be chained.
+  - During this delay, the dungeon stays as the victory left it, for everyone: boss dead, chests emptied, nothing comes back, even if it empties. On entry, the log announces "the dungeon will not re-form for N game hours" (`zone` message, `reset` field, rounded up to the hour).
+  - Once the deadline has passed, the first visitor finds a complete dungeon, boss and chests included, while those who had stayed in the old one quietly finish inside; the old one closes with its last player.
+  - A dungeon whose lich has just fallen is not entrusted as a quest (it could not be defeated before its return).
+  - The state is in memory only: a server restart redoes everything afresh, delay included.
+  - The dungeon is populated on opening from the layout's slots: **guards** (skeletons and spectres), **elites** (knights and golems) and the **lich**, the boss. No biome or garrison monster appears there, and nothing respawns.
+  - **Scaling**: monsters have 80% (tier 1) to 160% (tier 5) of their HP and XP, and one extra to-hit point every two tiers. Group fights there gather 2 monsters at most.
+  - **Chests**: opened by walking onto them, once each while the lich lives (the first to arrive empties them; they refill with the dungeon). They give gold (15 to 30 per tier), sometimes potions (40%) and, in 35% of cases, a piece of equipment of the dungeon's tier.
+  - **Boss chest**: locked while the lich lives, it always contains an item, one rank above the tier (5 at most). The lich also drops 100 gold + 40 per tier and 3 potions.
+  - A full bag leaves the chest closed: you can come back. The loot is made without a language model (`gear.DungeonLoot`), at the maximum allowed bonuses; it has no original seller (description "Found deep in a dungeon").
+  - Killing the lich does not complete a "warlord" quest.
+  - You leave by the **stairs**; when defeated, you wake up in front of the entrance (the dungeon keeps its state). Disconnected underground, you are saved in front of the entrance.
+  - **Client side** (`client/dungeon.go`): the layout is recomputed from the seed of the `zone` message, like the world. Only the tiles within 7 tiles of the player have been seen (the rest is rock, `Rock` tile drawn as dark grey `#`; only the first layer of rock, touching a room or corridor, diagonals included, stays as white `#` to underline the walls); an opened chest appears empty. The panel title gives the dungeon name and the layout coordinates; `M` opens the already explored layout with the tier, and closes with `M` or Esc.
+  - Dungeons are enabled on the server (`Game.Dungeons`, disabled by default in `game.New`, as in tests).
+  - **Discovery**: coming within 3 tiles or less of an entrance reveals it, for that character only. The server tells the player ("You discover the secret entrance of…"), remembers the discovery (`discoveries` table, saved immediately) and sends it again at every login. Entering a dungeon also reveals the entrance to the whole group.
+  - A discovered entrance is displayed as `>` on the main map and on the world map (`M`), appears in the legend and in the list of nearby places (with the tier), and is reached with `/goto <name or start of name>`: the walk stops in front of the entrance, without entering. An undiscovered entrance remains an ordinary terrain tile.
+  - Dungeon quests (see *NPCs, dialogues and quests*) also reveal the targeted dungeon's entrance, as soon as accepted.
+- **Points of interest** (`world/poi.go`, `game/poi.go`): small open-air landmarks, **one tile each**, at most one per region in v1 (~78% of regions); v2 adds up to **two more** per region (55% then 30%, at least 40 tiles apart, never standing stones: the stone network stays at one per region), roughly doubling the total number of points. Their state (campfire, spring and shrine delays; emptied lairs) is kept per point (region and index). Position, type and name ("Menhir of Valmor"…, in French and English) come from the seed through dedicated streams: the client recomputes them without a message and no existing place or dungeon moves. They are **visible from the start** (no discovery); they are placed on walkable terrain, far from places, the starting point and dungeon entrances, and roads go around them. They are displayed on the main map and on the world map (`M`, once the area is explored), with their legend line. You interact by **walking onto the tile**:
 
-  | Point | Glyphe | Effet |
+  | Point | Glyph | Effect |
   |---|---|---|
-  | **Feu de camp** (30 %) | `&` | Soigne la moitié des PV et du mana (une fois par 5 min et par feu) et en fait votre **point de réapparition** : après une défaite, on se réveille près du dernier feu allumé au lieu du point de départ (sauvegardé avec le personnage ; message dédié). Un donjon renvoie toujours devant son entrée. |
-  | **Sanctuaire** (20 %) | `o` | Bonus de 5 min selon le **climat** de la contrée : tempéré +2 DEF, tropical +1 PV/s hors combat, aride +2 au toucher, boréal +50 % d'XP. Cooldown de 10 min par sanctuaire ; le bonus n'est pas sauvegardé et figure sur la fiche de personnage (`P`). |
-  | **Repaire** (20 %) | `x` (coffre) | Trois **gardiens** (bêtes du biome, 2 niveaux de région de plus) restent à moins de 6 cases de leur poste ; activés à moins de 40 cases d'un joueur, repoussent 30 min après leur défaite. Le **coffre** reste fermé tant qu'un gardien vit, puis donne de l'or, 1-2 potions et, une fois sur deux, un équipement (rang de la région + 1) ; il se remplit de nouveau 30 min après son ouverture. Sac plein : le coffre reste fermé. État en mémoire. |
-  | **Tour de guet** (15 %) | `I` | Révèle les entrées de donjon à 12 cases ou moins (comme une découverte) et, côté client, **marque comme exploré** un rayon de 96 cases sur la carte du monde. |
-  | **Pierre dressée** (15 %) | `\|` | S'**active** au premier passage (sauvegardé). Debout sur une pierre activée, `/menhir` liste les autres pierres activées avec leur prix, `/menhir <n° ou nom>` y téléporte contre de l'or (15 or par région de distance, 20 au minimum). Impossible en combat ou en conversation. |
-  | **Source** (~18 % des régions) | `v` | Rend 30 % des PV et 50 % du mana, avec 2 min de délai par source et par joueur (le délai ne court que si l'on a bu). En climat **aride**, c'est une **oasis** : 60 % des PV et tout le mana. Ne change pas le point de réapparition. |
-  | **Ruines** (~8 % des régions) | `/` | Un **gardien** d'élite (bête du biome, 3 niveaux de région de plus, repousse en 30 min) protège le coffre. Une fois le gardien vaincu, le coffre donne or (×1,5 d'un repaire), 1-2 potions et, 4 fois sur 5, un équipement (rang de la région + 1) ; il se remplit de nouveau 30 min après son ouverture. Il livre aussi un **fragment de lore** (texte statique, sept variantes) et révèle l'**entrée du donjon le plus proche** (3 régions au plus) si on ne la connaît pas déjà. |
-- **Cartes au trésor** (`game/treasure.go`, `world/dig.go`) : une carte retient la **case à creuser**, une case ordinaire de terrain praticable, à 40 cases au moins de l'endroit où on l'a trouvée et dans une région à 2 régions au plus. On en trouve dans le coffre d'une ruine (60 %) ou d'un repaire (25 %), et sur les monstres de la surface (2 %, 6 % pour un chevalier ou un boss). On en porte 5 au plus ; le journal donne les coordonnées (`/goto x y` pour s'y rendre) et la fiche de personnage (`C`) liste les cartes avec la distance. **Arriver exactement sur la case** déterre le trésor : or (25 × niveau de région, jusqu'au double), 1-2 potions et un équipement du rang de la région + 1. Sac plein : rien n'est creusé, la carte reste. Les cartes sont sauvegardées avec le personnage (colonne `maps`, migration 18).
-- **Zones sûres** : village ou ville plus 3 cases de marge. Pas de monstres, pas de poursuite, régénération de 1 PV par seconde.
+  | **Campfire** (30%) | `&` | Heals half the HP and mana (once per 5 min and per fire) and makes it your **respawn point**: after a defeat, you wake up near the last fire lit instead of the starting point (saved with the character; dedicated message). A dungeon always sends you back in front of its entrance. |
+  | **Shrine** (20%) | `o` | 5-min bonus depending on the territory's **climate**: temperate +2 DEF, tropical +1 HP/s out of combat, arid +2 to hit, boreal +50% XP. 10-min cooldown per shrine; the bonus is not saved and appears on the character sheet (`P`). |
+  | **Lair** (20%) | `x` (chest) | Three **guardians** (biome beasts, 2 region levels higher) stay within 6 tiles of their post; activated within 40 tiles of a player, they respawn 30 min after their defeat. The **chest** stays closed while a guardian lives, then gives gold, 1-2 potions and, one time in two, a piece of equipment (region rank + 1); it refills 30 min after being opened. Full bag: the chest stays closed. State in memory. |
+  | **Watchtower** (15%) | `I` | Reveals dungeon entrances within 12 tiles or less (like a discovery) and, on the client side, **marks as explored** a radius of 96 tiles on the world map. |
+  | **Standing stone** (15%) | `\|` | **Activates** on the first visit (saved). Standing on an activated stone, `/menhir` lists the other activated stones with their price, `/menhir <number or name>` teleports there for gold (15 gold per region of distance, 20 minimum). Impossible in combat or in conversation. |
+  | **Spring** (~18% of regions) | `v` | Restores 30% of HP and 50% of mana, with a 2 min delay per spring and per player (the delay only runs if you drank). In **arid** climate, it is an **oasis**: 60% of HP and all the mana. Does not change the respawn point. |
+  | **Ruins** (~8% of regions) | `/` | An elite **guardian** (biome beast, 3 region levels higher, respawns in 30 min) protects the chest. Once the guardian is defeated, the chest gives gold (×1.5 of a lair), 1-2 potions and, 4 times out of 5, a piece of equipment (region rank + 1); it refills 30 min after being opened. It also delivers a **lore fragment** (static text, seven variants) and reveals the **nearest dungeon entrance** (3 regions at most) if you do not already know it. |
+- **Treasure maps** (`game/treasure.go`, `world/dig.go`): a map remembers the **tile to dig**, an ordinary walkable terrain tile, at least 40 tiles from where it was found and within 2 regions at most. They are found in a ruin's chest (60%) or a lair's (25%), and on surface monsters (2%, 6% for a knight or a boss). You carry 5 at most; the log gives the coordinates (`/goto x y` to go there) and the character sheet (`C`) lists the maps with the distance. **Arriving exactly on the tile** unearths the treasure: gold (25 × region level, up to double), 1-2 potions and a piece of equipment of rank region + 1. Full bag: nothing is dug, the map stays. Maps are saved with the character (`maps` column, migration 18).
+- **Safe zones**: village or town plus a 3-tile margin. No monsters, no pursuit, regeneration of 1 HP per second.
 
-## Déplacement et exploration
+## Movement and exploration
 
-- **Touches** : flèches, `Z Q S D`, `W A S D`, `h j k l`, diagonales `y u b n`.
-- **Cadence** : 5 cases par seconde ; les monstres sont plus lents.
-- **Vision** : ±40×±20 cases ; le serveur n'envoie que les entités qui ont changé.
-- **Marche automatique `/goto`** (`client/goto.go`, `client/pathfind.go`) :
-  - `/goto x y`, ou par nom de repère ou de lieu découvert (casse ignorée, ambiguïtés signalées).
-  - **Complétion par Tab** dans le chat : après `/goto `, Tab complète le nom (repères, lieux découverts avec ou sans type, entrées de donjon ; sous terre `escalier`/`coffre`). Plusieurs noms possibles : complète le préfixe commun, puis liste les choix au Tab suivant.
-  - Sous terre : par `escalier` ou `coffre` (le plus proche déjà vu, pas encore ouvert), ou par coordonnées du plan. La marche automatique ne traverse jamais un escalier de donjon ni une entrée de donjon, sauf si c'est la destination.
-  - Recalcul du chemin après 4 ticks sans progrès, abandon après 8.
-  - Interrompue par une direction, Échap, `q`, `i`, `p` ou `m`. Le serveur reste juge des collisions.
-- **Carte du monde (`M`)** (`client/worldmap.go`) :
-  - Zoom 1, 2, 4, 8 ou 16 tuiles par cellule (`+` / `-`), curseur clignotant aux flèches, `0` ou espace pour recentrer.
-  - Les couleurs du terrain suivent le climat de chaque contrée (palette partagée avec la vue de jeu, `render.TileHex`) ; le titre du panneau donne la contrée et son climat, et la légende prend les couleurs du climat sous le curseur.
-  - Seul le terrain exploré est affiché ; le reste est « inexploré » (`░`).
-  - Légende (écran ≥ 90 colonnes) : vous, joueurs, village, forteresse, donjon, points d'intérêt (feu de camp, sanctuaire, repaire, tour, pierre), forêt, montagne, eau, route, repère, inexploré ; liste des repères, lieux et donjons découverts proches avec direction et distance.
-- **Aller au curseur** : `G` lance la marche automatique (`/goto`) vers la case du curseur (case libre la plus proche) et ferme la carte.
-- **Repères** : `W` pose ou renomme (24 caractères, noms uniques, 9 au plus), `X` supprime.
-- **Localisation** : l'en-tête affiche `contrée · Niv. N · lieu · terrain (x, y)` (le niveau de région saute avec le reste quand la place manque) ; le journal annonce chaque nouvelle contrée (avec son climat) ou nouveau lieu, et le passage à une autre tranche de niveaux (« les créatures se font plus dangereuses »).
+- **Keys**: arrows, `Z Q S D`, `W A S D`, `h j k l`, diagonals `y u b n`.
+- **Pace**: 5 tiles per second; monsters are slower.
+- **Vision**: ±40×±20 tiles; the server only sends the entities that changed.
+- **Auto-walk `/goto`** (`client/goto.go`, `client/pathfind.go`):
+  - `/goto x y`, or by name of a landmark or discovered place (case ignored, ambiguities reported).
+  - **Tab completion** in chat: after `/goto `, Tab completes the name (landmarks, discovered places with or without type, dungeon entrances; underground `stairs`/`chest`). Several possible names: completes the common prefix, then lists the choices at the next Tab.
+  - Underground: by `stairs` or `chest` (the nearest one already seen, not yet opened), or by layout coordinates. Auto-walk never crosses a dungeon staircase or a dungeon entrance, unless it is the destination.
+  - Path recomputed after 4 ticks without progress, given up after 8.
+  - Interrupted by a direction, Esc, `q`, `i`, `p` or `m`. The server remains the judge of collisions.
+- **World map (`M`)** (`client/worldmap.go`):
+  - Zoom 1, 2, 4, 8 or 16 tiles per cell (`+` / `-`), blinking cursor with the arrows, `0` or space to recentre.
+  - Terrain colours follow each territory's climate (palette shared with the game view, `render.TileHex`); the panel title gives the territory and its climate, and the legend takes the colours of the climate under the cursor.
+  - Only explored terrain is displayed; the rest is "unexplored" (`░`).
+  - Legend (screen ≥ 90 columns): you, players, village, fortress, dungeon, points of interest (campfire, shrine, lair, tower, stone), forest, mountain, water, road, landmark, unexplored; list of nearby discovered landmarks, places and dungeons with direction and distance.
+- **Go to cursor**: `G` starts auto-walk (`/goto`) to the cursor tile (nearest free tile) and closes the map.
+- **Landmarks**: `W` places or renames (24 characters, unique names, 9 at most), `X` deletes.
+- **Location**: the header shows `territory · Lvl N · place · terrain (x, y)` (the region level is dropped along with the rest when space runs short); the log announces each new territory (with its climate) or new place, and the move to another level band ("creatures are getting more dangerous").
 
-## Monstres (`internal/game/monsters.go`, `garrison.go`)
+## Monsters (`internal/game/monsters.go`, `garrison.go`)
 
-| Origine | Monstres |
+| Origin | Monsters |
 |---|---|
-| Biomes | rat (plaine), crabe (plage), loup (forêt), gobelin (collines), yéti (neige) ; en v2 aussi scorpion (désert), panthère (jungle), crapaud (marais), ours (toundra) |
-| Forteresses | squelette, chevalier, seigneur de guerre (boss) |
-| Donjons | squelette, chevalier, **spectre**, **golem**, **liche** (boss) |
+| Biomes | rat (plain), crab (beach), wolf (forest), goblin (hills), yeti (snow); in v2 also scorpion (desert), panther (jungle), toad (swamp), bear (tundra) |
+| Fortresses | skeleton, knight, warlord (boss) |
+| Dungeons | skeleton, knight, **spectre**, **golem**, **lich** (boss) |
 
-- Errance et poursuite à portée de détection ; 500 monstres au plus, avec un quota par joueur.
-- **Mise à l'échelle par région** (`scaledForLevel`) : un monstre de biome ou de garnison est mis au niveau de sa région à l'apparition : PV et XP +25 % par niveau au-delà du premier (×5,75 au niveau 20), +1 toucher tous les 3 niveaux, +1 aux dés de dégâts tous les 4 niveaux, +1 de DEF tous les 5 niveaux. Au niveau 1, les stats de base. L'XP et l'or de la victoire suivent. Les monstres de donjon suivent le palier du donjon.
-- **Meutes** : un compagnon de plus tous les 3 niveaux du joueur ; des espèces compagnes apparaissent rarement.
-- **Garnisons** : apparaissent à moins de 40 cases d'un joueur et restent dans la forteresse. Soldats : réapparition en 5 min ; seigneur : 15 min. Le seigneur laisse un trésor garanti (100 or, 3 potions).
+- Wandering and pursuit within detection range; 500 monsters at most, with a per-player quota.
+- **Scaling by region** (`scaledForLevel`): a biome or garrison monster is brought to its region's level on spawning: HP and XP +25% per level beyond the first (×5.75 at level 20), +1 to hit every 3 levels, +1 on damage dice every 4 levels, +1 DEF every 5 levels. At level 1, the base stats. The victory XP and gold follow. Dungeon monsters follow the dungeon's tier.
+- **Packs**: one more companion every 3 player levels; companion species appear rarely.
+- **Garrisons**: appear within 40 tiles of a player and stay in the fortress. Soldiers: respawn in 5 min; lord: 15 min. The lord drops a guaranteed treasure (100 gold, 3 potions).
 
 ## Combat (`internal/combat/`, `game/fight.go`, `client/combatview.go`)
 
-- **Règles** : d20 + modificateur doit dépasser strictement la DEF. 20 naturel : touche et double les dés de dégâts ; 1 naturel : rate. La réduction d'armure est retirée des dégâts (minimum 1 si touché).
-- **Groupes** : jusqu'à 3 monstres (2 pour les garnisons) ; les monstres libres compatibles à **5 cases** se joignent, même en marche ; ceux qui viennent de fuir ou de perdre un combat (2 s) restent à l'écart. Doublons numérotés (« Loup 1 », « Loup 2 »).
-- **Initiative** : d20 + AGI. Les monstres strictement plus rapides frappent avant le premier tour ; à égalité, le joueur commence.
-- **Actions** : Attaquer (`A`/`1`), Objet (`I`/`2`, potion +15 PV), Fuir (`F`/`3`, une chance sur deux). Flèches haut/bas + Entrée, gauche/droite pour changer de cible.
-- **Interface** : deux colonnes (joueur / ennemis), détail de l'action, journal.
-- **Illustrations** : rat, loup et crabe, en demi-blocs `▀` 24 bits (`render/image.go`). Les autres espèces n'en ont pas.
-- **Secousse d'écran** (`client/fx.go`) : zone entière quand on est touché, colonne ennemie quand on touche ; 6 images de 60 ms (9 sur critique) ; PV qui clignotent en rouge. Désactivable avec `SUDO_DRAGON_NO_FX`.
-- **Issue** :
-  - Victoire : XP, or (moitié à totalité de l'XP du monstre), 30 % de chances d'une potion, et un **objet d'équipement** du rang de la région (5 % pour un monstre de biome, 15 % pour un soldat de garnison, toujours pour le seigneur ; un cran de plus pour un chevalier ou un seigneur). Le butin va dans le sac (rien s'il est plein) ; il est fabriqué comme celui des donjons (`gear.MonsterLoot`, description « Arraché à la dépouille d'un monstre »). Les monstres de donjon n'en lâchent pas : ils ont leurs coffres.
-  - Défaite : retour au dernier feu de camp utilisé (sinon au départ, ou devant l'entrée d'un donjon) avec tous les PV et la mana, sans perte d'XP : seul le compteur de morts augmente.
-  - Inactivité de 60 s : fuite automatique.
-  - Après une fuite (réussie ou par inactivité), **aucun monstre n'engage le joueur pendant 5 s** (`fleeGrace`) et ceux du combat restent figés autant de temps ; attaquer un monstre met fin au répit. Après une défaite ou un départ, seuls les monstres du combat sont figés 2 s.
-- Les combattants sont immobiles et affichés en rouge pour les autres joueurs. Impossible d'équiper pendant un combat.
+- **Rules**: d20 + modifier must strictly exceed DEF. Natural 20: hits and doubles the damage dice; natural 1: misses. Armor reduction is subtracted from damage (minimum 1 if hit).
+- **Groups**: up to 3 monsters (2 for garrisons); compatible free monsters within **5 tiles** join in, even while walking; those that have just fled or lost a fight (2 s) stay away. Duplicates are numbered ("Wolf 1", "Wolf 2").
+- **Initiative**: d20 + AGI. Monsters strictly faster strike before the first turn; on a tie, the player starts.
+- **Actions**: Attack (`A`/`1`), Item (`I`/`2`, potion +15 HP), Flee (`F`/`3`, one chance in two). Up/down arrows + Enter, left/right to change target.
+- **Interface**: two columns (player / enemies), action detail, log.
+- **Illustrations**: rat, wolf and crab, in 24-bit half-blocks `▀` (`render/image.go`). The other species have none.
+- **Screen shake** (`client/fx.go`): whole area when you are hit, enemy column when you hit; 6 frames of 60 ms (9 on a critical); HP that blink red. Can be disabled with `SUDO_DRAGON_NO_FX`.
+- **Outcome**:
+  - Victory: XP, gold (half to all of the monster's XP), 30% chance of a potion, and a **piece of equipment** of the region's rank (5% for a biome monster, 15% for a garrison soldier, always for the lord; one rank more for a knight or a lord). The loot goes into the bag (nothing if it is full); it is made like dungeon loot (`gear.MonsterLoot`, description "Torn from a monster's remains"). Dungeon monsters drop none: they have their chests.
+  - Defeat: return to the last campfire used (otherwise the start, or in front of a dungeon's entrance) with all HP and mana, with no XP loss: only the death counter increases.
+  - 60 s of inactivity: automatic flight.
+  - After a flight (successful or by inactivity), **no monster engages the player for 5 s** (`fleeGrace`) and those of the fight stay frozen for as long; attacking a monster ends the respite. After a defeat or a departure, only the fight's monsters are frozen for 2 s.
+- Combatants are immobile and displayed in red to other players. Equipping is impossible during a fight.
 
-## Personnage (`internal/hero/`, `client/create.go`, `client/sheet.go`)
+## Character (`internal/hero/`, `client/create.go`, `client/sheet.go`)
 
-- **Caractéristiques** : FOR, AGI, INT, CON, SAG, CHA, tirées en 3d6 par le serveur.
-- **Création** : 3 relances au total (`R`), puis choix de la classe.
+- **Attributes**: STR, AGI, INT, CON, WIS, CHA, rolled as 3d6 by the server.
+- **Creation**: 3 rerolls in total (`R`), then class choice.
 
-| Classe | Dé de vie | Mana de départ |
+| Class | Hit die | Starting mana |
 |---|---|---|
-| Guerrier | d12 | 2 |
-| Gredin | d8 | 4 |
-| Magicien | d6 | 8 |
+| Warrior | d12 | 2 |
+| Rogue | d8 | 4 |
+| Mage | d6 | 8 |
 
-- **Niveaux** : `120 × niveau²` XP (≈ 300 000 XP cumulés jusqu’au niveau 20, soit ~60 h de jeu actif). À chaque niveau : dé de vie + modificateur de CON, PV et mana restaurés.
-- **Mana** : base de classe + 2 par niveau + niveau × modificateur de SAG ; un sort coûte 2 mana.
-- **Style d'attaque** déduit de l'arme : mêlée (FOR), distance (AGI), magie (INT). Sans mana, une arme magique sert de gourdin.
-- **Charisme** : ±2 % par point de modificateur sur les prix, borné à ±10 %.
-- **Fiche (`P`)** : classe, niveau, PV, mana, attaque, défense, or, position, palmarès (victoires, boss, morts), caractéristiques, équipement, **bénédictions de sanctuaire** en cours (bonus et temps restant, qui décompte côté client et disparaît à l'échéance ; la DEF affichée les inclut), **cartes au trésor** détenues, **métiers de récolte** (niveau, XP, chance de réussite, remplissage du sac), réputation.
-- Les anciens personnages repassent par la création à leur prochaine connexion.
+- **Levels**: `120 × level²` XP (≈ 300,000 cumulative XP up to level 20, i.e. ~60 h of active play). At each level: hit die + CON modifier, HP and mana restored.
+- **Mana**: class base + 2 per level + level × WIS modifier; a spell costs 2 mana.
+- **Attack style** deduced from the weapon: melee (STR), ranged (AGI), magic (INT). Without mana, a magic weapon serves as a club.
+- **Charisma**: ±2% per modifier point on prices, capped at ±10%.
+- **Sheet (`P`)**: class, level, HP, mana, attack, defence, gold, position, record (victories, bosses, deaths), attributes, equipment, current **shrine blessings** (bonus and remaining time, which counts down client-side and disappears at expiry; the displayed DEF includes them), held **treasure maps**, **gathering jobs** (level, XP, success chance, bag fill), reputation.
+- Old characters go through creation again at their next login.
 
-## Inventaire, équipement et commerce (`internal/gear/`, `client/bag.go`, `game/shop.go`)
+## Inventory, equipment and trade (`internal/gear/`, `client/bag.go`, `game/shop.go`)
 
-- **Emplacements** : arme, armure, bouclier, casque. **Rangs** 1 à 5 (niveau requis 1, 5, 10, 15, 20).
-- **Armes** : dégâts `rang d famille + qualité` (coupant d4, tranchant d6, contondant d8, deux mains d12). Arc court, arbalète et bâton se portent à deux mains.
-- **Armures** : bonus de DEF et dés de réduction (d4 légère, d6 intermédiaire, d8 lourde). Bouclier et casque : DEF seulement.
-- Une arme à deux mains interdit le bouclier, et inversement.
-- **Sac (`I`)** : 24 objets, `E` ou Entrée pour équiper/retirer. Revente à 40 % du prix ; un objet porté ne se revend pas.
-- **Sac de matières** : les ressources récoltées (voir *Monde et génération*) ne prennent pas de place dans le sac d'équipement. Elles sont listées par catégorie (bois, minerais, plantes, poissons) avec leur quantité dans la colonne de gauche de l'écran du sac (`I`), sous les objets. Sauvegardées avec le personnage (colonne `resources`, migration 19 ; l'expérience des métiers dans la colonne `skills`, migration 20). Elles ne servent pas encore : l'artisanat vient ensuite.
-- **Potions** : 2 au départ. **Or** plafonné à 999 999.
-- **Forgeron (`F`, armes) et armurier (`R`)** : chaque ville a les deux, chaque village un seul, les forteresses aucun. Achat `1`–`9`, revente `V`. Prix modulés par la réputation.
-- **Rangs vendus selon la région** : le rang maximal d'une boutique est 3 dans la première tranche, +1 par tranche (5 au plus) ; le rang minimal est le numéro de la tranche (1 à 4), si bien qu'un forgeron lointain ne vend plus d'équipement de débutant. Une ville vend toujours jusqu'au rang 5. Les étalages générés par IA sont bornés par les mêmes rangs.
-- **Étalages générés par IA** : à la première visite, le modèle invente une spécialité et 6 à 8 objets ; le serveur valide tout et jette l'étalage s'il reste moins de 4 objets valides. L'étalage est le même pour tous. Sans clé Mistral, un assortiment de repli déterministe est proposé (`gear/fallback.go`).
+- **Slots**: weapon, armor, shield, helmet. **Ranks** 1 to 5 (required level 1, 5, 10, 15, 20).
+- **Weapons**: damage `rank d family + quality` (piercing d4, slashing d6, bludgeoning d8, two-handed d12). Short bow, crossbow and staff are held with two hands.
+- **Armors**: DEF bonus and reduction dice (d4 light, d6 medium, d8 heavy). Shield and helmet: DEF only.
+- A two-handed weapon forbids the shield, and vice versa.
+- **Bag (`I`)**: 24 items, `E` or Enter to equip/remove. Resale at 40% of the price; a worn item cannot be resold.
+- **Materials bag**: gathered resources (see *World and generation*) take no room in the equipment bag. They are listed by category (wood, ores, plants, fish) with their quantity in the left column of the bag screen (`I`), under the items. Saved with the character (`resources` column, migration 19; job experience in the `skills` column, migration 20). They are not used yet: crafting comes next.
+- **Potions**: 2 at the start. **Gold** capped at 999,999.
+- **Blacksmith (`F`, weapons) and armorer (`R`)**: each town has both, each village only one, fortresses none. Purchase `1`–`9`, resale `V`. Prices modulated by reputation.
+- **Ranks sold by region**: a shop's maximum rank is 3 in the first band, +1 per band (5 at most); the minimum rank is the band number (1 to 4), so that a distant blacksmith no longer sells beginner equipment. A town always sells up to rank 5. AI-generated stock is bounded by the same ranks.
+- **AI-generated stock**: on the first visit, the model invents a specialty and 6 to 8 items; the server validates everything and discards the stock if fewer than 4 valid items remain. The stock is the same for everyone. Without a Mistral key, a deterministic fallback assortment is offered (`gear/fallback.go`).
 
-## PNJ, dialogues et quêtes
+## NPCs, dialogues and quests
 
-- **PNJ** (`game/npc.go`) : marchand, soigneur, forgeron, armurier, chef de village / maire, villageois, villageois à quêtes, soldats, gardes (mobiles, voir plus bas). On leur parle en marchant dessus (abandon après 60 s).
-- **Marchand ambulant** (`game/caravan.go`, `world/caravan.go`) : une route entre deux lieux voisins sur deux porte une **caravane** (forgeron ou armurier ambulant, nom propre). Elle fait l'aller-retour sur la route à une case par seconde, avec 30 s d'arrêt à chaque bout ; sa position ne dépend que de l'heure du serveur (rien à sauvegarder) et elle n'est suivie qu'à moins de 40 cases d'un joueur. Envoyée aux clients comme un monstre de type `caravan` (glyphe `E`), on lui parle en marchant sur elle ; elle s'arrête pendant la conversation et attend si la route est barrée. Elle vend de l'équipement **un rang au-dessus** des forges de sa région (assortiment du repli déterministe, sans modèle de langage ni écriture en base) qui **change chaque jour de jeu** (un achat décidé la veille est refusé). Achat et revente seulement : ni vol, ni quête, ni discussion libre. Les routes gardent leur tracé ordonné (`world.RoadRoutesNear`).
-- **Services** : potion à 20 or (revente 8 or) ; soins complets gratuits au niveau 1, ensuite 4 or × niveau. Le chef et le maire renseignent sur les lieux dans un rayon de 3 régions, même sans clé Mistral.
-- **Dialogues libres** (Mistral, touche `D` / `T` en anglais) :
-  - Le modèle ne produit que du texte, sans effet sur l'or, les objets ou les stats.
-  - Modération des entrées, budget de jetons par jour, avis de confidentialité avec accord par compte.
-  - Sans clé : fonction absente, phrase d'ambiance des villageois.
-- **Mémoire et lore** (`lore/`) : fiche de présentation du joueur (8 lieux au plus), rumeurs (portée 1 région : le lieu et les régions adjacentes, délai de 1 h vers la région voisine, morts non répétées hors du lieu, oubli après 14 jours), résumé privé par PNJ (seul signe qu'un PNJ a déjà parlé au joueur : un PNJ jamais rencontré ne le connaît que par rumeurs, ne le salue pas en familier et le traite en inconnu), faits vérifiés (niveau, boss, morts, quêtes rendues).
-- **Quêtes** (`internal/quest/`, `client/quests.go`) :
-  - Le modèle propose, le serveur décide : objectifs vérifiables, récompenses plafonnées, textes nettoyés. Accepter/Refuser avec `A`/`R`.
-  - Objectifs : tuer 3 à 12 monstres d'une espèce, entrer dans un lieu voisin, vaincre le seigneur de guerre (niveau 10 minimum), **vaincre le maître d'un donjon secret**.
-  - **Quête de donjon** (`game/dungeonquest.go`) : le donjon est à 3 régions au plus du donneur, et il faut avoir le niveau du palier (3, 5, 7, 9 ou 11). Elle est accomplie par la mort de la liche *de ce donjon* (un autre donjon ou le seigneur de guerre ne comptent pas), puis rendue au donneur. Récompense : or de 1,25 × la difficulté (150 + 50 × palier), XP, 2 potions, plafonnée comme tout boss. **Accepter la quête révèle l'entrée** du donjon.
-  - Deux sources, même validation : le modèle de langage peut proposer `dungeon` avec un nom de la liste `donjons_secrets` du prompt ; **sans modèle**, un villageois à quêtes ajoute au menu « Demander du travail » (`T` / `W` en anglais), qui propose le donjon accessible le plus proche, pas déjà en cours ni rendu (titre et histoire tirés du catalogue, en français et en anglais).
-  - Limites : 5 quêtes ouvertes, une par donneur, 30 min entre deux quêtes d'un même donneur, expiration à 7 jours.
-  - **Donneur sans travail** : le `!` d'un donneur disparaît (il s'affiche comme un villageois) tant qu'il ne peut rien confier : quête déjà ouverte chez lui, 30 min de pause après une remise, ou 5 quêtes ouvertes. Il revient tout seul à la fin de la pause. Le modèle est alors prévenu qu'il n'a pas de travail ; si sa quête proposée est écartée (invalide ou non modérée), une ligne système l'indique. Limite : sans modèle, le `!` ne tient pas compte de la présence d'un donjon accessible.
-  - Livre de quêtes (`Q`), onglets avec `Tab`, abandon avec `X` deux fois ; on rend la quête au donneur.
-- **Réputation** par lieu (village ou ville) : Recherché (≤ −10), Suspect (≤ −5), Inconnu, Connu (3), Estimé (8), Honoré (15). Réduction de 20 % puis 40 % sur soins, potions et équipement ; aucune remise sous Inconnu. Bornée à −20 minimum, sauvegardée (valeurs négatives comprises) et changement de palier annoncé dans le journal. Elle monte en rendant des quêtes et **baisse** de 1 en abandonnant une quête, de 3 en se faisant prendre à voler, de 5 en tuant un garde.
-- **Vol** : le marchand propose « Faire les poches » (`steal`). Chance de 50 % modulée par le charisme (20 % à 80 %) : succès = quelques pièces d'or (5 + 3 × niveau + 0 à 5), échec = −3 de réputation dans le lieu. Un même marchand ne se laisse pas voler deux fois en 3 minutes (mémoire du serveur seulement).
-- **Gardes de villages et de villes** (`game/guards.go`, `world/guards.go`) :
-  - Un village a 2 gardes, une ville 5 ; les forteresses aucun. Leur identité (nom unique dans le lieu, personnalité) et leur case de départ sont déterministes, tirées de la seed sur un flux séparé (les plans existants ne bougent pas). Ils ne sont pas dans `Structure.NPCs` : le serveur les fait apparaître quand un joueur est à moins de 40 cases du lieu et les retire quand plus personne n'est près ; un garde vaincu est remplacé après 5 min.
-  - **Patrouille** : ils vont de point de passage en point de passage sur les chemins du lieu (plus court trajet, pauses, un pas toutes les 0,5 s), même en zone sûre, et restent à 8 cases au plus de l'emprise du lieu. Ils s'arrêtent quand on leur parle.
-  - Ils s'affichent comme `G` bleu (même canal que les monstres dans l'instantané, identifiants hors de la plage des monstres). Marcher dessus leur adresse la parole.
-  - **Hors-la-loi** : un joueur **Recherché** (réputation ≤ −10) *dans ce lieu* est poursuivi à 12 cases ou moins, même en zone sûre, puis combattu au contact (un pas toutes les 0,3 s : plus lent qu'un joueur, on peut les distancer). Marcher sur un garde quand on est Recherché le combat au lieu de lui parler. La réputation est propre à chaque lieu : être Recherché dans un village ne concerne pas les gardes des autres lieux. Les autres joueurs ne sont jamais attaqués.
-  - **Combat** : fiche de monstre « Garde » (PV 60, mise à l'échelle du niveau de la région comme les monstres), sans XP ni butin. Le tuer coûte 5 de réputation de plus.
-  - **Dialogue** : menu « Où trouver : soigneur / marchand / forgeron / armurier / chef ou maire ? » (distance en pas et direction vers l'habitant du lieu, ou, s'il n'y en a pas, le lieu voisin le plus proche qui en a un) et « Quels sont les lieux voisins ? » (les trois plus proches, comme le chef). Ces réponses marchent sans clé Mistral.
-  - **Discussion libre** (`D`) : le modèle reçoit en plus la liste des habitants du lieu avec métier, direction et distance (`habitants_du_lieu`) et les lieux voisins ; il n'a pas le droit d'inventer un habitant ou un chemin. Il est prévenu de la réputation du joueur, négative comprise.
+- **NPCs** (`game/npc.go`): merchant, healer, blacksmith, armorer, village chief / mayor, villager, quest villager, soldiers, guards (mobile, see below). You talk to them by walking onto them (abandoned after 60 s).
+- **Travelling merchant** (`game/caravan.go`, `world/caravan.go`): one road in two between neighbouring places carries a **caravan** (travelling blacksmith or armorer, with a proper name). It goes back and forth on the road at one tile per second, with a 30 s stop at each end; its position only depends on the server time (nothing to save) and it is only tracked within 40 tiles of a player. Sent to clients as a monster of type `caravan` (glyph `E`), you talk to it by walking onto it; it stops during the conversation and waits if the road is blocked. It sells equipment **one rank above** the forges of its region (assortment from the deterministic fallback, no language model or database write) that **changes every game day** (a purchase decided the day before is refused). Purchase and resale only: no theft, quest or free discussion. Roads keep their ordered route (`world.RoadRoutesNear`).
+- **Services**: potion at 20 gold (resale 8 gold); full healing free at level 1, then 4 gold × level. The chief and the mayor give information about places within a radius of 3 regions, even without a Mistral key.
+- **Free dialogues** (Mistral, key `D` / `T` in English):
+  - The model only produces text, with no effect on gold, items or stats.
+  - Input moderation, daily token budget, privacy notice with per-account consent.
+  - Without a key: feature absent, ambient phrase from villagers.
+- **Memory and lore** (`lore/`): player presentation card (8 places at most), rumors (range 1 region: the place and adjacent regions, 1 h delay towards the neighbouring region, deaths not repeated outside the place, forgotten after 14 days), private summary per NPC (the only sign that an NPC has already spoken to the player: an NPC never met knows them only through rumors, does not greet them as a familiar and treats them as a stranger), verified facts (level, bosses, deaths, quests turned in).
+- **Quests** (`internal/quest/`, `client/quests.go`):
+  - The model proposes, the server decides: verifiable objectives, capped rewards, sanitized texts. Accept/Decline with `A`/`R`.
+  - Objectives: kill 3 to 12 monsters of a species, enter a neighbouring place, defeat the warlord (level 10 minimum), **defeat the master of a secret dungeon**.
+  - **Dungeon quest** (`game/dungeonquest.go`): the dungeon is within 3 regions of the giver, and you must have the tier's level (3, 5, 7, 9 or 11). It is completed by the death of *that dungeon's* lich (another dungeon or the warlord do not count), then turned in to the giver. Reward: gold of 1.25 × the difficulty (150 + 50 × tier), XP, 2 potions, capped like any boss. **Accepting the quest reveals the entrance** of the dungeon.
+  - Two sources, same validation: the language model may propose `dungeon` with a name from the prompt's `donjons_secrets` list; **without a model**, a quest villager adds to the "Ask for work" menu (`T` / `W` in English), which proposes the nearest accessible dungeon, not already in progress or turned in (title and story drawn from the catalogue, in French and English).
+  - Limits: 5 open quests, one per giver, 30 min between two quests from the same giver, expiry after 7 days.
+  - **Giver with no work**: a giver's `!` disappears (it is displayed like a villager) as long as they cannot entrust anything: quest already open with them, 30 min pause after a turn-in, or 5 open quests. It comes back on its own at the end of the pause. The model is then told it has no work; if its proposed quest is discarded (invalid or not moderated), a system line says so. Limit: without a model, the `!` does not take into account whether an accessible dungeon exists.
+  - Quest book (`Q`), tabs with `Tab`, abandon with `X` twice; you turn the quest in to the giver.
+- **Reputation** per place (village or town): Wanted (≤ −10), Suspect (≤ −5), Unknown, Known (3), Esteemed (8), Honoured (15). 20% then 40% discount on healing, potions and equipment; no discount below Unknown. Bounded at −20 minimum, saved (negative values included) and tier changes announced in the log. It rises by turning in quests and **drops** by 1 when abandoning a quest, by 3 when caught stealing, by 5 when killing a guard.
+- **Theft**: the merchant offers "Pick pockets" (`steal`). 50% chance modulated by charisma (20% to 80%): success = a few gold coins (5 + 3 × level + 0 to 5), failure = −3 reputation in the place. The same merchant cannot be robbed twice within 3 minutes (server memory only).
+- **Village and town guards** (`game/guards.go`, `world/guards.go`):
+  - A village has 2 guards, a town 5; fortresses none. Their identity (unique name within the place, personality) and starting tile are deterministic, drawn from the seed on a separate stream (existing layouts do not move). They are not in `Structure.NPCs`: the server spawns them when a player is within 40 tiles of the place and removes them when nobody is near any more; a defeated guard is replaced after 5 min.
+  - **Patrol**: they go from waypoint to waypoint along the place's paths (shortest route, pauses, one step every 0.5 s), even in a safe zone, and stay within 8 tiles of the place's footprint. They stop when spoken to.
+  - They are displayed as a blue `G` (same channel as monsters in the snapshot, identifiers outside the monster range). Walking onto them addresses them.
+  - **Outlaws**: a player who is **Wanted** (reputation ≤ −10) *in that place* is chased within 12 tiles or less, even in a safe zone, then fought on contact (one step every 0.3 s: slower than a player, so they can be outrun). Walking onto a guard when Wanted fights them instead of talking. Reputation is specific to each place: being Wanted in one village does not concern the guards of other places. Other players are never attacked.
+  - **Combat**: "Guard" monster sheet (HP 60, scaled to the region level like monsters), with no XP or loot. Killing one costs 5 more reputation.
+  - **Dialogue**: menu "Where to find: healer / merchant / blacksmith / armorer / chief or mayor?" (distance in steps and direction to the place's inhabitant, or, if there is none, the nearest neighbouring place that has one) and "What are the neighbouring places?" (the three nearest, like the chief). These answers work without a Mistral key.
+  - **Free discussion** (`D`): the model also receives the list of the place's inhabitants with trade, direction and distance (`habitants_du_lieu`) and the neighbouring places; it is not allowed to invent an inhabitant or a path. It is told the player's reputation, negative included.
 
-## Chat et commandes
+## Chat and commands
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| texte libre | chat local (joueurs proches) |
-| `/g`, `/global` | chat global |
-| `/me` | émote locale |
-| `/w`, `/msg`, `/whisper` pseudo message | message privé |
-| `/goto x y` ou `/goto nom` | marche automatique (côté client) |
-| `/menhir [n° ou nom]` | liste les pierres dressées activées ou voyage de l'une à l'autre (debout sur une pierre) |
-| `/help`, `/?` | aide |
+| free text | local chat (nearby players) |
+| `/g`, `/global` | global chat |
+| `/me` | local emote |
+| `/w`, `/msg`, `/whisper` nickname message | private message |
+| `/goto x y` or `/goto name` | auto-walk (client side) |
+| `/menhir [number or name]` | lists the activated standing stones or travels from one to another (standing on a stone) |
+| `/help`, `/?` | help |
 
-Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'historique, `Ctrl+↑` / `Ctrl+↓` redimensionnent la discussion. Dans la saisie du chat, `↑` / `↓` rappellent les 100 dernières lignes envoyées (commandes comprises), la saisie en cours est retrouvée en bas.
+Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl+↑` / `Ctrl+↓` resize the chat. In the chat input, `↑` / `↓` recall the last 100 lines sent (commands included), the input in progress is restored at the bottom.
 
-## Touches clavier
+## Keyboard keys
 
-| Contexte | Touches |
+| Context | Keys |
 |---|---|
-| Jeu | déplacement (voir plus haut), `G` récolter, `Entrée` chat, `I` sac, `P` fiche, `M` carte, `Q` quêtes |
-| Quitter | `Ctrl+C` |
-| Connexion | `Tab` / `↑↓` changent de champ, `Ctrl+R` bascule connexion/création |
-| Création | `R` relance, `↑↓←→` choix |
-| Sac | `↑↓` / `jk`, `E` / Entrée, Échap ou `I` |
-| Carte | flèches, `+` `-`, `0`, `W`, `X`, Échap ou `M` |
-| Quêtes | `Tab`, `↑↓`, `X`, Échap ou `Q` |
-| Combat | `A`/`1`, `I`/`2`, `F`/`3`, flèches, Entrée |
-| PNJ | lettres traduites selon la langue (dont `T` / `W` en anglais pour « Demander du travail ») |
+| Game | movement (see above), `G` gather, `Enter` chat, `I` bag, `P` sheet, `M` map, `Q` quests |
+| Quit | `Ctrl+C` |
+| Login | `Tab` / `↑↓` change field, `Ctrl+R` toggles login/registration |
+| Creation | `R` reroll, `↑↓←→` choice |
+| Bag | `↑↓` / `jk`, `E` / Enter, Esc or `I` |
+| Map | arrows, `+` `-`, `0`, `W`, `X`, Esc or `M` |
+| Quests | `Tab`, `↑↓`, `X`, Esc or `Q` |
+| Combat | `A`/`1`, `I`/`2`, `F`/`3`, arrows, Enter |
+| NPC | letters translated according to the language (including `T` / `W` in English for "Ask for work") |
 
-## Interface et affichage (`internal/ui/`, `internal/render/`)
+## Interface and display (`internal/ui/`, `internal/render/`)
 
-- Plein écran, fond sombre peint cellule par cellule, sans dépendre du terminal (option `--transparent` pour garder le fond du terminal), logo.
-- Panneau latéral de 34 colonnes (jauges XP/PV/PM, caractéristiques) et zone de discussion redimensionnable.
-- Terrain avec variantes de glyphes et couleurs, selon le climat de la contrée (`render/climate.go`; pas de climat sous terre) ; joueurs en combat affichés en rouge.
-- Latence mesurée par ping/pong et affichée.
-- **Cycle jour / nuit** : l'en-tête affiche « Jour N, Hh » suivi d'un indicateur (`*` jour, `~` aube ou crépuscule, `(` nuit). Le terrain s'assombrit vers un bleu nuit (6 niveaux, `render/daylight.go`) : nuit de 21 h à 5 h, aube de 5 h à 8 h, crépuscule de 19 h à 21 h. Joueurs, monstres, PNJ et **feux de camp** gardent leur couleur ; aucun effet sous terre ni sur la carte du monde. Purement visuel, calculé par le client à partir du tick du serveur (prolongé entre deux instantanés, car le serveur n'en envoie que si la vue change).
-- Options du client : `-addr`, `-name`, `-transparent`, `-lang`.
+- Full screen, dark background painted cell by cell, independent of the terminal (`--transparent` option to keep the terminal background), logo.
+- 34-column side panel (XP/HP/MP gauges, attributes) and resizable chat area.
+- Terrain with glyph and colour variants, depending on the territory's climate (`render/climate.go`; no climate underground); players in combat displayed in red.
+- Latency measured by ping/pong and displayed.
+- **Day / night cycle**: the header displays "Day N, Hh" followed by an indicator (`*` day, `~` dawn or dusk, `(` night). The terrain darkens towards a night blue (6 levels, `render/daylight.go`): night from 21:00 to 5:00, dawn from 5:00 to 8:00, dusk from 19:00 to 21:00. Players, monsters, NPCs and **campfires** keep their colour; no effect underground or on the world map. Purely visual, computed by the client from the server tick (extrapolated between two snapshots, since the server only sends one when the view changes).
+- Client options: `-addr`, `-name`, `-transparent`, `-lang`.
 
-## Sauvegarde et persistance (`internal/store/`)
+## Saving and persistence (`internal/store/`)
 
-- **SQLite** en mode WAL : comptes, personnages, sac, quêtes, réputation, donjons découverts (`discoveries`, migration 16), point de réapparition, pierres dressées activées et cartes au trésor et sac de matières (colonnes de `characters`, migrations 17 à 20), lore, étalages (`npc_wares`).
-- Écriture asynchrone ; sauvegarde à la déconnexion, après chaque combat, toutes les 30 s, à l'arrêt propre.
-- La seed est fixée à la création de la base ; la changer sur une base existante est refusé. La version du générateur de terrain l'est aussi (voir plus haut) : une base existante ne passe jamais à un autre terrain.
-- **Côté client** : carte, repères et exploration dans `<UserConfigDir>/sudo-dragon/map.json` (une entrée par seed, et par version du générateur au-delà de la v1 ; écriture différée de 15 s). Le serveur n'en sait rien.
-- Non persistés : le monde (recalculé de la seed), les garnisons et les repaires (réinitialisés au redémarrage), les bonus et cooldowns des points d'intérêt (en mémoire) et l'état des donjons (monstres vaincus, coffres ouverts : en mémoire, perdus au redémarrage du serveur). Seules les entrées découvertes sont sauvegardées.
+- **SQLite** in WAL mode: accounts, characters, bag, quests, reputation, discovered dungeons (`discoveries`, migration 16), respawn point, activated standing stones and treasure maps and materials bag (columns of `characters`, migrations 17 to 20), lore, stock (`npc_wares`).
+- Asynchronous writing; saved on disconnect, after each combat, every 30 s, on clean shutdown.
+- The seed is fixed when the database is created; changing it on an existing database is refused. So is the terrain generator version (see above): an existing database never moves to another terrain.
+- **Client side**: map, landmarks and exploration in `<UserConfigDir>/sudo-dragon/map.json` (one entry per seed, and per generator version beyond v1; write deferred by 15 s). The server knows nothing about it.
+- Not persisted: the world (recomputed from the seed), garrisons and lairs (reset on restart), points-of-interest bonuses and cooldowns (in memory) and dungeon state (defeated monsters, opened chests: in memory, lost on server restart). Only discovered entrances are saved.
 
-## Réseau, multijoueur et exploitation (`internal/server/`, `internal/protocol/`)
+## Network, multiplayer and operation (`internal/server/`, `internal/protocol/`)
 
-- **WebSocket**, enveloppes JSON ; serveur autoritatif à 10 Hz, un seul goroutine pour l'état du jeu.
-- Monde partagé : joueurs visibles en temps réel, chat, messages privés.
-- Instantanés fusionnés : un client lent saute des images au lieu d'être déconnecté.
-- **Message `dungeons`** : la liste complète des entrées de donjon découvertes (identifiant, nom, position, palier), envoyée à la connexion et à chaque découverte, avec l'identifiant de la dernière trouvée.
-- **Message `zone`** : envoyé à l'entrée et à la sortie d'un donjon (identifiant, nom dans la langue du joueur, seed, palier, coffres ouverts), puis à chaque coffre ouvert dans l'instance. Il précède toujours le premier instantané de la nouvelle carte, dont les coordonnées sont locales au plan du donjon.
-- **Comptes** : pseudo 3–16 caractères, mot de passe 8–72 octets (bcrypt), message d'erreur identique pour pseudo inconnu et mauvais mot de passe.
-- **Quotas par IP** : 8 échecs de connexion par minute, 10 créations de compte par heure ; limites du chat et des répliques aux PNJ.
-- **TLS** (`wss://`) via `-tls-cert` / `-tls-key` ; sur `ws://`, le mot de passe voyage en clair.
-- **Supervision** : `/healthz`, `/stats` (JSON), `-pprof`. Administration : `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset`.
-- **Test de charge** : `make load N=…` et `cmd/bot`.
+- **WebSocket**, JSON envelopes; authoritative server at 10 Hz, a single goroutine for the game state.
+- Shared world: players visible in real time, chat, private messages.
+- Merged snapshots: a slow client skips frames instead of being disconnected.
+- **`dungeons` message**: the full list of discovered dungeon entrances (identifier, name, position, tier), sent at login and at each discovery, with the identifier of the last one found.
+- **`zone` message**: sent on entering and leaving a dungeon (identifier, name in the player's language, seed, tier, opened chests), then at each chest opened in the instance. It always precedes the first snapshot of the new map, whose coordinates are local to the dungeon layout.
+- **Accounts**: nickname 3–16 characters, password 8–72 bytes (bcrypt), identical error message for unknown nickname and wrong password.
+- **Per-IP quotas**: 8 login failures per minute, 10 account creations per hour; limits on chat and NPC replies.
+- **TLS** (`wss://`) via `-tls-cert` / `-tls-key`; on `ws://`, the password travels in clear.
+- **Monitoring**: `/healthz`, `/stats` (JSON), `-pprof`. Administration: `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset`.
+- **Load test**: `make load N=…` and `cmd/bot`.
 
 ## Internationalisation (`internal/i18n/`)
 
-- Français et anglais ; langue déduite de `LC_ALL`, `LC_MESSAGES`, `LANGUAGE`, `LANG`, ou imposée par `-lang`. Toute autre langue donne l'anglais.
-- Le serveur sert chaque joueur dans sa langue (erreurs, aide, combat, PNJ, consigne au modèle). Logs et options du serveur restent en français.
-- Catalogues `fr.go` / `en.go` avec test de parité des clés.
+- French and English; language deduced from `LC_ALL`, `LC_MESSAGES`, `LANGUAGE`, `LANG`, or forced by `-lang`. Any other language gives English.
+- **English is the reference language**: a zero or unknown `Lang` and missing catalogue keys fall back to English; clients that send no `lang` are served in English. `fr.go` and `en.go` both stay complete. Server logs, flag help, CLI output and code comments are in English.
+- The server serves each player in their language (errors, help, combat, NPCs, instruction to the model).
+- Catalogues `fr.go` / `en.go` with a key parity test.
 
-## Outils
+## Tools
 
-| Binaire | Rôle |
+| Binary | Role |
 |---|---|
-| `cmd/server` | serveur de jeu |
-| `cmd/client` | interface TUI (Bubble Tea v2, Lip Gloss) |
-| `cmd/bot` | joueurs automatiques pour les tests de charge |
-| `cmd/worldview` | dessine une zone du monde en ASCII (`-sites`, `-territories`, `-gen` pour la version du générateur, `-raw -zoom N` pour une vue d'ensemble du terrain brut avec la part de chaque tuile) |
+| `cmd/server` | game server |
+| `cmd/client` | TUI interface (Bubble Tea v2, Lip Gloss) |
+| `cmd/bot` | automatic players for load tests |
+| `cmd/worldview` | draws an area of the world in ASCII (`-sites`, `-territories`, `-gen` for the generator version, `-raw -zoom N` for an overview of the raw terrain with the share of each tile) |
 
-`Makefile` : build, test, race, check, load, llm-smoke. Go 1.27 requis.
+`Makefile`: build, test, race, check, load, llm-smoke. Go 1.27 required.
 
-## En cours et limites
+## In progress and limits
 
-- **Gardes** : leur état (position, trajet, mémoire des vols) n'est pas sauvegardé et un redémarrage du serveur les replace à leur poste. Rien ne fait remonter la réputation avec le temps : un joueur Recherché doit rendre des quêtes (pas de grâce, pas de rançon). Les villageois et les marchands ne réagissent ni au vol ni aux combats. Un garde ne sait pas contourner un obstacle autre qu'un joueur passager (il repart vers un autre point de passage après un blocage).
+- **Guards**: their state (position, route, theft memory) is not saved and a server restart puts them back at their post. Nothing makes reputation recover over time: a Wanted player must turn in quests (no pardon, no ransom). Villagers and merchants react neither to theft nor to fights. A guard cannot get around an obstacle other than a passing player (it heads for another waypoint after being blocked).
 
-- Pas de compétences ni de sorts à apprendre : la magie est un style d'attaque lié à l'arme.
-- Pas de reconnexion automatique après une coupure.
-- Un seul processus serveur, sans montée en charge horizontale.
-- Le README et sa traduction `README.en.md` doivent être mis à jour ensemble (mêmes sections, mêmes tableaux).
-- Le trafic croît comme le carré du nombre de joueurs d'une même zone : chaque instantané contient toutes les entités visibles, sans index spatial ni encodage en différences.
-- Les garnisons de forteresse ne sont pas sauvegardées : un redémarrage les remet toutes en place, y compris le seigneur de guerre.
-- Un joueur qui se déconnecte en plein combat garde ses PV du moment sans subir la défaite éventuelle.
-- **Donjons** :
-  - Le client recalcule tout le monde depuis la seed, donc il connaît la position de toutes les entrées : seuls l'affichage et la marche automatique passent par les découvertes, un client modifié pourrait lire les autres.
-  - L'état d'un donjon n'est pas sauvegardé en base et n'est jamais libéré tant que son boss vit : un serveur qui tourne longtemps garde en mémoire tous les donjons visités et non terminés.
-  - Le donjon est partagé par tous : pas d'instance privée par groupe ni d'invitation, et on peut y retrouver des monstres qui ont suivi un joueur jusqu'à l'escalier.
-  - Les monstres de donjon ne repoussent pas.
+- No skills or spells to learn: magic is an attack style tied to the weapon.
+- No automatic reconnection after a drop.
+- A single server process, with no horizontal scaling.
+- README.md (English, the reference) and its translation `README.fr.md` must be updated together (same sections, same tables).
+- Traffic grows as the square of the number of players in the same area: each snapshot contains all visible entities, with no spatial index or delta encoding.
+- Fortress garrisons are not saved: a restart puts them all back in place, the warlord included.
+- A player who disconnects mid-fight keeps their current HP without suffering a possible defeat.
+- **Dungeons**:
+  - The client recomputes the whole world from the seed, so it knows the position of all entrances: only the display and auto-walk go through discoveries, a modified client could read the others.
+  - A dungeon's state is not saved in the database and is never freed while its boss lives: a long-running server keeps in memory all the dungeons visited and not completed.
+  - The dungeon is shared by everyone: no private instance per group or invitation, and you may find there monsters that followed a player to the stairs.
+  - Dungeon monsters do not respawn.

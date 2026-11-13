@@ -1,10 +1,10 @@
-// Package npcai fait parler les PNJ grâce à un modèle de langage.
+// Package npcai makes NPCs talk using a language model.
 //
-// Il orchestre, pour chaque réplique d'un joueur : les limites (débit, budget),
-// la modération, la mémoire collective (internal/lore), le prompt, l'appel au
-// modèle (internal/llm) et l'analyse de sa réponse. Rien de ce que dit le modèle
-// n'agit sur le jeu : le résultat est du texte, plus, éventuellement, une
-// présentation de joueur validée avant d'être mémorisée.
+// For each player message it orchestrates: the limits (rate, budget),
+// moderation, the collective memory (internal/lore), the prompt, the call to the
+// model (internal/llm) and the parsing of its response. Nothing the model says
+// acts on the game: the result is text, plus, possibly, a player
+// introduction validated before being memorized.
 package npcai
 
 import (
@@ -16,131 +16,131 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Speaker est le joueur qui parle, avec les faits établis par le serveur à son sujet.
+// Speaker is the player who speaks, with the facts established by the server about them.
 type Speaker struct {
-	Account   string // pseudo du compte
+	Account   string // account nickname
 	Level     int
 	Kills     int
 	BossKills int
 	Deaths    int
 }
 
-// Turn est un échange déjà tenu pendant la session en cours.
+// Turn is an exchange already held during the current session.
 type Turn struct{ Player, NPC string }
 
-// Request est ce que le jeu demande: une réplique du joueur à un PNJ.
+// Request is what the game asks for: a player's line to an NPC.
 type Request struct {
 	NPC       world.NPC
-	Lang      i18n.Lang // langue du joueur: celle du prompt et de la réplique attendue
-	Region    string    // nom de la contrée du lieu (vide: non précisé)
-	Place     string    // nom du lieu
+	Lang      i18n.Lang // player's language: that of the prompt and of the expected reply
+	Region    string    // name of the place's region (empty: unspecified)
+	Place     string    // name of the place
 	PlaceKind world.Kind
 	Speaker   Speaker
-	Message   string // déjà nettoyé (textsafe) et borné par l'appelant
-	History   []Turn // échanges précédents de la session, du plus ancien au plus récent
+	Message   string // already cleaned (textsafe) and bounded by the caller
+	History   []Turn // previous exchanges of the session, oldest to newest
 
-	// Opening demande au PNJ d'ouvrir la conversation: il salue le voyageur et, s'il
-	// ne le connaît pas, l'invite à se présenter. Message est alors vide, et rien n'est
-	// mémorisé (le joueur n'a encore rien dit).
+	// Opening asks the NPC to open the conversation: it greets the traveler and, if it
+	// does not know them, invites them to introduce themselves. Message is then empty, and nothing is
+	// memorized (the player has not said anything yet).
 	Opening bool
 
-	// Reputation : points du joueur dans le lieu de ce PNJ (fait établi par le serveur).
+	// Reputation: the player's points in this NPC's place (fact established by the server).
 	Reputation int
-	// Impression : ce que le charisme du joueur donne comme première impression (palier calculé
-	// par le serveur, jamais un texte du joueur).
+	// Impression: the first impression given by the player's charisma (tier computed
+	// by the server, never text from the player).
 	Impression string
-	// Offer, renseigné seulement pour un donneur de quêtes qui peut en confier une
-	// au joueur, autorise le modèle à proposer une quête (voir quest.Validate).
+	// Offer, set only for a quest giver who can hand one to the
+	// player, allows the model to propose a quest (see quest.Validate).
 	Offer *OfferContext
 
-	// Landmarks : les lieux alentour que ce PNJ connaît (chef de village, maire), établis par le
-	// serveur et déjà localisés. Vide pour les autres PNJ.
+	// Landmarks: the surrounding places this NPC knows (village chief, mayor), established by the
+	// server and already located. Empty for other NPCs.
 	Landmarks []Landmark
 
-	// Residents : les habitants du lieu que connaît un garde (métier, direction et distance en pas depuis lui),
-	// établis par le serveur. Vide pour les autres PNJ.
+	// Residents: the place's inhabitants a guard knows (job, direction and distance in steps from them),
+	// established by the server. Empty for other NPCs.
 	Residents []Resident
 
-	// Deeds : quêtes rendues dont ce PNJ a connaissance (renseigné par le service, pas par le jeu).
+	// Deeds: completed quests this NPC knows about (set by the service, not by the game).
 	Deeds Deeds
 }
 
-// Landmark est un lieu voisin tel que le décrit le serveur à un PNJ qui le connaît.
+// Landmark is a neighboring place as the server describes it to an NPC who knows it.
 type Landmark struct {
 	Name      string // « Kerhaven »
-	Kind      string // « village », « ville », « forteresse »
-	Region    string // contrée, si elle diffère de celle du PNJ
-	Direction string // « à l'est »
-	Distance  string // « tout près », « à une bonne marche », « loin »
-	Note      string // fait notable (ex. garnison)
+	Kind      string // "village", "town", "fortress"
+	Region    string // region, if it differs from the NPC's
+	Direction string // "to the east"
+	Distance  string // "very close", "a good walk away", "far"
+	Note      string // notable fact (e.g. garrison)
 }
 
-// Resident est un habitant du lieu tel que le décrit le serveur à un garde.
+// Resident is an inhabitant of the place as the server describes them to a guard.
 type Resident struct {
-	Name      string // « Forgeron Aldric »
-	Job       string // « forgeron »
-	Direction string // « au nord-est »
-	Steps     int    // distance en pas
+	Name      string // "Blacksmith Aldric"
+	Job       string // "blacksmith"
+	Direction string // "to the north-east"
+	Steps     int    // distance in steps
 }
 
-// Deeds sont les quêtes rendues connues d'un PNJ : celles de son interlocuteur et, en rumeur, celles des autres.
+// Deeds are the completed quests known to an NPC: those of its interlocutor and, as rumor, those of others.
 type Deeds struct{ Mine, Others []lore.HeardDeed }
 
-// OfferContext décrit le travail que ce PNJ peut confier à ce joueur.
+// OfferContext describes the work this NPC can hand to this player.
 type OfferContext struct {
-	Quest    quest.Context // ce que le serveur accepte (espèces, lieux, boss…)
-	Existing []string      // titres des quêtes déjà en cours auprès de ce PNJ (à ne pas répéter)
+	Quest    quest.Context // what the server accepts (species, places, boss...)
+	Existing []string      // titles of quests already in progress with this NPC (not to be repeated)
 }
 
-// Failure explique pourquoi aucune vraie réponse n'a pu être produite.
+// Failure explains why no real answer could be produced.
 type Failure int
 
 const (
 	OK          Failure = iota
-	Busy                // file pleine, requête déjà en cours ou limite du fournisseur
-	Cooldown            // le joueur parle trop vite ou trop souvent
-	Budget              // budget quotidien de jetons épuisé
-	Blocked             // message refusé par la modération
-	Unavailable         // service indisponible ou réponse inexploitable
+	Busy                // queue full, request already in progress or provider limit
+	Cooldown            // the player talks too fast or too often
+	Budget              // daily token budget exhausted
+	Blocked             // message rejected by moderation
+	Unavailable         // service unavailable or unusable response
 )
 
 func (f Failure) String() string {
 	return [...]string{"ok", "busy", "cooldown", "budget", "blocked", "unavailable"}[f]
 }
 
-// Reply est le résultat d'une demande. Text est toujours affichable: en cas
-// d'échec, c'est une réplique « en personnage » (le PNJ est fatigué, distrait…).
+// Reply is the result of a request. Text is always displayable: on
+// failure, it is an in-character line (the NPC is tired, distracted...).
 type Reply struct {
 	Text       string
 	Failure    Failure
-	Remembered bool // une fiche de présentation a été enregistrée
-	// Quest est une quête proposée par le modèle, déjà validée (quest.Validate) et modérée.
-	// Elle n'existe pas encore : le joueur doit l'accepter.
+	Remembered bool // an introduction card was saved
+	// Quest is a quest proposed by the model, already validated (quest.Validate) and moderated.
+	// It does not exist yet: the player must accept it.
 	Quest *quest.Quest
-	// QuestDropped : le modèle a proposé une quête, mais elle a été écartée (invalide ou non modérée).
-	// Sa réplique a pu l'annoncer : le jeu prévient le joueur qu'il n'y a finalement rien.
+	// QuestDropped: the model proposed a quest, but it was discarded (invalid or not moderated).
+	// Its reply may have announced it: the game warns the player that there is in the end nothing.
 	QuestDropped bool
-	Tokens       int // jetons consommés par l'appel
+	Tokens       int // tokens consumed by the call
 }
 
-// Config règle le service. Les zéros prennent les valeurs de DefaultConfig.
+// Config tunes the service. Zero values take the DefaultConfig values.
 type Config struct {
-	Workers       int           // appels simultanés au fournisseur
-	QueueSize     int           // demandes en attente avant de répondre « occupé »
-	Timeout       time.Duration // durée maximale d'une demande
-	MinInterval   time.Duration // délai minimal entre deux messages d'un même joueur
-	HourlyLimit   int           // messages par joueur et par heure
-	CardCooldown  time.Duration // délai minimal entre deux écritures de fiche d'un joueur
-	DailyTokens   int           // budget global de jetons par jour (UTC)
-	MaxTokens     int           // jetons maximum d'une réplique
+	Workers       int           // simultaneous calls to the provider
+	QueueSize     int           // pending requests before answering "busy"
+	Timeout       time.Duration // maximum duration of a request
+	MinInterval   time.Duration // minimum delay between two messages from the same player
+	HourlyLimit   int           // messages per player per hour
+	CardCooldown  time.Duration // minimum delay between two card writes by a player
+	DailyTokens   int           // global token budget per day (UTC)
+	MaxTokens     int           // maximum tokens of a reply
 	Temperature   float64
-	MaxHistory    int // échanges de session fournis au modèle
-	BreakerFails  int // échecs consécutifs avant de suspendre le service
+	MaxHistory    int // session exchanges provided to the model
+	BreakerFails  int // consecutive failures before suspending the service
 	BreakerPause  time.Duration
-	BlockedThreat float64 // seuil des catégories bloquées (0 à 1; plus bas = plus strict)
+	BlockedThreat float64 // threshold for blocked categories (0 to 1; lower = stricter)
 }
 
-// DefaultConfig renvoie des valeurs prudentes pour un petit serveur.
+// DefaultConfig returns cautious values for a small server.
 func DefaultConfig() Config {
 	return Config{
 		Workers: 4, QueueSize: 32, Timeout: 25 * time.Second,
@@ -196,7 +196,7 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Stats est un instantané des compteurs du service (pour /stats).
+// Stats is a snapshot of the service counters (for /stats).
 type Stats struct {
 	Available      bool   `json:"available"`
 	Guardrails     bool   `json:"guardrails"`

@@ -12,25 +12,25 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Prix des PNJ, en or. Une potion se revend bien moins cher qu'elle ne s'achète.
+// NPC prices, in gold. A potion resells for much less than it costs to buy.
 const (
 	potionBuyPrice    = 20
 	potionSellPrice   = 8
 	healPricePerLevel = 4
 )
 
-// healPrice est le tarif du soigneur: gratuit au niveau 1 (on ne bloque pas un
-// débutant sans le sou), puis 4 or par niveau.
-// buyPrice et healCost appliquent la réduction de réputation du lieu du PNJ. Le menu et la
-// transaction passent par ces deux fonctions, pour rester d'accord.
+// healPrice is the healer's rate: free at level 1 (we do not block a
+// beginner with no money), then 4 gold per level.
+// buyPrice and healCost apply the reputation discount of the NPC's place. The menu and the
+// transaction both go through these two functions, to stay consistent.
 func (g *Game) buyPrice(p *player, npc world.NPC) int { return g.priceFor(p, npc, potionBuyPrice) }
 
 func (g *Game) healCost(p *player, npc world.NPC) int {
 	return g.priceFor(p, npc, healPrice(p.stats.Level))
 }
 
-// priceFor applique à un tarif la réduction de réputation du lieu du PNJ, puis l'effet du
-// charisme du joueur (les PNJ le jugent sur sa mine).
+// priceFor applies to a price the reputation discount of the NPC's place, then the effect of the
+// player's charisma (NPCs judge them by their looks).
 func (g *Game) priceFor(p *player, npc world.NPC, base int) int {
 	return hero.AdjustPrice(quest.Discount(base, p.rep[npc.Region]), p.stats.Scores.Mod(hero.CHA))
 }
@@ -42,26 +42,26 @@ func healPrice(level int) int {
 	return healPricePerLevel * level
 }
 
-// talk est une conversation en cours entre un joueur et un PNJ. Comme pour un
-// combat, le joueur reste immobile tant qu'elle dure.
+// talk is an ongoing conversation between a player and an NPC. As with a
+// fight, the player stays still while it lasts.
 type talk struct {
 	npc     world.NPC
-	lastAct uint64 // tick de la dernière action du joueur
+	lastAct uint64 // tick of the player's last action
 
-	// Discussion libre (voir talk.go).
-	gen     uint64             // identifiant de cette conversation: une réponse tardive d'une autre est ignorée
+	// Free discussion (see talk.go).
+	gen     uint64             // identifier of this conversation: a late reply from another one is ignored
 	mode    string             // protocol.NPCMode*
-	lines   []protocol.NPCLine // transcription affichée
-	history []npcai.Turn       // échanges confiés au modèle
-	pending bool               // une réponse du PNJ est attendue
-	opened  bool               // le PNJ a déjà ouvert la discussion (une seule fois par conversation)
+	lines   []protocol.NPCLine // displayed transcript
+	history []npcai.Turn       // exchanges handed to the model
+	pending bool               // an NPC reply is awaited
+	opened  bool               // the NPC has already opened the discussion (only once per conversation)
 
-	// Quête proposée par le modèle et pas encore acceptée (mode quest).
+	// Quest offered by the model and not yet accepted (quest mode).
 	proposal *quest.Quest
 	prevMode string
 }
 
-// ValidNPCAction indique si action est une action de dialogue connue.
+// ValidNPCAction tells whether action is a known dialogue action.
 func ValidNPCAction(action string) bool {
 	switch action {
 	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
@@ -74,8 +74,8 @@ func ValidNPCAction(action string) bool {
 	return false
 }
 
-// TalkAct applique l'action d'un joueur en conversation (text n'est lu que pour
-// NPCSay). Sans effet hors conversation ou si l'action est inconnue.
+// TalkAct applies a player's action during a conversation (text is only read for
+// NPCSay). No effect outside a conversation or if the action is unknown.
 func (g *Game) TalkAct(id int, action, text string) {
 	if !ValidNPCAction(action) {
 		return
@@ -87,7 +87,7 @@ func (g *Game) TalkAct(id int, action, text string) {
 	})
 }
 
-// startTalk ouvre une conversation si le joueur est libre.
+// startTalk opens a conversation if the player is free.
 func (g *Game) startTalk(p *player, npc world.NPC) {
 	if p.fight != nil || p.talk != nil {
 		return
@@ -106,7 +106,7 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	case world.NPCChief, world.NPCMayor:
 		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
 		if !g.talkerReady() {
-			// Sans modèle de langage, le chef renseigne quand même : ses plus proches voisins.
+			// Without a language model, the chief still informs: their nearest neighbours.
 			if line := g.neighboursGreeting(npc, p.lang); line != "" {
 				greeting = line
 			} else {
@@ -114,8 +114,8 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 			}
 		}
 	case world.NPCVillager:
-		// Sans métier, un villageois n'a que sa conversation. Quand elle est indisponible
-		// (pas de clé, panne), il dit une phrase d'ambiance fixe pour que le monde reste vivant.
+		// Without a trade, a villager only has conversation. When it is unavailable
+		// (no key, outage), they say a fixed ambient sentence so the world stays alive.
 		greeting = i18n.T(p.lang, "npc.greet.villager")
 		if !g.talkerReady() {
 			greeting = ambientLine(p.lang, npc)
@@ -127,7 +127,7 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	g.sendTalk(p, npc.Kind, []string{greeting}, false)
 }
 
-// closeTalk met fin à la conversation et prévient le client.
+// closeTalk ends the conversation and notifies the client.
 func (g *Game) closeTalk(p *player, farewell string) {
 	if p.talk == nil {
 		return
@@ -167,7 +167,7 @@ func (g *Game) talkAct(p *player, action, text string) {
 		return
 	}
 	if t.mode != protocol.NPCModeMenu {
-		return // le commerce et les soins ne se font que depuis le menu
+		return // trade and healing are only done from the menu
 	}
 
 	var log []string
@@ -176,7 +176,7 @@ func (g *Game) talkAct(p *player, action, text string) {
 	switch action {
 
 	case protocol.NPCTurnIn:
-		log = g.questAct(p, action, text) // la remise enregistre elle-même
+		log = g.questAct(p, action, text) // the hand-in records itself
 
 	case protocol.NPCAskWork:
 		log = g.askWork(p)
@@ -195,7 +195,7 @@ func (g *Game) talkAct(p *player, action, text string) {
 		if !isVendor(t.npc.Kind) {
 			log = notOffered(p.lang)
 		} else {
-			log = g.buyItem(p, t.npc, text) // l'achat enregistre lui-même
+			log = g.buyItem(p, t.npc, text) // the purchase records itself
 		}
 
 	case protocol.NPCSellMenu:
@@ -206,7 +206,7 @@ func (g *Game) talkAct(p *player, action, text string) {
 		}
 
 	case protocol.NPCSellItem:
-		log = notOffered(p.lang) // la revente se fait depuis la liste de revente
+		log = notOffered(p.lang) // resale is done from the resale list
 
 	case protocol.NPCBuy:
 		switch {
@@ -229,7 +229,7 @@ func (g *Game) talkAct(p *player, action, text string) {
 		case p.stats.Potions <= 0:
 			log = []string{i18n.T(p.lang, "npc.no_potion_to_sell")}
 		case p.stats.Gold > combat.MaxGold-potionSellPrice:
-			log = []string{i18n.T(p.lang, "npc.purse_full")} // on ne perd pas une potion contre rien
+			log = []string{i18n.T(p.lang, "npc.purse_full")} // we do not lose a potion for nothing
 		default:
 			p.stats.Potions--
 			p.stats.AddGold(potionSellPrice)
@@ -243,7 +243,7 @@ func (g *Game) talkAct(p *player, action, text string) {
 		case t.npc.Kind != world.NPCHealer:
 			log = notOffered(p.lang)
 		case p.hp >= p.stats.MaxHP && p.mana >= p.stats.MaxMana:
-			log = []string{i18n.T(p.lang, "npc.already_healthy")} // rien n'est débité
+			log = []string{i18n.T(p.lang, "npc.already_healthy")} // nothing is debited
 		case !p.stats.SpendGold(price):
 			log = []string{i18n.T(p.lang, "npc.missing_gold", price-p.stats.Gold)}
 		default:
@@ -258,14 +258,14 @@ func (g *Game) talkAct(p *player, action, text string) {
 	}
 
 	if changed {
-		g.save(p) // une transaction change la progression: on n'attend pas la sauvegarde périodique
+		g.save(p) // a transaction changes progression: we do not wait for the periodic save
 	}
 	g.sendTalk(p, t.npc.Kind, log, false)
 }
 
 func notOffered(l i18n.Lang) []string { return []string{i18n.T(l, "npc.not_offered")} }
 
-// expireIdleTalks ferme les conversations abandonnées.
+// expireIdleTalks closes abandoned conversations.
 func (g *Game) expireIdleTalks(ids []int) {
 	for _, id := range ids {
 		p := g.players[id]
@@ -275,7 +275,7 @@ func (g *Game) expireIdleTalks(ids []int) {
 	}
 }
 
-// offers calcule le menu du PNJ pour l'état actuel du joueur.
+// offers computes the NPC's menu for the player's current state.
 func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 	kind := npc.Kind
 	var offers []protocol.NPCOffer
@@ -300,27 +300,27 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 		}
 	}
 	if npc.Index >= world.CaravanIndexBase && npc.Index < world.CaravanIndexBase+2 {
-		return offers // un marchand ambulant ne vend que ce qu'il porte : ni quête, ni travail, ni discussion
+		return offers // a travelling merchant only sells what it carries: no quest, no work, no discussion
 	}
-	// Quêtes prêtes à rendre à ce PNJ : fonctionne sans modèle de langage.
+	// Quests ready to hand in to this NPC: works without a language model.
 	for _, q := range p.quests {
 		if q.State == quest.Ready && q.Giver == npc.Key() {
 			offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTurnIn, Arg: strconv.FormatInt(q.ID, 10),
 				Label: i18n.T(p.lang, "quest.offer.turnin", q.Title), Available: true})
 		}
 	}
-	// Du travail à confier: un donjon secret à portée, proposé sans modèle de langage.
+	// Work to hand out: a secret dungeon within reach, offered without a language model.
 	if g.hasWork(p, npc) {
 		offers = append(offers, protocol.NPCOffer{Action: protocol.NPCAskWork, Label: i18n.T(p.lang, "npc.offer.work"), Available: true})
 	}
-	// La discussion libre n'est proposée que si un modèle de langage est disponible.
+	// Free discussion is only offered if a language model is available.
 	if g.talkerReady() {
 		offers = append(offers, protocol.NPCOffer{Action: protocol.NPCTalk, Label: i18n.T(p.lang, "npc.offer.talk"), Available: true})
 	}
 	return offers
 }
 
-// sendTalk envoie l'état de la conversation au joueur.
+// sendTalk sends the conversation state to the player.
 func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) {
 	if p.sendNPC == nil {
 		return
@@ -334,7 +334,7 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 		return
 	}
 	t := p.talk
-	if t == nil { // ne devrait pas arriver: on garde le comportement du menu
+	if t == nil { // should not happen: keep the menu behaviour
 		d.Offers = g.offers(p, world.NPC{Kind: kind})
 		p.sendNPC(d)
 		return
@@ -371,8 +371,8 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 	p.sendNPC(d)
 }
 
-// ambientLine choisit, de façon stable pour un PNJ donné, une phrase d'ambiance
-// (liste "npc.ambient.N" du catalogue).
+// ambientLine picks, stably for a given NPC, an ambient sentence
+// (list "npc.ambient.N" of the catalogue).
 func ambientLine(l i18n.Lang, npc world.NPC) string {
 	return i18n.Pick(l, "npc.ambient", npc.Region.X*31+npc.Region.Y*17+npc.Index*7)
 }

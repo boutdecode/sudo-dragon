@@ -10,20 +10,20 @@ func TestClimateIsStablePerTerritoryAndVaried(t *testing.T) {
 			for y := -5000; y <= 5000; y += 250 {
 				c := w.ClimateAt(x, y)
 				if c >= NumClimates {
-					t.Fatalf("climat %d hors bornes", c)
+					t.Fatalf("climate %d out of bounds", c)
 				}
 				seen[c] = true
 				id := territoryIDAt(w.Seed, x, y)
 				if c != w.TerritoryAt(x, y).climate || c != w.ClimateAt(x, y) ||
 					(w.GenVersion < GenV2 && c != climateOf(w.Seed, id)) {
-					t.Fatalf("le climat de %d,%d n'est pas celui de sa contrée", x, y)
+					t.Fatalf("the climate of %d,%d is not that of its district", x, y)
 				}
 			}
 		}
 	}
 	for c := Climate(0); c < NumClimates; c++ {
 		if !seen[c] {
-			t.Errorf("le climat %q n'apparaît jamais", c.Key())
+			t.Errorf("climate %q never appears", c.Key())
 		}
 	}
 }

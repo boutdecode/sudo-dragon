@@ -1,24 +1,24 @@
 package world
 
-// Climat: l'ambiance d'une contrée. Il est purement visuel (couleurs et glyphes du client) : il ne change ni le
-// terrain, ni les monstres, ni la génération. Il se déduit de la graine et de la contrée par un hachage pur, donc le
-// serveur et le client le calculent pareillement, sans rien échanger.
+// Climate: the mood of a district. It is purely visual (client colours and glyphs): it changes neither the
+// terrain, nor the monsters, nor the generation. It is derived from the seed and the district by a pure hash, so the
+// server and the client compute it the same way, without exchanging anything.
 
-// Climate est le climat d'une contrée.
+// Climate is the climate of a district.
 type Climate uint8
 
 const (
-	Temperate Climate = iota // les couleurs d'origine
-	Tropical                 // verts vifs, mers turquoise
-	Arid                     // plaines jaunes, collines rouges
-	Boreal                   // verts froids et bleutés
+	Temperate Climate = iota // the original colours
+	Tropical                 // vivid greens, turquoise seas
+	Arid                     // yellow plains, red hills
+	Boreal                   // cold, bluish greens
 	NumClimates
 )
 
-// climateSalt distingue le tirage du climat de ceux des germes (1, 2) et des noms (10, 20) d'une contrée.
+// climateSalt distinguishes the climate draw from those of the seeds (1, 2) and of the names (10, 20) of a district.
 const climateSalt = 30
 
-// Key est l'identifiant du climat (clé de traduction "climate.<key>").
+// Key is the identifier of the climate (translation key "climate.<key>").
 func (c Climate) Key() string {
 	switch c {
 	case Tropical:
@@ -31,7 +31,7 @@ func (c Climate) Key() string {
 	return "temperate"
 }
 
-// climateOf tire le climat de la contrée id: 40 % tempéré, 20 % chacun des autres.
+// climateOf draws the climate of district id: 40 % temperate, 20 % each of the others.
 func climateOf(seed int64, id TerritoryID) Climate {
 	switch r := terrHash(seed, id.X, id.Y, climateSalt) % 5; r {
 	case 0, 1:
@@ -44,8 +44,8 @@ func climateOf(seed int64, id TerritoryID) Climate {
 	return Boreal
 }
 
-// climateFrom déduit le climat d'une contrée de sa température et de son humidité moyennes (générateur v2): chaud
-// et humide donne le tropical, chaud et sec l'aride, froid le boréal. Les couleurs suivent ainsi les biomes du terrain.
+// climateFrom derives the climate of a district from its mean temperature and humidity (generator v2): hot
+// and humid gives tropical, hot and dry arid, cold boreal. Colours thus follow the terrain biomes.
 func climateFrom(temp, wet float64) Climate {
 	switch {
 	case temp > 0.35 && wet > 0.1:
@@ -58,7 +58,7 @@ func climateFrom(temp, wet float64) Climate {
 	return Temperate
 }
 
-// ClimateAt renvoie le climat du point (x, y), celui de sa contrée.
+// ClimateAt returns the climate of point (x, y), that of its district.
 func (w *World) ClimateAt(x, y int) Climate {
 	return w.TerritoryAt(x, y).climate
 }

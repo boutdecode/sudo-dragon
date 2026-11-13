@@ -18,50 +18,50 @@ import (
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
-// Carte du monde (touche M) : vue d'ensemble du terrain déjà exploré. Le terrain est régénéré
-// localement depuis la graine ; seuls les blocs que le joueur a vus (fenêtre de vision du serveur)
-// sont dessinés, le reste apparaît comme « inexploré ».
+// World map (M key): overview of the terrain already explored. The terrain is regenerated
+// locally from the seed; only the blocks the player has seen (the server's vision window)
+// are drawn, the rest appears as "unexplored".
 
-// mapZooms liste les échelles possibles : nombre de tuiles par cellule de carte.
+// mapZooms lists the possible scales: number of tiles per map cell.
 var mapZooms = [...]int{1, 2, 4, 8, 16}
 
 const (
 	defaultMapZoom = 8
-	exploreBlock   = 8  // côté, en tuiles, d'un bloc marqué comme exploré
-	towerReveal    = 96 // rayon, en tuiles, que révèle une tour de guet
+	exploreBlock   = 8  // side, in tiles, of a block marked as explored
+	towerReveal    = 96 // radius, in tiles, revealed by a watchtower
 	maxMarkers     = 9
 	legendWidth    = 30
-	legendMinWidth = 90 // largeur d'écran minimale pour afficher la légende
+	legendMinWidth = 90 // minimal screen width to show the legend
 	landmarkRadius = 600
 )
 
-// mapState est l'état de la carte : curseur, échelle, repères posés et zones explorées.
+// mapState is the map state: cursor, scale, placed markers and explored areas.
 type mapState struct {
 	curX, curY int
-	zoom       int // tuiles par cellule ; 0 = défaut
+	zoom       int // tiles per cell; 0 = default
 	markers    []marker
-	entrances  []world.Pos // entrées de donjon découvertes, à dessiner (renseigné à chaque dessin, jamais sauvegardé)
-	naming     bool        // saisie du nom d'un repère en cours
-	nameIdx    int         // repère en cours de nommage
-	dirty      bool        // exploration modifiée depuis la dernière sauvegarde
+	entrances  []world.Pos // discovered dungeon entrances, to draw (filled in at each draw, never saved)
+	naming     bool        // marker name entry in progress
+	nameIdx    int         // marker being named
+	dirty      bool        // exploration modified since the last save
 	lastSave   time.Time
 	explored   map[[2]int]struct{}
-	blink      bool      // phase du clignotement du curseur
-	gen        int       // invalide les minuteurs d'une carte déjà fermée
-	towerAt    world.Pos // dernière tour de guet gravie (évite de tout recalculer à chaque image)
+	blink      bool      // cursor blink phase
+	gen        int       // invalidates the timers of an already closed map
+	towerAt    world.Pos // last watchtower climbed (avoids recomputing everything on every frame)
 	onTower    bool
 }
 
 const mapBlinkEvery = 500 * time.Millisecond
 
-// mapBlinkMsg fait basculer le curseur de la carte.
+// mapBlinkMsg toggles the map cursor.
 type mapBlinkMsg struct{ gen int }
 
 func mapBlinkTick(gen int) tea.Cmd {
 	return tea.Tick(mapBlinkEvery, func(time.Time) tea.Msg { return mapBlinkMsg{gen} })
 }
 
-// updateMapBlink avance le clignotement tant que la carte reste ouverte.
+// updateMapBlink advances the blinking while the map stays open.
 func (m Model) updateMapBlink(msg mapBlinkMsg) (Model, tea.Cmd) {
 	if !m.worldMap || msg.gen != m.wmap.gen {
 		return m, nil
@@ -84,7 +84,7 @@ func (s *mapState) isExplored(x, y int) bool {
 	return ok
 }
 
-// markExplored note comme explorés les blocs de la fenêtre de vision autour du joueur.
+// markExplored marks as explored the blocks of the vision window around the player.
 func (m *Model) markExplored() {
 	if m.wmap.explored == nil {
 		m.wmap.explored = make(map[[2]int]struct{})
@@ -96,7 +96,7 @@ func (m *Model) markExplored() {
 			m.wmap.explored[[2]int{bx, by}] = struct{}{}
 		}
 	}
-	// Du haut d'une tour de guet, on voit beaucoup plus loin (une seule fois par tour).
+	// From the top of a watchtower, one sees much farther (once per tower).
 	if m.world != nil && m.world.At(self.X, self.Y) == world.Tower {
 		if here := (world.Pos{X: self.X, Y: self.Y}); !m.wmap.onTower || m.wmap.towerAt != here {
 			m.wmap.onTower, m.wmap.towerAt = true, here
@@ -116,7 +116,7 @@ func (m *Model) markExplored() {
 
 func (m Model) openMap() (Model, tea.Cmd) {
 	m.worldMap = true
-	if m.dmap != nil { // sous terre: un plan fixe, sans curseur ni repères
+	if m.dmap != nil { // underground: a fixed layout, without cursor or markers
 		return m, nil
 	}
 	m.wmap.gen++
@@ -157,7 +157,7 @@ func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "0", " ", "space":
 		m.wmap.curX, m.wmap.curY = m.snap.Self.X, m.snap.Self.Y
 	case "g":
-		// Marche automatique vers le curseur, puis fermeture de la carte.
+		// Automatic walk to the cursor, then closing the map.
 		m.worldMap = false
 		var save tea.Cmd
 		if m.wmap.dirty {
@@ -180,7 +180,7 @@ func (m Model) updateMapKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// newMarkerInput crée le champ de saisie du nom d'un repère.
+// newMarkerInput creates the input field for a marker's name.
 func newMarkerInput() textinput.Model {
 	t := textinput.New()
 	t.Prompt = ""
@@ -188,7 +188,7 @@ func newMarkerInput() textinput.Model {
 	return t
 }
 
-// updateNaming traite une touche pendant la saisie du nom d'un repère.
+// updateNaming handles a key while a marker name is being entered.
 func (m Model) updateNaming(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -214,7 +214,7 @@ func (m *Model) stopNaming() {
 	m.markName.Blur()
 }
 
-// markerAtCursor renvoie l'indice du repère situé dans la cellule du curseur, ou -1.
+// markerAtCursor returns the index of the marker located in the cursor's cell, or -1.
 func (m Model) markerAtCursor() int {
 	z := m.wmap.z()
 	for i, p := range m.wmap.markers {
@@ -225,7 +225,7 @@ func (m Model) markerAtCursor() int {
 	return -1
 }
 
-// defaultMarkerName renvoie « Repère N » avec le plus petit N libre.
+// defaultMarkerName returns the "Marker N" name with the smallest free N.
 func (m Model) defaultMarkerName() string {
 	for n := 1; ; n++ {
 		name := m.t("map.marker", n)
@@ -235,8 +235,8 @@ func (m Model) defaultMarkerName() string {
 	}
 }
 
-// placeOrRenameMarker pose un repère au curseur (nom par défaut) ou renomme celui de la cellule,
-// puis ouvre la saisie du nom.
+// placeOrRenameMarker places a marker at the cursor (default name) or renames the one in the cell,
+// then opens the name entry.
 func (m Model) placeOrRenameMarker() (tea.Model, tea.Cmd) {
 	i := m.markerAtCursor()
 	switch {
@@ -255,7 +255,7 @@ func (m Model) placeOrRenameMarker() (tea.Model, tea.Cmd) {
 	return m, tea.Batch(m.markName.Focus(), m.saveMap())
 }
 
-// stepZoom passe à l'échelle voisine (delta -1 = plus fin), bornée aux extrémités.
+// stepZoom moves to the neighboring scale (delta -1 = finer), bounded at the ends.
 func stepZoom(z, delta int) int {
 	for i, v := range mapZooms {
 		if v == z {
@@ -265,11 +265,11 @@ func stepZoom(z, delta int) int {
 	return defaultMapZoom
 }
 
-// cellOf renvoie l'indice de la cellule (colonne ou ligne) qui contient la coordonnée p, la
-// cellule centrale étant centrée sur cur.
+// cellOf returns the index of the cell (column or row) that contains coordinate p, the
+// central cell being centered on cur.
 func cellOf(p, cur, z, n int) int { return n/2 + fdiv(p-cur+z/2, z) }
 
-// Styles de la carte (couleurs alignées sur celles de render).
+// Map styles (colors aligned with those of render).
 func mfg(hex string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgloss.Color(hex)) }
 
 const (
@@ -296,8 +296,8 @@ const (
 	numMapStyles
 )
 
-// mapStyles contient numMapStyles styles par climat, ceux du tempéré d'abord : l'indice d'un style n'est donc valable
-// pour tous les climats que décalé de climatShift(c). Les climats ne recolorent que les terrains naturels.
+// mapStyles holds numMapStyles styles per climate, the temperate ones first: a style's index is thus valid
+// for all climates only when shifted by climatShift(c). Climates only recolor natural terrains.
 var mapStyles = func() []lipgloss.Style {
 	base := baseMapStyles
 	all := append([]lipgloss.Style(nil), base[:]...)
@@ -314,7 +314,7 @@ var mapStyles = func() []lipgloss.Style {
 	return all
 }()
 
-// climatShift est le décalage à ajouter à un indice de style pour l'habiller aux couleurs du climat c.
+// climatShift is the offset to add to a style index to dress it in the colors of climate c.
 func climatShift(c world.Climate) int { return int(c) * numMapStyles }
 
 var baseMapStyles = [numMapStyles]lipgloss.Style{
@@ -343,13 +343,13 @@ var baseMapStyles = [numMapStyles]lipgloss.Style{
 type mapCell struct {
 	r   string
 	st  int
-	rev bool // cellule du curseur, en vidéo inversée
+	rev bool // cursor cell, in reverse video
 }
 
-// terrainCell choisit le glyphe d'une tuile.
+// terrainCell chooses a tile's glyph.
 func terrainCell(t world.Tile) mapCell {
 	switch t {
-	case world.DeepWater, world.Water, world.River, world.FishNode: // un banc se voit sur la rivière qui le porte
+	case world.DeepWater, world.Water, world.River, world.FishNode: // a shoal shows on the river that carries it
 		return mapCell{r: "~", st: msWater}
 	case world.Sand:
 		return mapCell{r: ".", st: msSand}
@@ -369,7 +369,7 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: "m", st: msSwamp}
 	case world.Jungle:
 		return mapCell{r: "J", st: msJungle}
-	case world.TreeNode: // les nœuds de ressources ne sont pas dessinés sur la carte: on voit le terrain qui les porte
+	case world.TreeNode: // resource nodes are not drawn on the map: we see the terrain that carries them
 		return mapCell{r: "^", st: msForest}
 	case world.OreNode:
 		return mapCell{r: "n", st: msHills}
@@ -408,13 +408,13 @@ func terrainCell(t world.Tile) mapCell {
 	}
 }
 
-// mapGrid dessine la zone cols x rows centrée sur le curseur. Elle renvoie les lignes ANSI et le
-// nombre de cellules explorées / totales (pour la jauge).
+// mapGrid draws the cols x rows area centered on the cursor. It returns the ANSI lines and the
+// number of explored / total cells (for the gauge).
 func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protocol.Entity, cols, rows int) (lines []string, explored, total int) {
 	z := st.z()
 	cx, cy := st.curX, st.curY
 	grid := make([]mapCell, cols*rows)
-	// Échantillons pris dans chaque cellule : le centre, ou quatre points au-delà de 1:1.
+	// Samples taken in each cell: the center, or four points beyond 1:1.
 	offs := []int{0}
 	if z > 1 {
 		offs = []int{-z / 4, z / 4}
@@ -450,7 +450,7 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 		}
 	}
 	if z > 1 {
-		// Une route large d'une tuile se perd dans le vote ci-dessus: on la repose.
+		// A one-tile-wide road gets lost in the vote above: put it back.
 		half := z / 2
 		w.RoadTilesIn(cx-(cols/2)*z-half, cy-(rows/2)*z-half, cx+(cols/2+1)*z+half, cy+(rows/2+1)*z+half, func(p world.Pos) {
 			if !st.isExplored(p.X, p.Y) {
@@ -480,7 +480,7 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 			put(ctr, mapCell{r: "H", st: msVillage})
 		}
 	}
-	// Un point d'intérêt est une seule case: le vote ci-dessus la noie dès que la carte est dézoomée.
+	// A point of interest is a single tile: the vote above drowns it as soon as the map is zoomed out.
 	for _, poi := range w.POIsWithin(cx, cy, radius) {
 		if st.isExplored(poi.Pos.X, poi.Pos.Y) {
 			cell := terrainCell(poi.Tile())
@@ -502,7 +502,7 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 		cc := &grid[(rows/2)*cols+cols/2]
 		cc.rev = true
 		if cc.st == msSelf {
-			cc.st = msOther // le « @ » du joueur change de couleur plutôt que de disparaître
+			cc.st = msOther // the player's "@" changes color instead of disappearing
 		}
 	}
 
@@ -529,13 +529,13 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 	return lines, explored, total
 }
 
-// seedLabel écrit la graine sous la forme XXXX-XXXX.
+// seedLabel writes the seed in the form XXXX-XXXX.
 func seedLabel(seed int64) string {
 	u := uint64(seed)
 	return fmt.Sprintf("%04X-%04X", (u>>16)&0xFFFF, u&0xFFFF)
 }
 
-// arrowTo renvoie la flèche (8 directions) qui mène de (0,0) vers (dx, dy).
+// arrowTo returns the arrow (8 directions) leading from (0,0) toward (dx, dy).
 func arrowTo(dx, dy int) string {
 	if dx == 0 && dy == 0 {
 		return "·"
@@ -557,7 +557,7 @@ type landmark struct {
 	dx, dy int
 }
 
-// landmarks liste les lieux explorés proches et les repères posés, du plus proche du joueur au plus loin.
+// landmarks lists nearby explored places and placed markers, from nearest to farthest from the player.
 func (m Model) landmarks() []landmark {
 	self := m.snap.Self
 	var out []landmark
@@ -615,7 +615,7 @@ func (m Model) legendLines(rows int, c world.Climate) []string {
 		entry("*", msMarker, "map.leg.marker"),
 		entry("░", msUnknown, "map.leg.unexplored"),
 	}
-	// Les repères occupent la place restante, deux lignes chacun.
+	// Markers take the remaining space, two lines each.
 	if free := rows - len(lines) - 2; free >= 2 {
 		lm := m.landmarks()
 		if len(lm) > 0 {
@@ -640,7 +640,7 @@ func extra(s string) string {
 	return " · " + s
 }
 
-// mapView dessine la carte dans exactement w x h cellules : en-tête, carte et légende.
+// mapView draws the map in exactly w x h cells: header, map and legend.
 func (m Model) mapView(w, h int) string {
 	if m.dmap != nil {
 		return m.dungeonMapView(w, h)
@@ -658,7 +658,7 @@ func (m Model) mapView(w, h int) string {
 	st.entrances = m.entrancePositions()
 	lines, explored, total := mapGrid(m.world, &st, m.snap.Self, m.snap.Others, cols, rows)
 
-	// En-tête.
+	// Header.
 	self := m.snap.Self
 	info := []string{}
 	if st.curX != self.X || st.curY != self.Y {

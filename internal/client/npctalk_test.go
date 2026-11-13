@@ -9,7 +9,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/protocol"
 )
 
-// --- Fabrication de dialogues ---
+// --- Building dialogues ---
 
 func menuWithTalk() protocol.NPCDialog {
 	d := healerDialog()
@@ -43,7 +43,7 @@ func sysNote(text string) protocol.NPCLine { return protocol.NPCLine{Who: "sys",
 
 func plainView(m Model) string { return ansi.Strip(m.View().Content) }
 
-// --- Menu : l'entrée « Discuter » ---
+// --- Menu: the "Chat" entry ---
 
 func TestMenuShowsTheTalkOfferAndItsKey(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
@@ -51,7 +51,7 @@ func TestMenuShowsTheTalkOfferAndItsKey(t *testing.T) {
 	view := plainView(m)
 	for _, want := range []string{"[D] Discuter", "[S] Être soigné", "Sœur Katell · Valdurne"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("menu sans %q:\n%s", want, view)
+			t.Errorf("menu without %q:\n%s", want, view)
 		}
 	}
 	press(m, "d")
@@ -62,28 +62,28 @@ func TestMenuShowsTheTalkOfferAndItsKey(t *testing.T) {
 
 func TestTalkKeyDoesNothingWhenNotOffered(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
-	m = openNPC(t, m, healerDialog()) // pas d'offre « Discuter »
+	m = openNPC(t, m, healerDialog()) // no "Chat" offer
 	press(m, "d")
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("« discuter » envoyé alors que le PNJ ne le propose pas: %v", got)
+		t.Fatalf("\"chat\" sent although the NPC does not offer it: %v", got)
 	}
 }
 
 func TestMenuTitleFallsBackToTheJobWithoutAName(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), healerDialog())
 	if !strings.Contains(plainView(m), "SOIGNEUR") {
-		t.Fatal("titre de repli absent")
+		t.Fatal("fallback title missing")
 	}
 }
 
-// --- Avis de confidentialité ---
+// --- Privacy notice ---
 
 func TestNoticeScreenShowsTheTextAndTheChoices(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), noticeDialog())
 	view := plainView(m)
 	for _, want := range []string{"Avant de discuter", "Sœur Katell", "Mistral AI", "rumeurs", "[O] Accepter et discuter", "[N] Refuser", "[Échap] Refuser"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("avis sans %q:\n%s", want, view)
+			t.Errorf("notice without %q:\n%s", want, view)
 		}
 	}
 }
@@ -95,12 +95,12 @@ func TestNoticeKeys(t *testing.T) {
 		m = openNPC(t, m, noticeDialog())
 		press(m, key)
 		if got := sentNPCActions(out); len(got) != 1 || got[0] != want {
-			t.Errorf("touche %q: %v, attendu [%s]", key, got, want)
+			t.Errorf("key %q: %v, expected [%s]", key, got, want)
 		}
 	}
 }
 
-// Un accord doit être délibéré : ni Entrée, ni une touche de commerce, ni une lettre au hasard.
+// An agreement must be deliberate: neither Enter, nor a trade key, nor a random letter.
 func TestNoticeIsNotAcceptedByReflex(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
 	m = openNPC(t, m, noticeDialog())
@@ -108,16 +108,16 @@ func TestNoticeIsNotAcceptedByReflex(t *testing.T) {
 		m = press(m, k)
 	}
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("actions envoyées sans geste délibéré: %v", got)
+		t.Fatalf("actions sent without a deliberate gesture: %v", got)
 	}
 }
 
 func TestNoticeKeysIgnoredWithoutConnection(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), noticeDialog())
-	press(m, "o") // m.conn == nil : ne doit pas paniquer
+	press(m, "o") // m.conn == nil: must not panic
 }
 
-// --- Discussion ---
+// --- Conversation ---
 
 func TestChatViewShowsTheTranscriptWithSpeakers(t *testing.T) {
 	d := chatDialog(false,
@@ -133,18 +133,18 @@ func TestChatViewShowsTheTranscriptWithSpeakers(t *testing.T) {
 		"Or: 40", "PV: 20/30",
 	} {
 		if !strings.Contains(view, want) {
-			t.Errorf("discussion sans %q:\n%s", want, view)
+			t.Errorf("conversation without %q:\n%s", want, view)
 		}
 	}
 	if strings.Contains(view, "réfléchit") {
-		t.Error("indication de réflexion affichée alors que le PNJ n'attend rien")
+		t.Error("thinking indicator shown although the NPC is waiting for nothing")
 	}
 }
 
 func TestChatViewShowsThinking(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), chatDialog(true, youSay("Bonjour")))
 	if !strings.Contains(plainView(m), "… Sœur Katell réfléchit") {
-		t.Fatal("le joueur n'est pas prévenu que le PNJ réfléchit")
+		t.Fatal("the player is not told that the NPC is thinking")
 	}
 }
 
@@ -153,7 +153,7 @@ func TestChatInputTypingAndSending(t *testing.T) {
 	m = openNPC(t, m, chatDialog(false, npcSays("Oui ?")))
 	m = typeText(m, "Je suis Aldric")
 	if !strings.Contains(plainView(m), "> Je suis Aldric") {
-		t.Fatalf("la saisie n'est pas affichée:\n%s", plainView(m))
+		t.Fatalf("the input is not displayed:\n%s", plainView(m))
 	}
 
 	m = press(m, "enter")
@@ -173,10 +173,10 @@ func TestChatInputTypingAndSending(t *testing.T) {
 		break
 	}
 	if len(sent) != 1 || sent[0].Action != protocol.NPCSay || sent[0].Text != "Je suis Aldric" {
-		t.Fatalf("envoyé: %+v", sent)
+		t.Fatalf("sent: %+v", sent)
 	}
 	if m.npcInput.Value() != "" {
-		t.Fatalf("la saisie n'a pas été vidée: %q", m.npcInput.Value())
+		t.Fatalf("the input was not cleared: %q", m.npcInput.Value())
 	}
 }
 
@@ -187,7 +187,7 @@ func TestChatEmptyMessageIsNotSent(t *testing.T) {
 	m = typeText(m, "   ")
 	m = press(m, "enter")
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("message vide envoyé: %v", got)
+		t.Fatalf("empty message sent: %v", got)
 	}
 }
 
@@ -197,16 +197,16 @@ func TestChatCannotSendWhileTheNPCIsThinking(t *testing.T) {
 	m = typeText(m, "Et alors ?")
 	m = press(m, "enter")
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("envoi pendant la réflexion du PNJ: %v", got)
+		t.Fatalf("send while the NPC is thinking: %v", got)
 	}
 	if m.npcInput.Value() != "Et alors ?" {
-		t.Fatalf("la saisie en cours a été perdue: %q", m.npcInput.Value())
+		t.Fatalf("the input in progress was lost: %q", m.npcInput.Value())
 	}
-	// Une fois la réponse arrivée, la saisie conservée peut partir.
+	// Once the reply has arrived, the kept input can be sent.
 	m = openNPC(t, m, chatDialog(false, youSay("Bonjour"), npcSays("Oui ?")))
 	m = press(m, "enter")
 	if got := sentNPCActions(out); len(got) != 1 {
-		t.Fatalf("la saisie conservée n'a pas pu être envoyée: %v", got)
+		t.Fatalf("the kept input could not be sent: %v", got)
 	}
 }
 
@@ -219,20 +219,20 @@ func TestChatEscapeGoesBackToTheMenu(t *testing.T) {
 	}
 }
 
-// En discussion, chaque lettre est du texte : aucune touche de menu ne doit agir.
+// In conversation, each letter is text: no menu key must act.
 func TestChatKeysAreTextNotMenuShortcuts(t *testing.T) {
 	m, out := withConn(playingModel(t, 110, 34))
 	m = openNPC(t, m, chatDialog(false))
 	m = typeText(m, "avsdonzqkjhl")
 	if got := sentNPCActions(out); len(got) != 0 {
-		t.Fatalf("des lettres frappées en discussion ont déclenché des actions: %v", got)
+		t.Fatalf("letters typed in conversation triggered actions: %v", got)
 	}
 	if m.npcInput.Value() != "avsdonzqkjhl" {
-		t.Fatalf("saisie = %q", m.npcInput.Value())
+		t.Fatalf("input = %q", m.npcInput.Value())
 	}
-	// Ni déplacement, ni inventaire, ni chat global.
+	// Neither movement, nor inventory, nor global chat.
 	if m.chatting || m.inventory {
-		t.Fatal("une lettre a ouvert le chat ou l'inventaire")
+		t.Fatal("a letter opened the chat or the inventory")
 	}
 }
 
@@ -240,34 +240,34 @@ func TestChatInputIsBoundedAtTheProtocolLimit(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), chatDialog(false))
 	m = typeText(m, strings.Repeat("x", protocol.MaxSayLen+50))
 	if n := len([]rune(m.npcInput.Value())); n != protocol.MaxSayLen {
-		t.Fatalf("%d caractères saisis, limite %d", n, protocol.MaxSayLen)
+		t.Fatalf("%d characters entered, limit %d", n, protocol.MaxSayLen)
 	}
 }
 
 func TestEnteringAndLeavingChatManagesTheInput(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), menuWithTalk())
 	if m.npcInput.Focused() {
-		t.Fatal("le champ de saisie est actif dans le menu")
+		t.Fatal("the input field is active in the menu")
 	}
 	m = openNPC(t, m, chatDialog(false))
 	if !m.npcInput.Focused() {
-		t.Fatal("le champ de saisie n'est pas actif en discussion")
+		t.Fatal("the input field is not active in conversation")
 	}
 	m = typeText(m, "brouillon")
-	// Une réponse du PNJ arrive : on reste en discussion, la saisie est conservée.
+	// An NPC reply arrives: we stay in conversation, the input is kept.
 	m = openNPC(t, m, chatDialog(false, npcSays("Hm.")))
 	if m.npcInput.Value() != "brouillon" || !m.npcInput.Focused() {
-		t.Fatalf("la saisie a été perdue à l'arrivée d'une réponse: %q (focus %v)", m.npcInput.Value(), m.npcInput.Focused())
+		t.Fatalf("the input was lost when a reply arrived: %q (focus %v)", m.npcInput.Value(), m.npcInput.Focused())
 	}
-	// Retour au menu : le champ n'est plus actif.
+	// Back to the menu: the field is no longer active.
 	m = openNPC(t, m, menuWithTalk())
 	if m.npcInput.Focused() {
-		t.Fatal("le champ de saisie reste actif après le retour au menu")
+		t.Fatal("the input field stays active after returning to the menu")
 	}
-	// Nouvelle entrée en discussion : saisie propre.
+	// New entry into conversation: clean input.
 	m = openNPC(t, m, chatDialog(false))
 	if m.npcInput.Value() != "" {
-		t.Fatalf("saisie de la discussion précédente conservée: %q", m.npcInput.Value())
+		t.Fatalf("input from the previous conversation kept: %q", m.npcInput.Value())
 	}
 }
 
@@ -275,11 +275,11 @@ func TestDialogOverClosesTheChat(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), chatDialog(false, npcSays("Oui ?")))
 	m = openNPC(t, m, protocol.NPCDialog{Kind: "healer", Over: true, Log: []string{"À bientôt !"}})
 	if m.npc != nil || m.npcInput.Focused() {
-		t.Fatalf("dialogue non fermé: npc=%v focus=%v", m.npc, m.npcInput.Focused())
+		t.Fatalf("dialogue not closed: npc=%v focus=%v", m.npc, m.npcInput.Focused())
 	}
 }
 
-// --- Aide ---
+// --- Help ---
 
 func TestHelpBarFollowsTheDialogMode(t *testing.T) {
 	cases := []struct {
@@ -295,13 +295,13 @@ func TestHelpBarFollowsTheDialogMode(t *testing.T) {
 		help := ansi.Strip(m.helpLine())
 		for _, want := range c.wants {
 			if !strings.Contains(help, want) {
-				t.Errorf("mode %q: aide %q sans %q", c.d.Mode, help, want)
+				t.Errorf("mode %q: help %q without %q", c.d.Mode, help, want)
 			}
 		}
 	}
 }
 
-// --- Mise en page ---
+// --- Layout ---
 
 func longTranscript() []protocol.NPCLine {
 	var lines []protocol.NPCLine
@@ -332,11 +332,11 @@ func TestEveryDialogModeFitsEveryTerminalSize(t *testing.T) {
 			}
 			lines := strings.Split(plainView(m), "\n")
 			if len(lines) > sz[1] {
-				t.Errorf("%s %v: %d lignes > hauteur", name, sz, len(lines))
+				t.Errorf("%s %v: %d lines > height", name, sz, len(lines))
 			}
 			for i, l := range lines {
 				if w := ansi.StringWidth(l); w > sz[0] {
-					t.Errorf("%s %v ligne %d: largeur %d > %d", name, sz, i, w, sz[0])
+					t.Errorf("%s %v line %d: width %d > %d", name, sz, i, w, sz[0])
 				}
 			}
 		}
@@ -349,7 +349,7 @@ func TestLongTranscriptShowsTheMostRecentLines(t *testing.T) {
 	m := openNPC(t, playingModel(t, 110, 34), chatDialog(false, lines...))
 	view := plainView(m)
 	if !strings.Contains(view, "DERNIÈRE-RÉPLIQUE") {
-		t.Fatal("la dernière réplique n'est pas visible")
+		t.Fatal("the last line is not visible")
 	}
 }
 
@@ -357,28 +357,28 @@ func TestWrapNeverExceedsTheWidth(t *testing.T) {
 	for _, in := range []string{"", "court", strings.Repeat("a", 100), "un deux trois quatre cinq six sept huit neuf dix", "日本語日本語日本語日本語", "x\ny"} {
 		for _, w := range []int{1, 5, 17, 40} {
 			if w < 2 && ansi.StringWidth(in) != len([]rune(in)) {
-				continue // un caractère de largeur 2 ne tient pas dans 1 colonne, quoi qu'on fasse
+				continue // a width-2 character does not fit in 1 column, whatever we do
 			}
 			for _, l := range wrap(in, w) {
 				if ansi.StringWidth(l) > w {
-					t.Errorf("wrap(%q, %d): ligne %q de largeur %d", in, w, l, ansi.StringWidth(l))
+					t.Errorf("wrap(%q, %d): line %q of width %d", in, w, l, ansi.StringWidth(l))
 				}
 			}
 		}
 	}
 	if wrap("x", 0) != nil {
-		t.Error("largeur nulle")
+		t.Error("zero width")
 	}
 }
 
-// --- Défense : le client ne fait pas confiance au texte reçu ---
+// --- Defense: the client does not trust the received text ---
 
 func TestIncomingDialogTextIsSanitized(t *testing.T) {
 	d := chatDialog(false,
 		npcSays("Salut\x1b[2J\x1b]0;PIRATÉ\x07 \u202eà l'envers"),
 		youSay("\x1b[31mrouge\x1b[0m"),
 		protocol.NPCLine{Who: "inconnu\x1b[1m", Text: "locuteur étrange"},
-		npcSays("\x1b[0m\u200b"), // vide une fois nettoyée : supprimée
+		npcSays("\x1b[0m\u200b"), // empty once cleaned: removed
 	)
 	d.Name, d.Place, d.Notice = "Sœur\x1b[2J Katell", "Val\u202edurne", "Avis\x1b[31m piégé"
 	d.Log = []string{"journal\x1b[2J", "\x1b[0m"}
@@ -396,20 +396,20 @@ func TestIncomingDialogTextIsSanitized(t *testing.T) {
 	}
 	for _, s := range all {
 		if strings.ContainsAny(s, "\x1b\x07") || strings.ContainsRune(s, '\u202e') || strings.ContainsRune(s, '\u200b') {
-			t.Errorf("texte reçu non nettoyé: %q", s)
+			t.Errorf("received text not cleaned: %q", s)
 		}
 	}
 	if len(m.npc.Lines) != 3 {
-		t.Fatalf("%d lignes, attendu 3 (la ligne devenue vide est retirée): %+v", len(m.npc.Lines), m.npc.Lines)
+		t.Fatalf("%d lines, expected 3 (the line that became empty is removed): %+v", len(m.npc.Lines), m.npc.Lines)
 	}
 	if m.npc.Lines[0].Text != "Salut à l'envers" {
-		t.Fatalf("ligne 0 = %q", m.npc.Lines[0].Text)
+		t.Fatalf("line 0 = %q", m.npc.Lines[0].Text)
 	}
 	if m.npc.Lines[2].Who != "sys" {
-		t.Fatalf("un locuteur inconnu doit devenir une note système: %q", m.npc.Lines[2].Who)
+		t.Fatalf("an unknown speaker must become a system note: %q", m.npc.Lines[2].Who)
 	}
 	if len(m.npc.Log) != 1 {
-		t.Fatalf("journal = %v", m.npc.Log)
+		t.Fatalf("log = %v", m.npc.Log)
 	}
 }
 
@@ -418,7 +418,7 @@ func TestOnlyDialogOfferLabelsAreSanitizedNotPrices(t *testing.T) {
 	d.Offers[0].Price = 12
 	m := openNPC(t, playingModel(t, 110, 34), d)
 	if m.npc.Offers[0].Price != 12 || !m.npc.Offers[0].Available {
-		t.Fatalf("le nettoyage a altéré les données non textuelles: %+v", m.npc.Offers[0])
+		t.Fatalf("cleaning altered the non-text data: %+v", m.npc.Offers[0])
 	}
 }
 
@@ -428,6 +428,6 @@ func TestConnectionLostClearsTheChatInput(t *testing.T) {
 	tm, _ := m.Update(eventMsg{Event{Err: errClosed}})
 	got := tm.(Model)
 	if got.npc != nil {
-		t.Fatal("dialogue conservé après la déconnexion")
+		t.Fatal("dialogue kept after disconnection")
 	}
 }

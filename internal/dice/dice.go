@@ -1,5 +1,5 @@
-// Package dice contient la notation « x d y + z » des dégâts : x dés à y faces, plus un bonus.
-// Il ne dépend d'aucun autre paquet et reçoit son aléa en paramètre.
+// Package dice provides the "x d y + z" damage notation: x dice with y sides, plus a bonus.
+// It depends on no other package and receives its randomness as a parameter.
 package dice
 
 import (
@@ -8,23 +8,23 @@ import (
 	"strings"
 )
 
-// Bornes de lecture d'une notation (sauvegarde, modèle de langage).
+// Bounds when reading a notation (save file, language model).
 const (
 	MaxCount = 20
 	MaxSides = 100
 	MaxBonus = 100
 )
 
-// Dice est « N d Sides + Bonus ». Le zéro ne fait rien (N = 0 : aucun dé, bonus seul).
+// Dice is "N d Sides + Bonus". The zero value does nothing (N = 0: no dice, bonus only).
 type Dice struct {
 	N, Sides int
 	Bonus    int
 }
 
-// D construit n dés à sides faces plus bonus.
+// D builds n dice with sides faces plus bonus.
 func D(n, sides, bonus int) Dice { return Dice{N: n, Sides: sides, Bonus: bonus} }
 
-// IsZero indique qu'il n'y a ni dé ni bonus.
+// IsZero reports that there is neither a die nor a bonus.
 func (d Dice) IsZero() bool { return d.N == 0 && d.Bonus == 0 }
 
 func (d Dice) rolls(rng *rand.Rand, times int) int {
@@ -38,13 +38,13 @@ func (d Dice) rolls(rng *rand.Rand, times int) int {
 	return sum
 }
 
-// Roll lance les dés et ajoute le bonus.
+// Roll rolls the dice and adds the bonus.
 func (d Dice) Roll(rng *rand.Rand) int { return d.rolls(rng, 1) + d.Bonus }
 
-// RollCrit lance deux fois plus de dés (coup critique); le bonus ne double pas.
+// RollCrit rolls twice as many dice (critical hit); the bonus is not doubled.
 func (d Dice) RollCrit(rng *rand.Rand) int { return d.rolls(rng, 2) + d.Bonus }
 
-// Min et Max sont les résultats extrêmes ; Avg la moyenne (arrondie à l'inférieur).
+// Min and Max are the extreme results; Avg is the average (rounded down).
 func (d Dice) Min() int { return max(0, d.N) + d.Bonus }
 func (d Dice) Max() int { return max(0, d.N)*max(0, d.Sides) + d.Bonus }
 func (d Dice) Avg() int {
@@ -54,7 +54,7 @@ func (d Dice) Avg() int {
 	return max(0, d.N)*(d.Sides+1)/2 + d.Bonus
 }
 
-// String donne « 2d6+2 », « 3d4 », « 1d8-1 » (ou « 0 » pour le zéro).
+// String gives "2d6+2", "3d4", "1d8-1" (or "0" for the zero value).
 func (d Dice) String() string {
 	if d.N <= 0 || d.Sides < 1 {
 		return strconv.Itoa(d.Bonus)
@@ -69,11 +69,11 @@ func (d Dice) String() string {
 	return s
 }
 
-// WithBonus renvoie les mêmes dés avec le bonus augmenté de b.
+// WithBonus returns the same dice with the bonus increased by b.
 func (d Dice) WithBonus(b int) Dice { d.Bonus += b; return d }
 
-// Parse lit « 2d6+2 », « d8 », « 3d4-1 » ou « 5 », de façon tolérante (espaces, majuscules) et bornée.
-// Renvoie false si le texte n'est pas une notation.
+// Parse reads "2d6+2", "d8", "3d4-1" or "5", tolerantly (spaces, uppercase) and bounded.
+// It returns false if the text is not a notation.
 func Parse(s string) (Dice, bool) {
 	s = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", ""))
 	if s == "" {
