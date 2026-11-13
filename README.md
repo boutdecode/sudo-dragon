@@ -1,7 +1,5 @@
 # sudo Dragon
 
-*[Version française : README.fr.md](README.fr.md)*
-
 An old-school, open-world multiplayer RPG, entirely in ASCII, in your terminal.
 UI built with [Bubble Tea](https://charm.land/) and Lip Gloss; authoritative server in Go.
 

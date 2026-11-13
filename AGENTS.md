@@ -8,6 +8,6 @@
 - Fix or remove passages that have become wrong, without leaving a removed feature behind.
 - Only describe as shipped what is actually in the code.
 
-## Keep the READMEs in sync
+## Keep the README up to date
 
-[README.md](README.md) (English, the reference) and [README.fr.md](README.fr.md) (French) must be updated together: same sections, same tables.
+When a change affects what the README describes (install, options, keys, rules), update [README.md](README.md) in the same commit.

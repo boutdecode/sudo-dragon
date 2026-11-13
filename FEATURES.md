@@ -1,6 +1,6 @@
 # sudo Dragon features
 
-Inventory of the game's features (formerly "ASCII Adventure"), established from the code. For installation, server options and operation, see the [README](README.md), which is the English reference ([version française](README.fr.md)). This file is in English; both READMEs must be kept in sync.
+Inventory of the game's features (formerly "ASCII Adventure"), established from the code. For installation, server options and operation, see the [README](README.md), which is the English reference. This file is in English.
 
 ## World and generation (`internal/world/`)
 
@@ -254,7 +254,6 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 - No skills or spells to learn: magic is an attack style tied to the weapon.
 - No automatic reconnection after a drop.
 - A single server process, with no horizontal scaling.
-- README.md (English, the reference) and its translation `README.fr.md` must be updated together (same sections, same tables).
 - Traffic grows as the square of the number of players in the same area: each snapshot contains all visible entities, with no spatial index or delta encoding.
 - Fortress garrisons are not saved: a restart puts them all back in place, the warlord included.
 - A player who disconnects mid-fight keeps their current HP without suffering a possible defeat.
