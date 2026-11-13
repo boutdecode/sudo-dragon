@@ -25,6 +25,8 @@ const (
 	TGearAction = "gear_action"
 	// TCreateAction: voir CreateAction (phase de création du personnage, avant TWelcome).
 	TCreateAction = "create_action"
+	// TGather (sans charge utile): le joueur récolte le nœud de ressource sous lui ou à côté.
+	TGather = "gather"
 	// TPing: mesure de latence, le serveur répond TPong (sans charge utile).
 	TPing = "ping"
 
@@ -41,6 +43,7 @@ const (
 	TBag      = "bag"      // sac d'équipement: voir Bag
 	TZone     = "zone"     // changement de zone (donjon ou carte principale): voir Zone
 	TDungeons = "dungeons" // donjons découverts: voir Dungeons
+	TNodes    = "nodes"    // nœuds de ressources épuisés autour du joueur: voir Nodes
 	TPong     = "pong"
 )
 
@@ -350,6 +353,22 @@ type Bag struct {
 
 	// Cartes au trésor détenues : la case à creuser de chacune (fiche de personnage).
 	Maps []TreasureMap `json:"maps,omitempty"`
+
+	// Matières récoltées (sac de matières, voir internal/resource), triées par catégorie puis identifiant.
+	Resources []ResourceStack `json:"res,omitempty"`
+}
+
+// ResourceStack est une quantité de matière: ID est l'identifiant du catalogue (voir resource.Kind).
+type ResourceStack struct {
+	ID  string `json:"id"`
+	Qty int    `json:"n"`
+}
+
+// Nodes liste les nœuds de ressources épuisés (récoltés, pas encore repoussés) autour du joueur. Le terrain
+// étant recalculé par le client, c'est ce message qui lui dit de dessiner ces nœuds comme du terrain nu. Il
+// remplace la liste précédente.
+type Nodes struct {
+	Spent [][2]int `json:"spent,omitempty"` // positions (x, y)
 }
 
 // TreasureMap est une carte au trésor : les coordonnées de la case à creuser.

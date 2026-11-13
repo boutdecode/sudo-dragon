@@ -5,6 +5,7 @@
 package render
 
 import (
+	"github.com/kevin/ascii-adventure/internal/resource"
 	"slices"
 	"strings"
 
@@ -55,6 +56,9 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.Desert:    fg("#e3b95f"),
 	world.Swamp:     fg("#5f8a5a"),
 	world.Jungle:    fg("#059669").Bold(true),
+	world.TreeNode:  fg("#4ade80").Bold(true),
+	world.OreNode:   fg("#94a3b8").Bold(true),
+	world.HerbNode:  fg("#bef264").Bold(true),
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -194,6 +198,7 @@ func init() {
 	}
 	npcStyle[""] = len(styles) // PNJ inconnu
 	styles = append(styles, unknownNPC.style)
+	addResourceStyles()
 	addClimateStyles()
 	buildNightStyles()
 }
@@ -229,6 +234,9 @@ var variants = map[world.Tile][]rune{
 	world.Desert:    []rune(";;.;:;."),
 	world.Swamp:     []rune("mm~m\"m,m"),
 	world.Jungle:    []rune("JJTJPJJ"),
+	world.TreeNode:  []rune("TTTPTT"),
+	world.OreNode:   []rune("nnnnnn"),
+	world.HerbNode:  []rune("\"\"\",\"\"\""),
 }
 
 // TerrainName renvoie le nom d'un terrain dans la langue l.
@@ -290,6 +298,12 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.swamp")
 	case world.Jungle:
 		return i18n.T(l, "terrain.jungle")
+	case world.TreeNode:
+		return i18n.T(l, "terrain.treenode")
+	case world.OreNode:
+		return i18n.T(l, "terrain.orenode")
+	case world.HerbNode:
+		return i18n.T(l, "terrain.herbnode")
 	}
 	return "?"
 }
@@ -374,11 +388,61 @@ func WithEntrances(t Terrain, entrances [][2]int) Terrain {
 	return e
 }
 
+// NodeAt fait suivre le nœud de ressource du terrain décoré, s'il en a un.
+func (e entranceTerrain) NodeAt(x, y int) (resource.Kind, world.Tile, bool) {
+	if n, ok := e.Terrain.(noded); ok {
+		return n.NodeAt(x, y)
+	}
+	return "", 0, false
+}
+
 func (e entranceTerrain) At(x, y int) world.Tile {
 	if e.at[[2]int{x, y}] {
 		return world.Entrance
 	}
 	return e.Terrain.At(x, y)
+}
+
+// spentTerrain dessine les nœuds de ressources épuisés comme le terrain nu qu'ils recouvrent (base).
+type spentTerrain struct {
+	Terrain
+	spent map[[2]int]bool
+	base  func(x, y int) world.Tile
+}
+
+// WithSpent superpose à t les nœuds de ressources épuisés (clés: x, y): ils reprennent le terrain brut base(x, y).
+// Sans nœud épuisé, t est rendu tel quel.
+func WithSpent(t Terrain, spent map[[2]int]bool, base func(x, y int) world.Tile) Terrain {
+	if len(spent) == 0 || base == nil {
+		return t
+	}
+	return spentTerrain{Terrain: t, spent: spent, base: base}
+}
+
+// ClimateAt et NodeAt font suivre au terrain décoré ce qu'il offre en plus; un nœud épuisé n'est plus un nœud.
+func (s spentTerrain) ClimateAt(x, y int) world.Climate {
+	if c, ok := s.Terrain.(climated); ok {
+		return c.ClimateAt(x, y)
+	}
+	return world.Temperate
+}
+
+func (s spentTerrain) NodeAt(x, y int) (resource.Kind, world.Tile, bool) {
+	if n, ok := s.Terrain.(noded); ok && !s.spent[[2]int{x, y}] {
+		return n.NodeAt(x, y)
+	}
+	return "", 0, false
+}
+
+func (s spentTerrain) At(x, y int) world.Tile {
+	t := s.Terrain.At(x, y)
+	switch t {
+	case world.TreeNode, world.OreNode, world.HerbNode:
+		if s.spent[[2]int{x, y}] {
+			return s.base(x, y)
+		}
+	}
+	return t
 }
 
 // NPCsIn : il n'y a personne à qui parler sous terre.
@@ -437,6 +501,7 @@ func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 	}
 
 	cl, hasClimate := w.(climated)
+	nd, hasNodes := w.(noded)
 	x0, y0 := cx-cols/2, cy-rows/2
 	var out strings.Builder
 	out.Grow(rows * (cols + 16))
@@ -484,6 +549,15 @@ func ViewportNight(w Terrain, cx, cy, cols, rows int, ents []protocol.Entity, mo
 					c = cl.ClimateAt(x, y)
 				}
 				ch, st = glyphIn(c, t, x, y), styleFor(c, t)
+				if hasNodes && (t == world.TreeNode || t == world.OreNode || t == world.HerbNode) {
+					// Un nœud garde le glyphe du terrain qu'il recouvre; sa couleur dit la ressource.
+					if kind, base, ok := nd.NodeAt(x, y); ok {
+						ch = glyphIn(c, base, x, y)
+						if rs, known := resourceStyle[kind]; known {
+							st = rs
+						}
+					}
+				}
 				if night > 0 && !lit(t) { // la nuit n'assombrit que le terrain
 					st += night * len(styles)
 				}

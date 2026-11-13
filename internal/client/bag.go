@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/resource"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
 )
@@ -199,6 +201,7 @@ func (m Model) inventoryView(w, h int) string {
 		detail = []string{"", " " + titleStyle.Render(m.t("bag.potion_name")), " " + dimStyle.Render(m.t("bag.consumable")), "",
 			m.t("bag.potion_line1"), m.t("bag.potion_line2"), "", " " + dimStyle.Render(m.t("bag.potion_line3")), " " + dimStyle.Render(m.t("bag.potion_line4"))}
 	}
+	detail = append(detail, m.resourceLines()...)
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		ui.Panel(m.t("bag.title", m.snap.Self.Name), strings.Join(left, "\n"), listW, h),
 		ui.Panel(m.t("bag.detail"), strings.Join(detail, "\n"), detailW, h),
@@ -206,6 +209,35 @@ func (m Model) inventoryView(w, h int) string {
 }
 
 var _ = fmt.Sprintf
+
+// maxResourceRows borne les matières affichées (le serveur n'en envoie pas plus que le catalogue).
+const maxResourceRows = 64
+
+// resourceLines liste les matières récoltées, groupées par catégorie.
+func (m Model) resourceLines() []string {
+	if len(m.bag.Resources) == 0 {
+		return nil
+	}
+	lines := []string{"", " " + titleStyle.Render(m.t("bag.materials"))}
+	for c := resource.Category(0); c < resource.NumCategories; c++ {
+		head := false
+		for i, r := range m.bag.Resources {
+			if i >= maxResourceRows {
+				break
+			}
+			info, ok := resource.Lookup(resource.Kind(r.ID))
+			if !ok || info.Cat != c || r.Qty <= 0 {
+				continue
+			}
+			if !head {
+				lines = append(lines, " "+dimStyle.Render(m.t("resource.cat."+c.Key())))
+				head = true
+			}
+			lines = append(lines, "   "+m.t("resource."+r.ID)+dimStyle.Render(" ×"+strconv.Itoa(min(r.Qty, 9999))))
+		}
+	}
+	return lines
+}
 
 // scoresLine est la ligne compacte des caractéristiques du panneau latéral (vide tant que le sac n'est pas reçu).
 func (m Model) scoresLine() string {

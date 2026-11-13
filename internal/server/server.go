@@ -108,7 +108,7 @@ func fromSaved(sv game.Saved) store.Character {
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 		Gear: sv.Gear, GearDirty: sv.GearDirty,
 		Discoveries: sv.Discovered, DiscoveriesDirty: sv.DiscoveredDirty,
-		Stones: sv.Stones, Maps: sv.Maps,
+		Stones: sv.Stones, Maps: sv.Maps, Resources: sv.Resources,
 	}
 	if sv.Respawn != nil {
 		c.RespawnSet, c.RespawnX, c.RespawnY = true, sv.Respawn.X, sv.Respawn.Y
@@ -128,6 +128,7 @@ func toSaved(c store.Character) *game.Saved {
 		Discovered: c.Discoveries,
 		Stones:     c.Stones,
 		Maps:       c.Maps,
+		Resources:  c.Resources,
 	}
 	if c.RespawnSet {
 		sv.Respawn = &world.Pos{X: c.RespawnX, Y: c.RespawnY}
@@ -368,6 +369,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		Bag:      func(b protocol.Bag) { sess.sendMsg(protocol.TBag, b) },
 		Zone:     func(z protocol.Zone) { sess.sendMsg(protocol.TZone, z) },
 		Dungeons: func(d protocol.Dungeons) { sess.sendMsg(protocol.TDungeons, d) },
+		Nodes:    func(n protocol.Nodes) { sess.sendMsg(protocol.TNodes, n) },
 		Joined: func(id, x, y int) {
 			sess.sendMsg(protocol.TWelcome, protocol.Welcome{
 				ID: id, Name: name, X: x, Y: y, Seed: s.Game.World.Seed, Gen: s.Game.World.GenVersion,
@@ -622,6 +624,12 @@ func (sess *session) readLoop(ctx context.Context) {
 				continue
 			}
 			sess.srv.Game.GearAct(sess.id, a.Action, a.ID, a.Slot)
+		case protocol.TGather:
+			if !sess.allowSay() {
+				sess.sendErr("srv.err.slow_down_npc")
+				continue
+			}
+			sess.srv.Game.Gather(sess.id)
 		case protocol.TPing:
 			sess.sendMsg(protocol.TPong, nil)
 		case protocol.TChatSend:

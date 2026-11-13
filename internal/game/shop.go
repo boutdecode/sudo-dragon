@@ -162,6 +162,7 @@ func (g *Game) sendBag(p *player) {
 	for _, mp := range p.maps {
 		b.Maps = append(b.Maps, protocol.TreasureMap{X: mp.X, Y: mp.Y})
 	}
+	b.Resources = resourceStacks(p.resources)
 	b.Notice, p.gearNotices = p.gearNotices, nil
 	p.sendBagMsg(b)
 }

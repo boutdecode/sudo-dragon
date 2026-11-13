@@ -60,6 +60,11 @@ const (
 	Swamp  // marais, bas et humide
 	Jungle // forêt dense des zones chaudes et humides
 
+	// Nœuds de ressources de la v3 (voir resources.go): franchissables, on les récolte avec la touche d'action.
+	TreeNode // arbre à abattre (bois)
+	OreNode  // filon de minerai ou affleurement de pierre
+	HerbNode // touffe de plantes
+
 	// NumTiles est le nombre de types de tuiles: les valeurs vont de 0 à NumTiles-1.
 	NumTiles
 )
@@ -125,6 +130,12 @@ func (t Tile) Glyph() rune {
 		return 'm'
 	case Jungle:
 		return 'J'
+	case TreeNode:
+		return 'a'
+	case OreNode:
+		return '0'
+	case HerbNode:
+		return 'h'
 	}
 	return '?'
 }
@@ -205,8 +216,10 @@ const (
 	GenV1 = 1
 	// GenV2 ajoute continents, océans, îles, chaînes de montagnes, rivières et biomes (voir terrain2.go).
 	GenV2 = 2
+	// GenV3 sème des nœuds de ressources (arbres, filons, plantes) sur le terrain v2 (voir resources.go).
+	GenV3 = 3
 	// GenLatest est la version utilisée pour les nouveaux mondes.
-	GenLatest = GenV2
+	GenLatest = GenV3
 )
 
 // New crée un monde déterministe pour la seed donnée, avec le générateur d'origine (v1).
@@ -215,7 +228,7 @@ func New(seed int64) *World { return NewVersion(seed, GenV1) }
 // NewVersion crée un monde déterministe pour la seed et la version de générateur données.
 // Une version inconnue ou nulle retombe sur v1 (anciens clients et bases sans version).
 func NewVersion(seed int64, gen int) *World {
-	if gen < GenV1 || gen > GenV2 {
+	if gen < GenV1 || gen > GenV3 {
 		gen = GenV1
 	}
 	return &World{
@@ -259,13 +272,16 @@ func (w *World) TileAt(x, y int) Tile {
 	if w.roadCostOf(t) > 0 && onRoad(w.roadsAround(RegionOf(x, y)), x, y) {
 		return Road
 	}
+	if n, ok := w.nodeTile(x, y, t); ok {
+		return n
+	}
 	return t
 }
 
 // terrainAt calcule le terrain brut, sans structure. Le placement des
 // structures s'appuie sur lui (jamais sur TileAt, pour éviter toute circularité).
 func (w *World) terrainAt(x, y int) Tile {
-	if w.GenVersion >= GenV2 {
+	if w.GenVersion >= GenV2 { // la v3 partage le terrain de la v2
 		return w.terrainAtV2(x, y)
 	}
 	return w.terrainAtV1(x, y)
@@ -334,6 +350,8 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 				c.Tiles[ty][tx] = poi.Tile()
 			} else if t := w.terrainAt(x, y); w.roadCostOf(t) > 0 && onRoad(roads, x, y) {
 				c.Tiles[ty][tx] = Road
+			} else if n, ok := w.nodeTile(x, y, t); ok {
+				c.Tiles[ty][tx] = n
 			} else {
 				c.Tiles[ty][tx] = t
 			}

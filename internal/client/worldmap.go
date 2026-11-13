@@ -369,6 +369,12 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: "m", st: msSwamp}
 	case world.Jungle:
 		return mapCell{r: "J", st: msJungle}
+	case world.TreeNode: // les nœuds de ressources ne sont pas dessinés sur la carte: on voit le terrain qui les porte
+		return mapCell{r: "^", st: msForest}
+	case world.OreNode:
+		return mapCell{r: "n", st: msHills}
+	case world.HerbNode:
+		return mapCell{r: "\"", st: msPlain}
 	case world.Road:
 		return mapCell{r: "=", st: msRoad}
 	case world.Floor:

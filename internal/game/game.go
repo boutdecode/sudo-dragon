@@ -9,6 +9,7 @@ package game
 import (
 	"context"
 	"errors"
+	"github.com/kevin/ascii-adventure/internal/resource"
 	"maps"
 	"math/rand/v2"
 	"slices"
@@ -92,6 +93,13 @@ type player struct {
 	discoveredDirty bool // à réécrire à la prochaine sauvegarde
 	sendDungeonsMsg func(protocol.Dungeons)
 
+	// Matières premières (voir gather.go).
+	resources    map[resource.Kind]int // sac de matières : quantité par ressource
+	gatherUntil  uint64                // tick avant lequel on ne peut pas récolter de nouveau
+	sendNodesMsg func(protocol.Nodes)
+	nodesVer     uint64    // version de g.spent à l'envoi du dernier message Nodes
+	nodesAt      world.Pos // où le joueur se trouvait à ce moment
+
 	// Points d'intérêt (voir poi.go).
 	respawn    *world.Pos               // dernier feu de camp : on y réapparaît après une défaite
 	stones     map[world.RegionPos]bool // pierres dressées activées, par région
@@ -130,6 +138,9 @@ type Saved struct {
 	Respawn *world.Pos
 	Stones  []world.RegionPos
 	Maps    []world.Pos // cartes au trésor détenues : la case à creuser de chacune
+
+	// Sac de matières : quantité par identifiant de ressource (voir gather.go).
+	Resources map[string]int
 }
 
 // Game est l'état du monde vivant.
@@ -181,6 +192,8 @@ type Game struct {
 	gd            guardState               // gardes des villages et des villes (voir guards.go)
 	garrisonCount int                      // monstres de garnison vivants
 	car           caravanState             // marchands ambulants suivis (voir caravan.go)
+	spent         map[world.Pos]uint64     // nœud de ressource -> tick de sa récolte (voir gather.go)
+	spentVer      uint64                   // change à chaque modification de spent
 	lairOpened    map[world.POIKey]uint64  // repaire -> tick de l'ouverture de son coffre (voir poi.go)
 	nextMonsterID int
 
@@ -206,6 +219,7 @@ func New(w *world.World) *Game {
 		monsterAt:     make(map[world.Pos]int),
 		slotMonster:   make(map[world.SlotKey]int),
 		slotDefeated:  make(map[world.SlotKey]uint64),
+		spent:         make(map[world.Pos]uint64),
 		lairOpened:    make(map[world.POIKey]uint64),
 		nextMonsterID: 1,
 		instances:     make(map[ZoneID]*instance),
@@ -260,6 +274,7 @@ type Handlers struct {
 	Bag      func(protocol.Bag)       // optionnel: sac d'équipement
 	Zone     func(protocol.Zone)      // optionnel: entrée ou sortie d'un donjon, coffres ouverts
 	Dungeons func(protocol.Dungeons)  // optionnel: donjons découverts
+	Nodes    func(protocol.Nodes)     // optionnel: nœuds de ressources épuisés autour du joueur
 	// Joined est appelé dans la goroutine de jeu avant tout instantané, ce qui
 	// permet d'envoyer le message de bienvenue avant le premier snapshot.
 	Joined func(id, x, y int)
@@ -277,6 +292,7 @@ func (g *Game) Join(name string, h Handlers) (int, error) {
 		p.sendBagMsg = h.Bag
 		p.sendZoneMsg = h.Zone
 		p.sendDungeonsMsg = h.Dungeons
+		p.sendNodesMsg = h.Nodes
 		if h.Joined != nil {
 			h.Joined(p.id, p.pos.X, p.pos.Y)
 		}
@@ -382,6 +398,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 			p.respawn = &r
 		}
 		p.maps = slices.Clone(saved.Maps)
+		p.resources = loadResources(saved.Resources)
 		for _, rp := range saved.Stones {
 			p.stones[rp] = true
 		}
@@ -407,7 +424,7 @@ func (g *Game) save(p *player) {
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 			Discovered: p.discoveredList(), DiscoveredDirty: p.discoveredDirty,
-			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps),
+			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps), Resources: saveResources(p.resources),
 		})
 		p.questsDirty, p.gearDirty, p.discoveredDirty = false, false, false
 	}
@@ -617,8 +634,10 @@ func (g *Game) step() {
 	}
 
 	// Instantanés, uniquement si ce que voit le joueur a changé.
+	g.expireNodes()
 	for _, id := range ids {
 		g.sendSnapshot(g.players[id], mids)
+		g.syncNodes(g.players[id])
 	}
 
 	if g.tick%unloadEvery == 0 {

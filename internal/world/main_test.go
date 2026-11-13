@@ -17,7 +17,7 @@ func newTestWorld(seed int64) *World { return NewVersion(seed, testGen) }
 // version précise construisent leur monde avec NewVersion.
 func TestMain(m *testing.M) {
 	code := 0
-	for gen := GenV1; gen <= GenV2; gen++ {
+	for gen := GenV1; gen <= GenV3; gen++ {
 		testGen = gen
 		fmt.Printf("=== générateur de terrain v%d ===\n", gen)
 		if c := m.Run(); c != 0 {

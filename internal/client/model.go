@@ -125,6 +125,7 @@ var (
 
 // Model est le modèle Bubble Tea du client.
 type Model struct {
+	spent         map[[2]int]bool // nœuds de ressources épuisés annoncés par le serveur (voir applyNodes)
 	state         state
 	width, height int
 	lang          i18n.Lang // langue de l'interface (et des messages demandés au serveur)
@@ -672,6 +673,10 @@ func (m Model) updatePlayKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.inventory = true
 		return m, nil
 	}
+	if msg.String() == "g" && m.conn != nil && !m.inDungeon() {
+		m.conn.Send(protocol.TGather, nil)
+		return m, nil
+	}
 	if msg.String() == "enter" {
 		m.chatting = true
 		m.histPos, m.histDraft = len(m.chatHist), ""
@@ -743,6 +748,11 @@ func (m Model) updateEvent(ev Event) (tea.Model, tea.Cmd) {
 		var d protocol.Dungeons
 		if err := ev.Env.Payload(&d); err == nil {
 			m.applyDungeons(d)
+		}
+	case protocol.TNodes:
+		var n protocol.Nodes
+		if err := ev.Env.Payload(&n); err == nil {
+			m.applyNodes(n)
 		}
 	case protocol.TBag:
 		var b protocol.Bag
@@ -1290,7 +1300,7 @@ func (m Model) helpLine() string {
 	case m.combat != nil:
 		return ui.KeyBar([2]string{"↵", m.t("key.continue")})
 	}
-	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"i", m.t("key.bag")}, [2]string{"p", m.t("key.sheet")}, [2]string{"m", m.t("key.map")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
+	return ui.KeyBar([2]string{"↑↓←→", m.t("key.walk")}, [2]string{"g", m.t("key.gather")}, [2]string{"i", m.t("key.bag")}, [2]string{"p", m.t("key.sheet")}, [2]string{"m", m.t("key.map")}, [2]string{"q", m.t("key.quests")}, [2]string{"↵", m.t("key.chat")}, [2]string{m.t("key.pgup"), m.t("key.history")}, [2]string{"ctrl+↑↓", m.t("key.chat_size")}, [2]string{"ctrl+c", m.t("key.quit")})
 }
 
 func abs(a int) int {

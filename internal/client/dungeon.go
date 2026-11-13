@@ -26,7 +26,7 @@ func (m Model) inDungeon() bool { return m.dmap != nil }
 // terrain est la carte à dessiner: le monde, ou le donjon vu à travers le brouillard.
 func (m Model) terrain() render.Terrain {
 	if m.dmap == nil {
-		return render.WithEntrances(m.world, m.entranceKeys())
+		return render.WithSpent(render.WithEntrances(m.world, m.entranceKeys()), m.spent, m.world.Terrain)
 	}
 	seen := m.dseen
 	return render.DungeonTerrain(m.dmap, func(x, y int) bool { return seen[world.Pos{X: x, Y: y}] }, m.zone.Opened)
@@ -183,4 +183,18 @@ func (m Model) dungeonTarget(query string) (target, int) {
 		}
 	}
 	return target{}, 0
+}
+
+// maxSpentNodes borne les nœuds épuisés retenus (le serveur n'en envoie pas plus).
+const maxSpentNodes = 1024
+
+// applyNodes remplace la liste des nœuds de ressources épuisés.
+func (m *Model) applyNodes(n protocol.Nodes) {
+	m.spent = make(map[[2]int]bool, min(len(n.Spent), maxSpentNodes))
+	for i, p := range n.Spent {
+		if i >= maxSpentNodes {
+			break
+		}
+		m.spent[p] = true
+	}
 }

@@ -855,3 +855,34 @@ func TestMapsRoundTrip(t *testing.T) {
 		t.Errorf("cartes non effacées: %v", again.Maps)
 	}
 }
+
+func TestResourcesRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	res := map[string]int{"iron": 3, "oak": 12, "sage": 1}
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10, Resources: res}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil {
+		t.Fatal(got, err)
+	}
+	if len(got.Resources) != 3 || got.Resources["iron"] != 3 || got.Resources["oak"] != 12 || got.Resources["sage"] != 1 {
+		t.Fatalf("matières %v, attendu %v", got.Resources, res)
+	}
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10}}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := st.LoadCharacter("aldric"); len(again.Resources) != 0 {
+		t.Errorf("matières non effacées: %v", again.Resources)
+	}
+}
+
+func TestDecodeResourcesIgnoresGarbage(t *testing.T) {
+	got := decodeResources("iron:3;;bad;oak:-2;x:abc;sage:99999")
+	if len(got) != 2 || got["iron"] != 3 || got["sage"] != maxStoredQty {
+		t.Errorf("décodage %v", got)
+	}
+}

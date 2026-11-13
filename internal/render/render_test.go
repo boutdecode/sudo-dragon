@@ -433,3 +433,28 @@ func TestClimateChangesColoursNotTheMap(t *testing.T) {
 		t.Fatalf("%d lignes", len(plain(out)))
 	}
 }
+
+func TestWithSpentShowsBareTerrain(t *testing.T) {
+	w := world.NewVersion(1, world.GenV3)
+	var node world.Pos
+	found := false
+	for y := -150; y < 150 && !found; y++ {
+		for x := -150; x < 150; x++ {
+			if w.At(x, y) == world.TreeNode {
+				node, found = world.Pos{X: x, Y: y}, true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Skip("aucun arbre près de l'origine")
+	}
+	spent := map[[2]int]bool{{node.X, node.Y}: true}
+	tt := WithSpent(w, spent, w.Terrain)
+	if got, want := tt.At(node.X, node.Y), w.Terrain(node.X, node.Y); got != want {
+		t.Errorf("nœud épuisé: %d, attendu le terrain nu %d", got, want)
+	}
+	if WithSpent(w, nil, w.Terrain) != Terrain(w) {
+		t.Error("sans nœud épuisé, le terrain doit rester tel quel")
+	}
+}
