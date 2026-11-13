@@ -1,6 +1,6 @@
 # Fonctionnalités de sudo Dragon
 
-Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), établi d'après le code. Pour l'installation, les options du serveur et l'exploitation, voir le [README](README.md).
+Inventaire des fonctionnalités du jeu (anciennement « ASCII Adventure »), établi d'après le code. Pour l'installation, les options du serveur et l'exploitation, voir le [README](README.md) ([English version](README.en.md)).
 
 ## Monde et génération (`internal/world/`)
 
@@ -253,7 +253,7 @@ Rafale de 5 messages puis 1 par seconde. `PgHaut` / `PgBas` font défiler l'hist
 - Pas de compétences ni de sorts à apprendre : la magie est un style d'attaque lié à l'arme.
 - Pas de reconnexion automatique après une coupure.
 - Un seul processus serveur, sans montée en charge horizontale.
-- Le README est en partie périmé (Défendre, carte, i18n) ; sa section « Limites connues » a été revérifiée.
+- Le README et sa traduction `README.en.md` doivent être mis à jour ensemble (mêmes sections, mêmes tableaux).
 - Le trafic croît comme le carré du nombre de joueurs d'une même zone : chaque instantané contient toutes les entités visibles, sans index spatial ni encodage en différences.
 - Les garnisons de forteresse ne sont pas sauvegardées : un redémarrage les remet toutes en place, y compris le seigneur de guerre.
 - Un joueur qui se déconnecte en plein combat garde ses PV du moment sans subir la défaite éventuelle.
