@@ -38,7 +38,7 @@ fmt-check: ## Échoue si du code n'est pas formaté
 check: fmt-check vet race ## Tout ce qu'il faut avant de livrer
 
 run-server: ## Lance le serveur (base ./sudo-dragon.db)
-	$(GO) run ./cmd/server
+	$(GO) run ./cmd/server --seed 13
 
 run-client: ## Lance le client (ADDR=ws://hote:8080/ws pour un autre serveur)
 	$(GO) run ./cmd/client -addr $(ADDR)
