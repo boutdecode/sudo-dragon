@@ -41,6 +41,7 @@ func newNPCInput(lang i18n.Lang) textinput.Model {
 func cleanNPCDialog(d protocol.NPCDialog) protocol.NPCDialog {
 	d.Name = textsafe.Clean(d.Name, 60)
 	d.Place = textsafe.Clean(d.Place, 60)
+	d.Race = textsafe.Clean(d.Race, 20)
 	d.Notice = textsafe.Clean(d.Notice, maxNPCNotice)
 	d.Specialty = textsafe.Clean(d.Specialty, 100)
 	if d.Proposal != nil {
@@ -153,15 +154,19 @@ func (m Model) npcHelp() string {
 	return ui.KeyBar([2]string{keys, m.t("key.choose")}, [2]string{"esc", m.t("key.quit")})
 }
 
-// npcTitle is the NPC frame title: its name and place (known on both sides
+// npcTitle is the NPC frame title: its name, race and place (known on both sides
 // since they are deterministic), otherwise its job.
 func (m Model) npcTitle() string {
 	d := m.npc
+	name := d.Name
+	if name != "" && d.Race != "" {
+		name += " · " + d.Race
+	}
 	switch {
-	case d.Name != "" && d.Place != "":
-		return d.Name + " · " + d.Place
-	case d.Name != "":
-		return d.Name
+	case name != "" && d.Place != "":
+		return name + " · " + d.Place
+	case name != "":
+		return name
 	}
 	return strings.ToUpper(render.NPCName(m.lang, world.NPCKind(d.Kind)))
 }

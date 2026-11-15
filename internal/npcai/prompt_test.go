@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
@@ -396,5 +397,58 @@ func TestChiefPromptListsOnlyTheKnownPlaces(t *testing.T) {
 	req.NPC.Kind, req.PlaceKind = world.NPCMayor, world.KindTown
 	if town := BuildMessages(req, nil, "", 12, placeNames)[0].Content; !strings.Contains(town, "maire de la ville de") {
 		t.Error("mayor's job")
+	}
+}
+
+// The NPC's race and the player's race appear; the hatred towards the player's race sets the attitude.
+func TestPromptRaceAndHatredTiers(t *testing.T) {
+	req := testReq("x")
+	req.NPC.Race = hero.Dwarf
+	req.Speaker.Race = hero.Elf
+	cases := []struct {
+		hate int
+		want string // "" = no prejudice at all
+	}{{0, ""}, {19, ""}, {20, "tu te méfies des Elfes (haine 20 %)"}, {55, "tu méprises les Elfes (haine 55 %)"}, {82, "tu hais les Elfes (haine 82 %)"}}
+	for _, c := range cases {
+		req.NPC.Hatred[hero.Elf.Index()] = c.hate
+		sys := BuildMessages(req, nil, "", 12, nil)[0].Content
+		if !strings.Contains(sys, "Ton peuple : les Nains.") {
+			t.Fatalf("NPC race missing:\n%s", sys)
+		}
+		certain := dataBlock(t, sys)["interlocuteur"].(map[string]any)["faits_certains"].(map[string]any)
+		if certain["race"] != "Elfe" {
+			t.Fatalf("interlocutor race: %v", certain)
+		}
+		if c.want == "" {
+			if strings.Contains(sys, "PRÉJUGÉ") || strings.Contains(sys, "CADRE:") {
+				t.Fatalf("hatred %d: unexpected prejudice", c.hate)
+			}
+			continue
+		}
+		if !strings.Contains(sys, c.want) || !strings.Contains(sys, "Ne fais jamais allusion à des groupes") {
+			t.Fatalf("hatred %d: %q or the frame missing:\n%s", c.hate, c.want, sys)
+		}
+	}
+	// Nobody hates their own people, whatever the table says.
+	req.Speaker.Race = hero.Dwarf
+	req.NPC.Hatred[hero.Dwarf.Index()] = 90
+	if sys := BuildMessages(req, nil, "", 12, nil)[0].Content; strings.Contains(sys, "PRÉJUGÉ") {
+		t.Fatal("prejudice towards its own race")
+	}
+}
+
+// A quest giver who hates the player's race refuses work outright, instead of "come back later".
+func TestPromptHatefulGiverRefusesWork(t *testing.T) {
+	req := testReq("x")
+	req.NPC.Kind, req.NPC.GivesQuests, req.NPC.Race = world.NPCVillager, true, hero.Human
+	req.Speaker.Race = hero.Halfling
+	req.NPC.Hatred[hero.Halfling.Index()] = world.HateNoQuest
+	sys := BuildMessages(req, nil, "", 12, nil)[0].Content
+	if !strings.Contains(sys, "tu ne confies jamais de travail aux Halfelins") || strings.Contains(sys, "pas à celui-ci pour l'instant") {
+		t.Fatalf("work rule:\n%s", sys)
+	}
+	req.Lang = i18n.EN
+	if sys := BuildMessages(req, nil, "", 12, nil)[0].Content; !strings.Contains(sys, "you hate Halflings (hatred 70 %)") || !strings.Contains(sys, "Your people: the Humans.") {
+		t.Fatalf("English prompt:\n%s", sys)
 	}
 }

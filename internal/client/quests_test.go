@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
@@ -235,4 +236,38 @@ func TestGiverIdleFollowsOpenQuestsPausesAndTheCap(t *testing.T) {
 	if !m.giverIdle(a) || !m.giverIdle(b) {
 		t.Fatal("quota reached: nobody has work")
 	}
+}
+
+// A giver who hates the player's race loses their "!" (same deterministic draw as the server).
+func TestGiverIdleForAHatedRace(t *testing.T) {
+	w := world.New(3)
+	for y := -12; y <= 12; y++ {
+		for x := -12; x <= 12; x++ {
+			s := w.StructureOfRegion(world.RegionPos{X: x, Y: y})
+			if s == nil {
+				continue
+			}
+			for _, n := range s.NPCs {
+				if !n.GivesQuests {
+					continue
+				}
+				for _, r := range hero.Races {
+					if n.HatredOf(r) < world.HateNoQuest {
+						continue
+					}
+					m := Model{world: w, questsAt: time.Now()}
+					m.bag.Race = string(r)
+					if !m.giverIdle(n.Key()) {
+						t.Fatalf("%s hates the %s but keeps their \"!\"", n.Name, r)
+					}
+					m.bag.Race = string(n.Race)
+					if m.giverIdle(n.Key()) {
+						t.Fatalf("%s is idle for their own race", n.Name)
+					}
+					return
+				}
+			}
+		}
+	}
+	t.Fatal("no hateful giver found")
 }

@@ -18,7 +18,7 @@ import (
 
 // Character creation: as long as an account has no abilities, the connection stays in
 // this phase, before the game loop. The server rolls the dice; the client chooses which
-// ability to reroll (3 rerolls in total) and the class. Nothing is saved before
+// ability to reroll (3 rerolls in total), the class and the race (+2 to one ability). Nothing is saved before
 // confirmation: a disconnection gives a new roll at the next login.
 
 const (
@@ -60,6 +60,9 @@ func createView(c hero.Creation, level int) protocol.Create {
 	out := protocol.Create{Scores: c.Scores[:], Left: c.Left(), Level: max(1, level)}
 	for _, cl := range hero.Classes {
 		out.Classes = append(out.Classes, protocol.ClassInfo{ID: string(cl), Die: cl.HitDie(), Mana: cl.ManaBase()})
+	}
+	for _, r := range hero.Races {
+		out.Races = append(out.Races, protocol.RaceInfo{ID: string(r), Ability: int(r.Ability()), Bonus: hero.RaceBonus})
 	}
 	return out
 }
@@ -112,20 +115,24 @@ func (s *Server) runCreation(ctx context.Context, conn *websocket.Conn, name str
 				return nil, err
 			}
 		case protocol.CreateConfirm:
-			class := hero.Class(a.Class)
-			if !class.Valid() {
-				if err := send(); err != nil { // unknown class: send the roll again
+			class, race := hero.Class(a.Class), hero.Race(a.Race)
+			if a.Race == "" {
+				race = hero.Human // client predating races
+			}
+			if !class.Valid() || !race.Valid() {
+				if err := send(); err != nil { // unknown class or race: send the roll again
 					return nil, err
 				}
 				continue
 			}
-			c.Class, c.Scores = string(class), [6]int(cr.Scores)
-			c.MaxHP = hero.RollHP(class, cr.Scores, level, rng)
+			scores := race.Apply(cr.Scores) // rerolls work on the raw dice, the bonus comes last
+			c.Class, c.Race, c.Scores = string(class), string(race), [6]int(scores)
+			c.MaxHP = hero.RollHP(class, scores, level, rng)
 			c.Level = level
-			c.Mana = hero.MaxMana(class, cr.Scores, level)
+			c.Mana = hero.MaxMana(class, scores, level)
 			c.HP = c.MaxHP
 			ensureStarter(&c, lang)
-			s.Log.Info("character created", "name", name, "class", c.Class, "scores", c.Scores)
+			s.Log.Info("character created", "name", name, "class", c.Class, "race", c.Race, "scores", c.Scores)
 			return &c, nil
 		}
 	}

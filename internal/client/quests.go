@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/ui"
@@ -107,10 +108,17 @@ func (m Model) readyGivers() map[world.NPCKey]bool {
 
 // giverIdle tells whether a giver has nothing to entrust right now (quest already open with them, pause after
 // a hand-in, or quota reached): their "!" disappears. Pauses are counted down locally, so the "!"
-// comes back without a new server message.
+// comes back without a new server message. A giver who hates the player's race (same deterministic draw as
+// the server) never has anything for them either.
 func (m Model) giverIdle(k world.NPCKey) bool {
 	if m.quests.Full {
 		return true
+	}
+	if m.world != nil {
+		if s := m.world.StructureOfRegion(k.Region); s != nil && k.Index >= 0 && k.Index < len(s.NPCs) &&
+			s.NPCs[k.Index].HatredOf(hero.Race(m.bag.Race)) >= world.HateNoQuest {
+			return true
+		}
 	}
 	for _, q := range m.quests.Open {
 		if (world.NPCKey{Region: world.RegionPos{X: q.GiverRX, Y: q.GiverRY}, Index: q.GiverIdx}) == k {

@@ -148,7 +148,7 @@ func (g *Game) ask(p *player, text string, opening bool) {
 		NPC: t.npc, Lang: p.lang, Place: place, PlaceKind: kind,
 		Region: g.World.TerritoryAt(t.npc.Pos.X, t.npc.Pos.Y).NameIn(p.lang),
 		Speaker: npcai.Speaker{
-			Account: p.name, Level: p.stats.Level, Kills: p.stats.Kills,
+			Account: p.name, Race: p.stats.Race, Level: p.stats.Level, Kills: p.stats.Kills,
 			BossKills: p.stats.BossKills, Deaths: p.stats.Deaths,
 		},
 		Message: text, History: slices.Clone(t.history), Opening: opening,

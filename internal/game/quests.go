@@ -269,9 +269,13 @@ func (g *Game) progressLine(p *player, q quest.Quest) string {
 
 // ---------------------------------------------------------------- giver and proposal
 
-// canOffer says whether this NPC can hand a new quest to this player now.
+// canOffer says whether this NPC can hand a new quest to this player now (never to a race it hates
+// beyond world.HateNoQuest).
 func (g *Game) canOffer(p *player, npc world.NPC) bool {
 	if !npc.GivesQuests || p.openQuests() >= quest.MaxActive {
+		return false
+	}
+	if npc.HatredOf(p.stats.Race) >= world.HateNoQuest { // hands no work to a race it hates
 		return false
 	}
 	now := g.now()

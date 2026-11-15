@@ -306,6 +306,14 @@ type Create struct {
 	Left    int         `json:"left"`   // remaining rerolls (3 in total)
 	Level   int         `json:"lvl"`    // level kept from an existing character (1 for a new one)
 	Classes []ClassInfo `json:"classes"`
+	Races   []RaceInfo  `json:"races"`
+}
+
+// RaceInfo describes a race: the bonus it adds to an ability.
+type RaceInfo struct {
+	ID      string `json:"id"`      // human, elf, dwarf, halfling
+	Ability int    `json:"ability"` // index of the raised ability (0 to 5)
+	Bonus   int    `json:"bonus"`
 }
 
 // ClassInfo describes a character base class.
@@ -318,7 +326,7 @@ type ClassInfo struct {
 // CreateAction.Action values.
 const (
 	CreateReroll  = "reroll"  // reroll ability Index (0 to 5)
-	CreateConfirm = "confirm" // confirm the roll with class Class
+	CreateConfirm = "confirm" // confirm the roll with class Class and race Race
 )
 
 // CreateAction is a player decision during creation.
@@ -326,6 +334,7 @@ type CreateAction struct {
 	Action string `json:"action"`
 	Index  int    `json:"index,omitempty"`
 	Class  string `json:"class,omitempty"`
+	Race   string `json:"race,omitempty"` // empty: human
 }
 
 // Bag is the equipment bag, sent at login and on every change.
@@ -336,9 +345,10 @@ type Bag struct {
 	DefBonus  int        `json:"def"`       // total DEF bonus of the worn equipment
 	Reduction string     `json:"reduction"` // reduction dice of the worn armor ("0" without armor)
 
-	// Creation sheet (see internal/hero): class, six abilities (STR AGI INT CON WIS CHA),
-	// style of the worn weapon and hit die.
+	// Creation sheet (see internal/hero): class, race, six abilities (STR AGI INT CON WIS CHA,
+	// racial bonus included), style of the worn weapon and hit die.
 	Class  string `json:"class,omitempty"`
+	Race   string `json:"race,omitempty"`
 	Scores []int  `json:"scores,omitempty"`
 	Style  string `json:"style,omitempty"`
 	HitDie int    `json:"die,omitempty"`
@@ -498,6 +508,7 @@ type NPCDialog struct {
 
 	// NPC identity (deterministic: the client knows it too) and discussion state.
 	Name     string    `json:"name,omitempty"`
+	Race     string    `json:"race,omitempty"` // race of the NPC, already translated
 	Place    string    `json:"place,omitempty"`
 	Mode     string    `json:"mode,omitempty"`     // NPCModeMenu by default
 	Thinking bool      `json:"thinking,omitempty"` // the NPC is preparing its reply

@@ -46,7 +46,8 @@ func (m Model) sheetLeft(w int) []string {
 	}
 	bar := func(v, max int) string { return ui.Bar(v, max, 12) + fmt.Sprintf(" %d/%d", v, max) }
 
-	lines := []string{"", " " + titleStyle.Render(m.t("hero.class."+string(cl))) + " " + dimStyle.Render(m.t("sheet.die", cl.HitDie())),
+	race := hero.Race(m.bag.Race).OrDefault()
+	lines := []string{"", " " + titleStyle.Render(m.t("hero.race."+string(race))+" "+m.t("hero.class."+string(cl))) + " " + dimStyle.Render(m.t("sheet.die", cl.HitDie())),
 		row(m.t("sheet.level"), fmt.Sprintf("%d", st.Level)),
 		row(m.t("sheet.xp"), ui.FlatBar(st.XP, st.XPNext, 12, ui.ColOK)+fmt.Sprintf(" %d/%d", st.XP, st.XPNext)),
 		row(m.t("sheet.hp"), bar(st.HP, st.MaxHP)),

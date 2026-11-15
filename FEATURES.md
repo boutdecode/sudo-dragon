@@ -114,7 +114,7 @@ Inventory of the game's features (formerly "ASCII Adventure"), established from 
 ## Character (`internal/hero/`, `client/create.go`, `client/sheet.go`)
 
 - **Attributes**: STR, AGI, INT, CON, WIS, CHA, rolled as 3d6 by the server.
-- **Creation**: 3 rerolls in total (`R`), then class choice.
+- **Creation**: 3 rerolls in total (`R`), then class and **race** choice: `↑↓` moves past the six attributes to the *Class* and *Race* rows, `←→` changes the selected row. Rerolls apply to the raw dice; the racial bonus is added on confirmation and counts for HP and mana.
 
 | Class | Hit die | Starting mana |
 |---|---|---|
@@ -122,12 +122,19 @@ Inventory of the game's features (formerly "ASCII Adventure"), established from 
 | Rogue | d8 | 4 |
 | Mage | d6 | 8 |
 
+| Race | Bonus |
+|---|---|
+| Human | +2 STR |
+| Elf | +2 INT |
+| Dwarf | +2 CON |
+| Halfling | +2 AGI |
+
 - **Levels**: `120 × level²` XP (≈ 300,000 cumulative XP up to level 20, i.e. ~60 h of active play). At each level: hit die + CON modifier, HP and mana restored.
 - **Mana**: class base + 2 per level + level × WIS modifier; a spell costs 2 mana.
 - **Attack style** deduced from the weapon: melee (STR), ranged (AGI), magic (INT). Without mana, a magic weapon serves as a club.
 - **Charisma**: ±2% per modifier point on prices, capped at ±10%.
-- **Sheet (`P`)**: class, level, HP, mana, attack, defence, gold, position, record (victories, bosses, deaths), attributes, equipment, current **shrine blessings** (bonus and remaining time, which counts down client-side and disappears at expiry; the displayed DEF includes them), held **treasure maps**, **gathering jobs** (level, XP, success chance, bag fill), reputation.
-- Old characters go through creation again at their next login.
+- **Sheet (`P`)**: race and class, level, HP, mana, attack, defence, gold, position, record (victories, bosses, deaths), attributes, equipment, current **shrine blessings** (bonus and remaining time, which counts down client-side and disappears at expiry; the displayed DEF includes them), held **treasure maps**, **gathering jobs** (level, XP, success chance, bag fill), reputation.
+- Old characters without abilities go through creation again at their next login. Characters created before races become **Humans** (+2 STR).
 
 ## Inventory, equipment and trade (`internal/gear/`, `client/bag.go`, `game/shop.go`)
 
@@ -145,6 +152,10 @@ Inventory of the game's features (formerly "ASCII Adventure"), established from 
 ## NPCs, dialogues and quests
 
 - **NPCs** (`game/npc.go`): merchant, healer, blacksmith, armorer, village chief / mayor, villager, quest villager, soldiers, guards (mobile, see below). You talk to them by walking onto them (abandoned after 60 s).
+- **NPC races and hatred** (`world/races.go`): every NPC and guard has a **race** (Human, Elf, Dwarf, Halfling), shown in the dialogue title ("Blacksmith Aldric · Dwarf · Kerhaven"). A **village** has a dominant people (90 % of its NPCs), a **town** or fortress mixes the four. Each NPC also bears a **hatred** (0-100 %) towards each other race, never towards its own; villages, wary of strangers, hate more than towns (starting village excepted: as tolerant as a town). Deterministic from the seed (same draw on client and server, nothing saved, existing layouts unchanged).
+  - Hatred towards the player's race sets the NPC's attitude in free dialogue: under 20 % nothing, **20 %** suspicious and cold, **50 %** contemptuous and unhelpful, **70 %** open hostility. The model is told the prejudice is a fictional one between imaginary peoples (no real-world reference, no obscenity or detailed threats).
+  - From **70 %**, a quest giver hands **no quest** (neither LLM offer nor dungeon work) to the hated race, and its `!` disappears for that player.
+  - The player's race is given to the model as a verified fact.
 - **Travelling merchant** (`game/caravan.go`, `world/caravan.go`): one road in two between neighbouring places carries a **caravan** (travelling blacksmith or armorer, with a proper name). It goes back and forth on the road at one tile per second, with a 30 s stop at each end; its position only depends on the server time (nothing to save) and it is only tracked within 40 tiles of a player. Sent to clients as a monster of type `caravan` (glyph `E`), you talk to it by walking onto it; it stops during the conversation and waits if the road is blocked. It sells equipment **one rank above** the forges of its region (assortment from the deterministic fallback, no language model or database write) that **changes every game day** (a purchase decided the day before is refused). Purchase and resale only: no theft, quest or free discussion. Roads keep their ordered route (`world.RoadRoutesNear`).
 - **Services**: potion at 20 gold (resale 8 gold); full healing free at level 1, then 4 gold × level. The chief and the mayor give information about places within a radius of 3 regions, even without a Mistral key.
 - **Free dialogues** (Mistral, key `D` / `T` in English):
@@ -192,7 +203,7 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 | Game | movement (see above), `G` gather, `Enter` chat, `I` bag, `P` sheet, `M` map, `Q` quests |
 | Quit | `Ctrl+C` |
 | Login | `Tab` / `↑↓` change field, `Ctrl+R` toggles login/registration |
-| Creation | `R` reroll, `↑↓←→` choice |
+| Creation | `↑↓` row (attributes, class, race), `←→` change class/race, `R` reroll the selected attribute |
 | Bag | `↑↓` / `jk`, `E` / Enter, Esc or `I` |
 | Map | arrows, `+` `-`, `0`, `W`, `X`, Esc or `M` |
 | Quests | `Tab`, `↑↓`, `X`, Esc or `Q` |

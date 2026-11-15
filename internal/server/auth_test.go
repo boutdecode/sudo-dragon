@@ -561,7 +561,7 @@ func TestSavedCharacterConversionRoundTrips(t *testing.T) {
 	in := store.Character{
 		Level: 7, XP: 12, Potions: 3, HP: 40, X: -5, Y: 9, Gold: 88,
 		LLMConsent: true, Kills: 40, BossKills: 3, Deaths: 6,
-		Class: "rogue", Scores: [6]int{9, 15, 12, 10, 8, 13}, MaxHP: 40, Mana: 3,
+		Class: "rogue", Race: "halfling", Scores: [6]int{9, 15, 12, 10, 8, 13}, MaxHP: 40, Mana: 3,
 		Quests: []quest.Quest{{ID: 4, Title: "Les loups", State: quest.Ready, Progress: 3, Objective: quest.Objective{Kind: quest.Kill, Species: "wolf", Count: 3}}},
 		Rep:    map[world.RegionPos]int{{X: 1, Y: 2}: 5},
 	}

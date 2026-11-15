@@ -387,6 +387,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 	if saved != nil {
 		p.stats = combat.StatsFor(saved.Stats.Level, saved.Stats.XP, saved.Stats.Potions,
 			saved.Stats.Class, saved.Stats.Scores, saved.Stats.MaxHP).
+			WithRace(saved.Stats.Race).
 			WithGold(saved.Stats.Gold).
 			WithRecord(saved.Stats.Kills, saved.Stats.BossKills, saved.Stats.Deaths)
 		p.consent = saved.LLMConsent

@@ -104,7 +104,7 @@ func fromSaved(sv game.Saved) store.Character {
 		Level: sv.Stats.Level, XP: sv.Stats.XP, Potions: sv.Stats.Potions, Gold: sv.Stats.Gold,
 		HP: sv.HP, X: sv.Pos.X, Y: sv.Pos.Y,
 		LLMConsent: sv.LLMConsent, Kills: sv.Stats.Kills, BossKills: sv.Stats.BossKills, Deaths: sv.Stats.Deaths,
-		Class: string(sv.Stats.Class), Scores: sv.Stats.Scores, MaxHP: sv.Stats.MaxHP, Mana: sv.Mana,
+		Class: string(sv.Stats.Class), Race: string(sv.Stats.Race), Scores: sv.Stats.Scores, MaxHP: sv.Stats.MaxHP, Mana: sv.Mana,
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 		Gear: sv.Gear, GearDirty: sv.GearDirty,
 		Discoveries: sv.Discovered, DiscoveriesDirty: sv.DiscoveredDirty,
@@ -119,7 +119,7 @@ func fromSaved(sv game.Saved) store.Character {
 func toSaved(c store.Character) *game.Saved {
 	sv := &game.Saved{
 		Stats: combat.StatsFor(c.Level, c.XP, c.Potions, hero.Class(c.Class), hero.Scores(c.Scores), c.MaxHP).
-			WithGold(c.Gold).WithRecord(c.Kills, c.BossKills, c.Deaths),
+			WithRace(hero.Race(c.Race)).WithGold(c.Gold).WithRecord(c.Kills, c.BossKills, c.Deaths),
 		HP:         c.HP,
 		Mana:       c.Mana,
 		Pos:        world.Pos{X: c.X, Y: c.Y},

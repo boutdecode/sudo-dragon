@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/quest"
@@ -445,5 +446,34 @@ func TestAskGivesTheNPCTheRegionName(t *testing.T) {
 	want := r.g.World.TerritoryAt(r.npc.Pos.X, r.npc.Pos.Y).NameIn(r.p.lang)
 	if got := ft.req(0).Region; got == "" || got != want {
 		t.Fatalf("region passed: %q, expected %q", got, want)
+	}
+}
+
+// A giver who hates the player's race beyond HateNoQuest hands them nothing (LLM offer and dungeon work
+// alike), but still works for the other races. The model is told the player's race.
+func TestHatefulGiverOffersNothingToTheHatedRace(t *testing.T) {
+	r, ft := giverRig(t)
+	npc := r.npc
+	npc.Race = hero.Dwarf
+	npc.Hatred = [hero.NumRaces]int{}
+	npc.Hatred[hero.Elf.Index()] = world.HateNoQuest + 10
+
+	r.p.stats.Race = hero.Elf
+	if r.g.canOffer(r.p, npc) || r.g.offerContext(r.p, npc) != nil || r.g.hasWork(r.p, npc) {
+		t.Fatal("a quest offered to a hated race")
+	}
+	r.p.stats.Race = hero.Human
+	if !r.g.canOffer(r.p, npc) {
+		t.Fatal("no quest for a race it does not hate")
+	}
+	npc.Hatred[hero.Elf.Index()] = world.HateNoQuest - 1
+	r.p.stats.Race = hero.Elf
+	if !r.g.canOffer(r.p, npc) {
+		t.Fatal("below the threshold, the giver still works for the race")
+	}
+
+	r.act(protocol.NPCTalk)
+	if got := ft.req(ft.count() - 1).Speaker.Race; got != hero.Elf {
+		t.Fatalf("speaker race sent to the model: %q", got)
 	}
 }

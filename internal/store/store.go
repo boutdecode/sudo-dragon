@@ -39,6 +39,7 @@ type Character struct {
 	// Character creation (see internal/hero). Zero scores: creation is still to be done.
 	// MaxHP is the sum of the hit dice (0: to be recomputed), Mana the current pool.
 	Class  string
+	Race   string // racial bonus already included in Scores
 	Scores [6]int
 	MaxHP  int
 	Mana   int
@@ -294,6 +295,10 @@ var migrations = []string{
 	`ALTER TABLE characters ADD COLUMN resources TEXT NOT NULL DEFAULT ''`,
 	// 20: experience of gathering jobs ("category:xp;category:xp" list).
 	`ALTER TABLE characters ADD COLUMN skills TEXT NOT NULL DEFAULT ''`,
+	// 21: race chosen at creation (its bonus is included in the abilities).
+	`ALTER TABLE characters ADD COLUMN race TEXT NOT NULL DEFAULT ''`,
+	// 22: characters created before races become humans (+2 STR).
+	`UPDATE characters SET race = 'human', str = str + 2 WHERE str > 0`,
 }
 
 // migrate applies the missing migrations, each in its own transaction.
@@ -418,10 +423,10 @@ func (s *Store) LoadCharacter(account string) (*Character, error) {
 	var consent, respawnSet int
 	var stones, maps, resources, skills string
 	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold, llm_consent, kills, boss_kills, deaths,
-			class, str, agi, int_, con, wis, cha, max_hp, mana, respawn_set, respawn_x, respawn_y, stones, maps, resources, skills
+			class, race, str, agi, int_, con, wis, cha, max_hp, mana, respawn_set, respawn_x, respawn_y, stones, maps, resources, skills
 		FROM characters WHERE account = ?`, account).
 		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold, &consent, &c.Kills, &c.BossKills, &c.Deaths,
-			&c.Class, &c.Scores[0], &c.Scores[1], &c.Scores[2], &c.Scores[3], &c.Scores[4], &c.Scores[5], &c.MaxHP, &c.Mana,
+			&c.Class, &c.Race, &c.Scores[0], &c.Scores[1], &c.Scores[2], &c.Scores[3], &c.Scores[4], &c.Scores[5], &c.MaxHP, &c.Mana,
 			&respawnSet, &c.RespawnX, &c.RespawnY, &stones, &maps, &resources, &skills)
 	c.LLMConsent = consent != 0
 	c.RespawnSet = respawnSet != 0
@@ -460,15 +465,15 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`INSERT INTO characters(account, level, xp, potions, hp, x, y, gold,
-			llm_consent, kills, boss_kills, deaths, class, str, agi, int_, con, wis, cha, max_hp, mana,
+			llm_consent, kills, boss_kills, deaths, class, race, str, agi, int_, con, wis, cha, max_hp, mana,
 			respawn_set, respawn_x, respawn_y, stones, maps, resources, skills, updated_at)
-		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
+		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
 		ON CONFLICT(account) DO UPDATE SET
 			level = excluded.level, xp = excluded.xp, potions = excluded.potions,
 			hp = excluded.hp, x = excluded.x, y = excluded.y, gold = excluded.gold,
 			llm_consent = excluded.llm_consent, kills = excluded.kills,
 			boss_kills = excluded.boss_kills, deaths = excluded.deaths,
-			class = excluded.class, str = excluded.str, agi = excluded.agi, int_ = excluded.int_,
+			class = excluded.class, race = excluded.race, str = excluded.str, agi = excluded.agi, int_ = excluded.int_,
 			con = excluded.con, wis = excluded.wis, cha = excluded.cha,
 			max_hp = excluded.max_hp, mana = excluded.mana,
 			respawn_set = excluded.respawn_set, respawn_x = excluded.respawn_x, respawn_y = excluded.respawn_y,
@@ -483,7 +488,7 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 	for account, c := range chars {
 		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold,
 			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths,
-			c.Class, c.Scores[0], c.Scores[1], c.Scores[2], c.Scores[3], c.Scores[4], c.Scores[5], c.MaxHP, c.Mana,
+			c.Class, c.Race, c.Scores[0], c.Scores[1], c.Scores[2], c.Scores[3], c.Scores[4], c.Scores[5], c.MaxHP, c.Mana,
 			boolToInt(c.RespawnSet), c.RespawnX, c.RespawnY, encodeStones(c.Stones), encodeMaps(c.Maps), encodeResources(c.Resources), encodeResources(c.Skills),
 			now, account); err != nil {
 			return fmt.Errorf("saving %s: %w", account, err)

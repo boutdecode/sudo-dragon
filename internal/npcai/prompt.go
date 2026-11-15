@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
@@ -16,7 +17,7 @@ import (
 )
 
 // PromptVersion identifies the prompt version (for logs and experiments).
-const PromptVersion = 1
+const PromptVersion = 2
 
 // Data coming from players (introductions, memories, nicknames) is placed
 // in an ESCAPED JSON block, never in the prose of the rules: a player cannot
@@ -26,10 +27,11 @@ const PromptVersion = 1
 // moderation, and the brevity of the cards.
 
 type factsJSON struct {
-	Niveau           int `json:"niveau,omitempty"`
-	MonstresVaincus  int `json:"monstres_vaincus,omitempty"`
-	SeigneursVaincus int `json:"seigneurs_de_guerre_vaincus,omitempty"`
-	Defaites         int `json:"defaites,omitempty"`
+	Race             string `json:"race,omitempty"` // interlocutor only: race chosen at creation
+	Niveau           int    `json:"niveau,omitempty"`
+	MonstresVaincus  int    `json:"monstres_vaincus,omitempty"`
+	SeigneursVaincus int    `json:"seigneurs_de_guerre_vaincus,omitempty"`
+	Defaites         int    `json:"defaites,omitempty"`
 }
 
 type cardJSON struct {
@@ -168,6 +170,22 @@ func placeLabel(l i18n.Lang, k world.Kind, name string) string {
 	return i18n.T(l, "prompt.place.village", name)
 }
 
+// peopleLabel names a race as a people, in the plural ("Dwarves", "Nains").
+func peopleLabel(l i18n.Lang, r hero.Race) string { return i18n.T(l, "prompt.people."+string(r)) }
+
+// hatredRule is the instruction matching a hatred level (in %), or "" below world.HateWary.
+func hatredRule(h int) string {
+	switch {
+	case h >= world.HateNoQuest:
+		return "prompt.hatred.hate"
+	case h >= world.HateHostile:
+		return "prompt.hatred.hostile"
+	case h >= world.HateWary:
+		return "prompt.hatred.wary"
+	}
+	return ""
+}
+
 // BuildMessages assembles the conversation sent to the model.
 //
 // heard is what this NPC knows (see lore.Book.Heard), memory its private memory of this
@@ -181,6 +199,10 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	persona := n.PersonaIn(l)
 	b.WriteString(i18n.T(l, "prompt.persona", persona.Temperament, persona.Quirk, persona.Speech))
 	b.WriteString("\n")
+	if n.Race != "" {
+		b.WriteString(i18n.T(l, "prompt.npc_race", peopleLabel(l, n.Race)))
+		b.WriteString("\n")
+	}
 	if req.Region != "" {
 		b.WriteString(i18n.T(l, "prompt.region", req.Region))
 		b.WriteString("\n")
@@ -209,8 +231,19 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 		}
 		b.WriteString("\n")
 	}
+	speakerRace := req.Speaker.Race.OrDefault()
+	hate := n.HatredOf(speakerRace)
+	if rule := hatredRule(hate); rule != "" {
+		b.WriteString(i18n.T(l, rule, peopleLabel(l, speakerRace), hate))
+		b.WriteString("\n")
+		b.WriteString(i18n.T(l, "prompt.hatred.frame"))
+		b.WriteString("\n")
+	}
 	if req.Offer != nil {
 		b.WriteString(i18n.T(l, "prompt.quest_rules"))
+		b.WriteString("\n")
+	} else if n.GivesQuests && hate >= world.HateNoQuest {
+		b.WriteString(i18n.T(l, "prompt.hatred.no_work", peopleLabel(l, speakerRace))) // never works for a race it hates
 		b.WriteString("\n")
 	} else if n.GivesQuests {
 		b.WriteString(i18n.T(l, "prompt.no_work_rule")) // quest giver with nothing to hand out right now
@@ -223,6 +256,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 	data := dataJSON{Interlocutor: interlocutorJSON{
 		Pseudo: req.Speaker.Account,
 		Certain: factsJSON{
+			Race:   i18n.T(l, "hero.race."+string(speakerRace)),
 			Niveau: req.Speaker.Level, MonstresVaincus: req.Speaker.Kills,
 			SeigneursVaincus: req.Speaker.BossKills, Defaites: req.Speaker.Deaths,
 		},

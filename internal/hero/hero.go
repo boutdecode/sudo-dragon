@@ -131,6 +131,68 @@ func (c Class) OrDefault() Class {
 	return Warrior
 }
 
+// Race is the people a character belongs to: it adds RaceBonus to one ability.
+type Race string
+
+const (
+	Human    Race = "human"
+	Elf      Race = "elf"
+	Dwarf    Race = "dwarf"
+	Halfling Race = "halfling"
+)
+
+// Races in display order.
+var Races = []Race{Human, Elf, Dwarf, Halfling}
+
+// NumRaces is the number of races (len(Races)), to size tables indexed by Race.Index.
+const NumRaces = 4
+
+// Index is the position of the race in Races (an unknown race is human).
+func (r Race) Index() int {
+	switch r {
+	case Elf:
+		return 1
+	case Dwarf:
+		return 2
+	case Halfling:
+		return 3
+	}
+	return 0
+}
+
+// RaceBonus is the ability bonus granted by a race at creation.
+const RaceBonus = 2
+
+// Valid reports whether r is a known race.
+func (r Race) Valid() bool { return r == Human || r == Elf || r == Dwarf || r == Halfling }
+
+// OrDefault returns r, or human if it is unknown.
+func (r Race) OrDefault() Race {
+	if r.Valid() {
+		return r
+	}
+	return Human
+}
+
+// Ability is the ability raised by the race (an unknown race is human).
+func (r Race) Ability() Ability {
+	switch r {
+	case Elf:
+		return INT
+	case Dwarf:
+		return CON
+	case Halfling:
+		return AGI
+	}
+	return STR
+}
+
+// Apply returns the scores with the racial bonus added.
+func (r Race) Apply(s Scores) Scores {
+	s[r.Ability()] += RaceBonus
+	return s
+}
+
 // HitDie is the hit die of the class.
 func (c Class) HitDie() int {
 	switch c {

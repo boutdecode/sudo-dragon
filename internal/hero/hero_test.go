@@ -154,3 +154,22 @@ func TestDefenseAndHitRules(t *testing.T) {
 		t.Fatalf("probabilities: %v %v %v %v", HitChance(0, 10), HitChance(5, 10), HitChance(-20, 10), HitChance(30, 10))
 	}
 }
+
+func TestRaceBonus(t *testing.T) {
+	want := map[Race]Ability{Human: STR, Elf: INT, Dwarf: CON, Halfling: AGI}
+	for _, r := range Races {
+		s := r.Apply(Default())
+		for a := Ability(0); a < NumAbilities; a++ {
+			exp := 10
+			if a == want[r] {
+				exp += RaceBonus
+			}
+			if s[a] != exp {
+				t.Fatalf("%s: %s = %d, expected %d", r, a.Key(), s[a], exp)
+			}
+		}
+	}
+	if Race("orc").Valid() || Race("orc").OrDefault() != Human || Race("").Ability() != STR {
+		t.Fatal("unknown race must be human")
+	}
+}

@@ -54,6 +54,7 @@ func (m *Model) applyBag(b protocol.Bag) {
 	}
 	b.Items = items
 	b.Class, b.Style = string(hero.Class(b.Class).OrDefault()), string(hero.Kind(b.Style).OrMelee())
+	b.Race = string(hero.Race(b.Race).OrDefault())
 	if len(b.Scores) != int(hero.NumAbilities) {
 		b.Scores = nil
 	} else {

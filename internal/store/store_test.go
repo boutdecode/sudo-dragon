@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -448,6 +449,47 @@ func TestMigrationAddsGoldToExistingCharacters(t *testing.T) {
 	}
 }
 
+// Characters created before races become humans: +2 STR. Those
+// whose creation is still to be done (all-zero abilities) are left alone.
+func TestMigrationMakesExistingCharactersHuman(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, m := range migrations[:len(migrations)-2] {
+		if _, err := old.Exec(m); err != nil {
+			t.Fatalf("migration %d: %v", i+1, err)
+		}
+	}
+	for _, q := range []string{
+		fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations)-2),
+		`INSERT INTO accounts(name, pass_hash, created_at) VALUES('alice', 'x', 1), ('bob', 'x', 1)`,
+		`INSERT INTO characters(account, level, xp, potions, hp, x, y, updated_at, class, str, agi, int_, con, wis, cha)
+			VALUES('alice', 3, 0, 2, 10, 0, 0, 1, 'mage', 9, 12, 16, 10, 13, 8),
+			      ('bob', 2, 0, 2, 10, 0, 0, 1, '', 0, 0, 0, 0, 0, 0)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	s, err := Open(path, WithBcryptCost(bcrypt.MinCost))
+	if err != nil {
+		t.Fatalf("migration before races: %v", err)
+	}
+	defer s.Close()
+	a, _ := s.LoadCharacter("alice")
+	if a.Race != "human" || a.Scores != [6]int{11, 12, 16, 10, 13, 8} {
+		t.Fatalf("old character: %+v %v", a.Race, a.Scores)
+	}
+	b, _ := s.LoadCharacter("bob")
+	if b.Race != "" || b.Scores != [6]int{} {
+		t.Fatalf("character without sheet: %+v %v", b.Race, b.Scores)
+	}
+}
+
 // A database created before NPC dialogues (version 4) must migrate without losing a
 // character: consent refused by default, counters at zero, new tables empty.
 func TestMigrationFromV4AddsConsentFactsAndLoreTables(t *testing.T) {
@@ -698,12 +740,12 @@ func TestHeroSheetRoundTripAndNeedsCreationForOldRows(t *testing.T) {
 	if old.Scores != [6]int{} || old.Class != "" || old.MaxHP != 0 {
 		t.Fatalf("old character: %+v", old)
 	}
-	c := Character{Level: 4, HP: 9, Class: "mage", Scores: [6]int{8, 12, 17, 9, 14, 11}, MaxHP: 21, Mana: 7}
+	c := Character{Level: 4, HP: 9, Class: "mage", Race: "elf", Scores: [6]int{8, 12, 17, 9, 14, 11}, MaxHP: 21, Mana: 7}
 	if err := st.SaveCharacters(map[string]Character{"aldric": c}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := st.LoadCharacter("aldric")
-	if got.Class != "mage" || got.Scores != c.Scores || got.MaxHP != 21 || got.Mana != 7 {
+	if got.Class != "mage" || got.Race != "elf" || got.Scores != c.Scores || got.MaxHP != 21 || got.Mana != 7 {
 		t.Fatalf("sheet read back: %+v", got)
 	}
 }

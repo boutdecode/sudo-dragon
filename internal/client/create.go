@@ -14,16 +14,18 @@ import (
 )
 
 // Character creation screen: the server rolled the dice (3d6), the player may
-// reroll, three times in total, an ability of their choice, then picks their class and confirms.
+// reroll, three times in total, an ability of their choice, then picks their class and race
+// (+2 to one ability) and confirms.
 
 // createState is the current screen.
 type createState struct {
 	data  protocol.Create
-	sel   int // chosen ability (for the reroll)
+	sel   int // selected row: an ability (for the reroll), then rowClass and rowRace
 	class int // chosen class
+	race  int // chosen race
 }
 
-// cleanCreate brings a received roll back within safe bounds: six values, known classes.
+// cleanCreate brings a received roll back within safe bounds: six values, known classes and races.
 func cleanCreate(c protocol.Create) protocol.Create {
 	sc := make([]int, hero.NumAbilities)
 	for i := range sc {
@@ -46,16 +48,46 @@ func cleanCreate(c protocol.Create) protocol.Create {
 		}
 	}
 	c.Classes = cls
+	var races []protocol.RaceInfo
+	for _, ri := range c.Races {
+		if r := hero.Race(ri.ID); r.Valid() {
+			races = append(races, protocol.RaceInfo{ID: ri.ID, Ability: int(r.Ability()), Bonus: hero.RaceBonus})
+		}
+	}
+	if len(races) == 0 {
+		for _, r := range hero.Races {
+			races = append(races, protocol.RaceInfo{ID: string(r), Ability: int(r.Ability()), Bonus: hero.RaceBonus})
+		}
+	}
+	c.Races = races
 	return c
 }
 
+// Rows of the creation screen after the six abilities: ↑↓ moves between them all, ←→
+// changes the class or race of the selected row.
+const (
+	rowClass = int(hero.NumAbilities) + iota
+	rowRace
+	numCreateRows
+)
+
 func newCreateState(c protocol.Create) *createState { return &createState{data: cleanCreate(c)} }
 
-// scores returns the current roll as a hero packet.
-func (c *createState) scores() hero.Scores {
+// rolled returns the dice rolled, without the racial bonus.
+func (c *createState) rolled() hero.Scores {
 	var s hero.Scores
 	copy(s[:], c.data.Scores)
 	return s
+}
+
+// scores returns the abilities the character will have: dice plus racial bonus.
+func (c *createState) scores() hero.Scores { return c.raceID().Apply(c.rolled()) }
+
+func (c *createState) raceID() hero.Race {
+	if c.race < 0 || c.race >= len(c.data.Races) {
+		return hero.Human
+	}
+	return hero.Race(c.data.Races[c.race].ID)
 }
 
 func (c *createState) classID() hero.Class {
@@ -74,19 +106,26 @@ func (m Model) updateCreateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	nc := *c
 	switch msg.String() {
 	case "up", "k":
-		nc.sel = (nc.sel + int(hero.NumAbilities) - 1) % int(hero.NumAbilities)
+		nc.sel = (nc.sel + numCreateRows - 1) % numCreateRows
 	case "down", "j":
-		nc.sel = (nc.sel + 1) % int(hero.NumAbilities)
-	case "left", "h":
-		nc.class = (nc.class + len(nc.data.Classes) - 1) % len(nc.data.Classes)
-	case "right", "l", "tab":
-		nc.class = (nc.class + 1) % len(nc.data.Classes)
+		nc.sel = (nc.sel + 1) % numCreateRows
+	case "left", "h", "right", "l":
+		step := 1
+		if k := msg.String(); k == "left" || k == "h" {
+			step = -1
+		}
+		switch nc.sel {
+		case rowClass:
+			nc.class = (nc.class + len(nc.data.Classes) + step) % len(nc.data.Classes)
+		case rowRace:
+			nc.race = (nc.race + len(nc.data.Races) + step) % len(nc.data.Races)
+		}
 	case "r":
-		if nc.data.Left > 0 {
+		if nc.data.Left > 0 && nc.sel < int(hero.NumAbilities) {
 			m.conn.Send(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateReroll, Index: nc.sel})
 		}
 	case "enter":
-		m.conn.Send(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: string(nc.classID())})
+		m.conn.Send(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: string(nc.classID()), Race: string(nc.raceID())})
 	case "esc":
 		m.conn.Close()
 		m.conn, m.create = nil, nil
@@ -115,6 +154,7 @@ func (m Model) updateCreateEvent(ev Event) (tea.Model, tea.Cmd) {
 			nc := *m.create
 			nc.data = cleanCreate(cr)
 			nc.class = min(nc.class, len(nc.data.Classes)-1)
+			nc.race = min(nc.race, len(nc.data.Races)-1)
 			m.create = &nc
 		}
 	case protocol.TWelcome:
@@ -133,12 +173,17 @@ func (m Model) updateCreateEvent(ev Event) (tea.Model, tea.Cmd) {
 	return m, waitEvent(m.conn)
 }
 
-// abilityLine describes an ability: "STR  Strength  14 (+2)  effect".
-func (m Model) abilityLine(a hero.Ability, v, w int) string {
+// abilityLine describes an ability: "STR  Strength  16 (+3) +2  effect", where +2 is the
+// racial bonus already included in the value (blank for the other abilities).
+func (m Model) abilityLine(a hero.Ability, v, bonus, w int) string {
 	mod := hero.Mod(v)
 	k := a.Key()
 	left := fmt.Sprintf("%s %-12s %2d (%+d)", m.t("hero.ability."+k), m.t("hero.ability."+k+".long"), v, mod)
-	return ui.Fit(left+"  "+dimStyle.Render(m.t("hero.ability."+k+".desc")), w)
+	mark := "   "
+	if bonus != 0 {
+		mark = goldStyle.Render(fmt.Sprintf("%+d", bonus)) + " "
+	}
+	return ui.Fit(left+" "+mark+dimStyle.Render(m.t("hero.ability."+k+".desc")), w)
 }
 
 // viewCreate draws the creation screen.
@@ -150,35 +195,67 @@ func (m Model) viewCreate() string {
 	panelW := min(m.width, 74)
 	inner := panelW - 4
 	sc := c.scores()
+	race := c.raceID()
 
 	lines := []string{"", " " + dimStyle.Render(m.t("create.intro", c.data.Level)), ""}
 	for i := hero.Ability(0); i < hero.NumAbilities; i++ {
-		row := m.abilityLine(i, sc[i], inner-3)
+		bonus := 0
+		if i == race.Ability() {
+			bonus = hero.RaceBonus
+		}
+		row := m.abilityLine(i, sc[i], bonus, inner-3)
 		if int(i) == c.sel {
 			lines = append(lines, " "+ui.Select.Render("› "+ui.Fit(ansi.Strip(row), inner-2)))
 		} else {
 			lines = append(lines, "   "+row)
 		}
 	}
-	lines = append(lines, "", " "+m.t("create.rerolls", c.data.Left, hero.MaxRolls), "")
+	lines = append(lines, "", " "+m.t("create.rerolls", c.data.Left, hero.MaxRolls))
 
-	var tabs []string
-	for i, ci := range c.data.Classes {
-		label := m.t("hero.class."+ci.ID) + fmt.Sprintf(" d%d", ci.Die)
-		if i == c.class {
-			tabs = append(tabs, ui.Select.Render(" › "+label+" "))
-		} else {
-			tabs = append(tabs, dimStyle.Render("   "+label+" "))
+	// choiceRow draws a class or race row: label, then the options, the chosen one highlighted
+	// (in the selection colour when the row has the cursor).
+	choiceRow := func(row int, label string, opts []string, chosen int) string {
+		focus := c.sel == row
+		cursor := "  "
+		if focus {
+			cursor = ui.Select.Render("›") + " "
 		}
+		var parts []string
+		for i, o := range opts {
+			switch {
+			case i == chosen && focus:
+				parts = append(parts, ui.Select.Render("‹ "+o+" ›"))
+			case i == chosen:
+				parts = append(parts, titleStyle.Render("‹ "+o+" ›"))
+			default:
+				parts = append(parts, dimStyle.Render(" "+o+" "))
+			}
+		}
+		return ui.Fit(" "+cursor+fmt.Sprintf("%-6s", label)+" "+strings.Join(parts, " "), inner)
 	}
-	lines = append(lines, " "+strings.Join(tabs, " "))
+
+	var classes []string
+	for _, ci := range c.data.Classes {
+		classes = append(classes, m.t("hero.class."+ci.ID)+fmt.Sprintf(" d%d", ci.Die))
+	}
 	cl := c.classID()
-	hp := hero.FirstHP(cl, sc)
-	lines = append(lines, " "+dimStyle.Render(m.t("hero.class."+string(cl)+".desc")))
-	lines = append(lines, " "+goldStyle.Render(m.t("create.preview", hp, hero.MaxMana(cl, sc, 1))))
-	lines = append(lines, "", ui.Center(ui.KeyBar(
-		[2]string{"↑↓", m.t("create.key.stat")}, [2]string{"r", m.t("create.key.reroll")},
-		[2]string{"←→", m.t("create.key.class")}, [2]string{"↵", m.t("create.key.ok")}, [2]string{"esc", m.t("create.key.back")}), inner))
+	lines = append(lines, choiceRow(rowClass, m.t("create.class"), classes, c.class),
+		"          "+dimStyle.Render(m.t("hero.class."+string(cl)+".desc")))
+
+	var races []string
+	for i, ri := range c.data.Races {
+		label := m.t("hero.race." + ri.ID)
+		if i == c.race { // only the chosen race shows its bonus: the line stays narrow
+			label += fmt.Sprintf(" %+d %s", ri.Bonus, m.t("hero.ability."+hero.Ability(ri.Ability).Key()))
+		}
+		races = append(races, label)
+	}
+	lines = append(lines, choiceRow(rowRace, m.t("create.race"), races, c.race))
+	lines = append(lines, " "+goldStyle.Render(m.t("create.preview", hero.FirstHP(cl, sc), hero.MaxMana(cl, sc, 1))), "")
+	lines = append(lines,
+		ui.Center(ui.KeyBar([2]string{"↑↓", m.t("create.key.stat")}, [2]string{"←→", m.t("create.key.change")},
+			[2]string{"r", m.t("create.key.reroll")}), inner),
+		ui.Center(ui.KeyBar([2]string{"↵", m.t("create.key.ok")}, [2]string{"esc", m.t("create.key.back")}), inner))
 	if m.errMsg != "" {
 		lines = append(lines, ui.Center(errStyle.Render(m.errMsg), inner))
 	}

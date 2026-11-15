@@ -31,7 +31,7 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 	send(t, c, protocol.TLogin, reg("alice"))
 
 	cr := readCreate(t, c)
-	if len(cr.Scores) != 6 || cr.Left != 3 || len(cr.Classes) != 3 || cr.Level != 1 {
+	if len(cr.Scores) != 6 || cr.Left != 3 || len(cr.Classes) != 3 || len(cr.Races) != 4 || cr.Level != 1 {
 		t.Fatalf("initial roll: %+v", cr)
 	}
 	for _, v := range cr.Scores {
@@ -76,16 +76,20 @@ func TestNewAccountRollsRerollsAtMostThreeTimesAndChoosesAClass(t *testing.T) {
 	// An unknown class gives the roll again without saving anything.
 	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "paladin"})
 	readCreate(t, c)
-	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "mage"})
+	// Same for an unknown race.
+	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "mage", Race: "orc"})
+	readCreate(t, c)
+	send(t, c, protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "mage", Race: "dwarf"})
 	recvType(t, c, protocol.TWelcome)
 
 	var sc hero.Scores
 	copy(sc[:], last.Scores)
+	sc[hero.CON] += hero.RaceBonus // dwarf: +2 CON, counted in the HP
 	// The character is saved on the player's departure, with their starting weapon equipped (mage's staff).
 	c.Close(websocket.StatusNormalClosure, "")
 	waitUntil(t, "created character saved", func() bool {
 		ch, _ := be.LoadCharacter("alice")
-		return ch != nil && ch.Class == "mage" && hero.Scores(ch.Scores) == sc && ch.MaxHP == hero.FirstHP(hero.Mage, sc) && ch.Potions == 2 && ch.Level == 1 &&
+		return ch != nil && ch.Class == "mage" && ch.Race == "dwarf" && hero.Scores(ch.Scores) == sc && ch.MaxHP == hero.FirstHP(hero.Mage, sc) && ch.Potions == 2 && ch.Level == 1 &&
 			len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "staff" && ch.Gear.Worn["weapon"] == ch.Gear.Items[0].ID
 	})
 
@@ -154,6 +158,6 @@ func TestExistingCharacterWithoutSheetKeepsItsProgress(t *testing.T) {
 	c.Close(websocket.StatusNormalClosure, "")
 	waitUntil(t, "sheet saved with the progress", func() bool {
 		ch, _ := be.LoadCharacter("alice")
-		return ch != nil && ch.Class == "rogue" && ch.Gold == 250 && len(ch.Quests) == 1 && ch.Kills == 12 && len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "shortbow"
+		return ch != nil && ch.Class == "rogue" && ch.Race == "human" && ch.Gold == 250 && len(ch.Quests) == 1 && ch.Kills == 12 && len(ch.Gear.Items) == 1 && ch.Gear.Items[0].Family == "shortbow"
 	})
 }

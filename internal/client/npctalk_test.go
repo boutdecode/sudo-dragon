@@ -431,3 +431,16 @@ func TestConnectionLostClearsTheChatInput(t *testing.T) {
 		t.Fatal("dialogue kept after disconnection")
 	}
 }
+
+func TestNPCTitleShowsRace(t *testing.T) {
+	var m Model
+	d := cleanNPCDialog(protocol.NPCDialog{Kind: "smith", Name: "Forgeron Aldric", Race: "Nain\x1b[2J", Place: "Kerhaven"})
+	m.npc = &d
+	if got := m.npcTitle(); strings.ContainsRune(got, '\x1b') || !strings.HasPrefix(got, "Forgeron Aldric · Nain") || !strings.HasSuffix(got, " · Kerhaven") {
+		t.Fatalf("title: %q", got)
+	}
+	m.npc.Race = ""
+	if got := m.npcTitle(); got != "Forgeron Aldric · Kerhaven" {
+		t.Fatalf("title without race: %q", got)
+	}
+}

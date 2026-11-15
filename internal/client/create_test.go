@@ -97,16 +97,69 @@ func TestCreationRerollsOnlyTheChosenAbility(t *testing.T) {
 	}
 }
 
-func TestCreationClassChoiceAndEscape(t *testing.T) {
+// pressN sends the same key n times.
+func pressN(m Model, k tea.KeyPressMsg, n int) Model {
+	for range n {
+		m, _ = key(m, k)
+	}
+	return m
+}
+
+var (
+	keyDown  = tea.KeyPressMsg{Code: tea.KeyDown}
+	keyUp    = tea.KeyPressMsg{Code: tea.KeyUp}
+	keyLeft  = tea.KeyPressMsg{Code: tea.KeyLeft}
+	keyRight = tea.KeyPressMsg{Code: tea.KeyRight}
+)
+
+func TestCreationClassAndRaceRowsAndEscape(t *testing.T) {
 	m := creatingModel(t)
-	m, _ = key(m, tea.KeyPressMsg{Code: tea.KeyRight})
+	// On an ability, ←→ change nothing.
+	m = pressN(m, keyRight, 1)
+	if m.create.classID() != hero.Warrior || m.create.raceID() != hero.Human {
+		t.Fatalf("←→ on an ability: %v %v", m.create.classID(), m.create.raceID())
+	}
+	// ↓ past the six abilities reaches the class row, then the race row.
+	m = pressN(m, keyDown, 6)
+	if m.create.sel != rowClass {
+		t.Fatalf("row: %d", m.create.sel)
+	}
+	m = pressN(m, keyRight, 1)
 	if m.create.classID() != hero.Rogue {
 		t.Fatalf("class: %v", m.create.classID())
 	}
-	m, _ = key(m, tea.KeyPressMsg{Code: tea.KeyLeft})
-	m, _ = key(m, tea.KeyPressMsg{Code: tea.KeyLeft})
-	if m.create.classID() != hero.Mage {
-		t.Fatalf("class: %v", m.create.classID())
+	m = pressN(m, keyLeft, 2)
+	if m.create.classID() != hero.Mage || m.create.raceID() != hero.Human {
+		t.Fatalf("class %v race %v", m.create.classID(), m.create.raceID())
+	}
+	// No reroll from the class row.
+	left := m.create.data.Left
+	m = pressN(m, tea.KeyPressMsg{Code: 'r', Text: "r"}, 1)
+	if m.create.data.Left != left {
+		t.Fatal("reroll from the class row")
+	}
+
+	raw := m.create.rolled()
+	m = pressN(m, keyDown, 1)
+	m = pressN(m, keyRight, 2)
+	if m.create.sel != rowRace || m.create.raceID() != hero.Dwarf || m.create.classID() != hero.Mage {
+		t.Fatalf("row %d race %v class %v", m.create.sel, m.create.raceID(), m.create.classID())
+	}
+	if sc := m.create.scores(); sc[hero.CON] != raw[hero.CON]+2 || sc[hero.STR] != raw[hero.STR] {
+		t.Fatalf("dwarf bonus: %v from %v", sc, raw)
+	}
+	m = pressN(m, keyLeft, 3)
+	if m.create.raceID() != hero.Halfling {
+		t.Fatalf("race: %v", m.create.raceID())
+	}
+	// ↓ wraps back to the first ability, ↑ to the race row.
+	m = pressN(m, keyDown, 1)
+	if m.create.sel != 0 {
+		t.Fatalf("wrap down: %d", m.create.sel)
+	}
+	m = pressN(m, keyUp, 1)
+	if m.create.sel != rowRace {
+		t.Fatalf("wrap up: %d", m.create.sel)
 	}
 	m, _ = key(m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.state != stateLogin || m.conn != nil {
@@ -116,8 +169,11 @@ func TestCreationClassChoiceAndEscape(t *testing.T) {
 
 func TestCreatedCharacterGetsChosenClassAndSheet(t *testing.T) {
 	m := creatingModel(t)
-	m, _ = key(m, tea.KeyPressMsg{Code: tea.KeyRight})
-	m, _ = key(m, tea.KeyPressMsg{Code: tea.KeyRight}) // mage
+	m = pressN(m, keyUp, 2)    // class row
+	m = pressN(m, keyRight, 2) // mage
+	m = pressN(m, keyDown, 1)  // race row
+	m = pressN(m, keyRight, 1) // elf
+	want := m.create.scores()
 	m = finishCreation(t, m)
 	for range 40 { // the sheet arrives with the bag
 		if m.bag.Class != "" {
@@ -125,8 +181,11 @@ func TestCreatedCharacterGetsChosenClassAndSheet(t *testing.T) {
 		}
 		m = nextEvent(t, m)
 	}
-	if m.bag.Class != "mage" || len(m.bag.Scores) != 6 {
-		t.Fatalf("sheet: %+v", m.bag)
+	if m.bag.Class != "mage" || m.bag.Race != "elf" || len(m.bag.Scores) != 6 || m.bag.Scores[hero.INT] != want[hero.INT] {
+		t.Fatalf("sheet: %+v (expected %v)", m.bag, want)
+	}
+	if head := ansi.Strip(strings.Join(m.sheetLeft(40), "\n")); !strings.Contains(head, "Elfe Magicien") {
+		t.Fatalf("sheet header: %q", head)
 	}
 	if line := m.scoresLine(); !strings.Contains(line, "FOR") || !strings.Contains(line, "CHA") {
 		t.Fatalf("abilities line: %q", line)
@@ -152,7 +211,8 @@ func TestCreationScreenFitsEverySizeInBothLanguages(t *testing.T) {
 					break
 				}
 			}
-			for _, want := range []string{"18 (+4)", "3 (-4)", "d12", "d6"} {
+			// Human by default: +2 STR on the 18.
+			for _, want := range []string{"20 (+5) +2", "3 (-4)", "d12", "d6"} {
 				if !strings.Contains(out, want) {
 					t.Errorf("%s %v: %q missing", lang, sz, want)
 				}
@@ -162,8 +222,10 @@ func TestCreationScreenFitsEverySizeInBothLanguages(t *testing.T) {
 }
 
 func TestCleanCreateBoundsHostileInput(t *testing.T) {
-	c := cleanCreate(protocol.Create{Scores: []int{-5, 1000}, Left: 99, Level: -3, Classes: []protocol.ClassInfo{{ID: "hacker", Die: 1000}}})
-	if len(c.Scores) != 6 || c.Scores[0] != 0 || c.Scores[1] != 99 || c.Left != 3 || c.Level != 1 || len(c.Classes) != 3 {
+	c := cleanCreate(protocol.Create{Scores: []int{-5, 1000}, Left: 99, Level: -3, Classes: []protocol.ClassInfo{{ID: "hacker", Die: 1000}},
+		Races: []protocol.RaceInfo{{ID: "orc", Ability: 0, Bonus: 50}, {ID: "elf", Ability: 0, Bonus: 50}}})
+	if len(c.Scores) != 6 || c.Scores[0] != 0 || c.Scores[1] != 99 || c.Left != 3 || c.Level != 1 || len(c.Classes) != 3 ||
+		len(c.Races) != 1 || c.Races[0] != (protocol.RaceInfo{ID: "elf", Ability: int(hero.INT), Bonus: hero.RaceBonus}) {
 		t.Fatalf("%+v", c)
 	}
 }

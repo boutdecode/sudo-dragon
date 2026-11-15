@@ -4,6 +4,7 @@ import (
 	"math/rand/v2"
 	"sort"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 )
 
@@ -85,6 +86,11 @@ type NPC struct {
 	Index   int
 	Name    string  // French name (see NameIn for the other languages)
 	Persona Persona // personality in French (see PersonaIn)
+
+	// Race and hatred (in %, 0 to 100) towards each race, indexed by hero.Race.Index: drawn
+	// from the identity stream (see races.go). Zero towards its own race.
+	Race   hero.Race
+	Hatred [hero.NumRaces]int
 
 	// GivesQuests: this villager hands out quests. Drawn from the identity stream (without touching
 	// the plans): the first villager of each place always gives some, then about one in two.
@@ -419,6 +425,7 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 		})
 	}
 	w.makeGuards(s, taken)
+	w.assignRaces(s)
 	firstVillager := true
 	for i := range s.NPCs {
 		if s.NPCs[i].Kind != NPCVillager {

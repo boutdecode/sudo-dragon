@@ -95,7 +95,7 @@ func dial(ctx context.Context, url, name, password string, register bool, lang i
 		return fail(err)
 	}
 	if env.T == protocol.TCreate && auto {
-		reply, err := protocol.Encode(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "warrior"})
+		reply, err := protocol.Encode(protocol.TCreateAction, protocol.CreateAction{Action: protocol.CreateConfirm, Class: "warrior", Race: "human"})
 		if err != nil {
 			return fail(err)
 		}

@@ -18,6 +18,7 @@ type Stats struct {
 	// Class and abilities rolled at creation. STR, AGI and INT give the hit and damage
 	// bonus (depending on the weapon style), AGI the DEF; CON and WIS have already been used to set MaxHP and MaxMana.
 	Class  hero.Class
+	Race   hero.Race // racial bonus already included in Scores
 	Scores hero.Scores
 
 	// Facts established by the server about the character's history. They are not used
@@ -51,7 +52,7 @@ func NewStatsFor(class hero.Class, scores hero.Scores) Stats {
 	scores = scores.Sanitize()
 	return Stats{
 		Level: 1, MaxHP: hero.FirstHP(class, scores), MaxMana: hero.MaxMana(class, scores, 1),
-		Potions: startPotions, Class: class, Scores: scores,
+		Potions: startPotions, Class: class, Race: hero.Human, Scores: scores,
 	}
 }
 
@@ -113,6 +114,13 @@ func (s *Stats) SpendGold(n int) bool {
 // restore a save without trusting the value read.
 func (s Stats) WithGold(gold int) Stats {
 	s.Gold = max(0, min(gold, MaxGold))
+	return s
+}
+
+// WithRace returns the sheet with the given race (human if unknown). The bonus is not
+// applied: it is already part of the saved scores.
+func (s Stats) WithRace(r hero.Race) Stats {
+	s.Race = r.OrDefault()
 	return s
 }
 

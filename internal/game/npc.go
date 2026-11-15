@@ -340,6 +340,7 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 		return
 	}
 	d.Name, d.Place, d.Mode, d.Thinking = t.npc.NameIn(p.lang), g.placeName(p.lang, t.npc.Region), t.mode, t.pending
+	d.Race = t.npc.RaceIn(p.lang)
 	switch t.mode {
 	case protocol.NPCModeNotice:
 		d.Notice = g.noticeText(p.lang)

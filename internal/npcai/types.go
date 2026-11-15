@@ -10,6 +10,7 @@ package npcai
 import (
 	"time"
 
+	"github.com/kevin/ascii-adventure/internal/hero"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/quest"
@@ -18,7 +19,8 @@ import (
 
 // Speaker is the player who speaks, with the facts established by the server about them.
 type Speaker struct {
-	Account   string // account nickname
+	Account   string    // account nickname
+	Race      hero.Race // race chosen at creation (human if unknown)
 	Level     int
 	Kills     int
 	BossKills int

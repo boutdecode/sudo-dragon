@@ -148,7 +148,7 @@ Without mana, a magic weapon serves as a club (1d4 + STR).
 These are base statistics. Each monster is **scaled to its region's level** when it spawns (see *Region level*): HP and XP +25% per level beyond the first, +1 to-hit every 3 levels, +1 to damage dice every 4 levels, +1 DEF every 5 levels. Dungeon monsters follow the dungeon's tier.
 Monsters are sometimes accompanied by **companions** (rats with wolves, wolves with goblins…): one more companion for every 3 player levels.
 
-A defeated monster drops gold (between half and all of its XP). A character starts at level 1 with their class HP (see "Abilities and classes"), a DEF of 10 + AGI modifier, their **starting weapon** (the warrior's short sword, the rogue's short bow, the mage's staff: 1d6), 2 potions and no gold; it takes `120 × level²` XP to reach the next level (about 60 hours of active play to reach level 20).
+A defeated monster drops gold (between half and all of its XP). A character starts at level 1 with their class HP (see "Abilities, classes and races"), a DEF of 10 + AGI modifier, their **starting weapon** (the warrior's short sword, the rogue's short bow, the mage's staff: 1d6), 2 potions and no gold; it takes `120 × level²` XP to reach the next level (about 60 hours of active play to reach level 20).
 A starting warrior beats a rat or a wolf, but not a yeti: you have to progress and gear up (this is checked by a balance test; the rogue and especially the mage, being frailer, avoid the wolf).
 
 ## The world
@@ -265,7 +265,11 @@ The budget only counts the maximum requested output tokens: it can be slightly e
 unverified, is remembered per place (8 places at most per account). Other players hear it as **rumours**: visible within
 1 region at most (the place and adjacent regions), with a 1-hour delay to reach the neighbouring region, forgotten after 14 days. Each NPC also keeps
 a **private** summary of its conversations with each player, never shown to others: an NPC who has never spoken to the player only knows them through rumours and treats them as a stranger.
-The server adds verified facts (level, bosses killed, deaths, quests turned in).
+The server adds verified facts (race, level, bosses killed, deaths, quests turned in).
+
+**Races and prejudice**: NPCs have a race too, shown in the dialogue title. Villages are almost single-race, towns are mixed. Each NPC hates
+each other race to some degree (0-100 %, more in villages than in towns, the starting village being tolerant): from 20 % it is suspicious with a player of that race,
+from 50 % contemptuous, from 70 % openly hostile, and it then **gives them no quest** at all (its `!` disappears). The hatred value itself stays hidden.
 
 **Privacy**: a notice is shown at the first conversation and requires explicit consent (once per account). Without consent, nothing is sent to the provider.
 
@@ -275,7 +279,7 @@ The server adds verified facts (level, bosses killed, deaths, quests turned in).
 
 `make llm-smoke` runs a real API check (skipped without a key).
 
-## Abilities and classes
+## Abilities, classes and races
 
 On first login, a **creation** screen offers six abilities rolled by the server (**3d6**, i.e. 3 to 18):
 
@@ -289,7 +293,7 @@ On first login, a **creation** screen offers six abilities rolled by the server 
 | CHA (charisma) | how NPCs perceive you: prices, and the first impression given to their language model |
 
 Each value gives a **modifier**: 3 → −4, 4-5 → −3, 6-7 → −2, 8-9 → −1, 10-11 → 0, 12-13 → +1, 14-15 → +2… (20-21 → +5).
-You can **reroll 3 times in total** (one ability at a time, key `R`), then choose a **class**:
+You can **reroll 3 times in total** (one ability at a time, key `R`), then choose a **class** (move down past the abilities with `↑↓` to the *Class* row, then `←→`):
 
 | Class | Hit die | Starting mana |
 |---|---|---|
@@ -297,12 +301,21 @@ You can **reroll 3 times in total** (one ability at a time, key `R`), then choos
 | Rogue | d8 | 4 |
 | Mage | d6 | 8 |
 
+and a **race** (*Race* row, `←→`), which adds **+2** to one ability once the roll is confirmed (rerolls apply to the raw dice):
+
+| Race | Bonus |
+|---|---|
+| Human | +2 STR |
+| Elf | +2 INT |
+| Dwarf | +2 CON |
+| Halfling | +2 AGI |
+
 - **HP**: level 1 = maximum die + CON modifier; each following level = rolled die + CON modifier (at least 1). Maximum HP are saved.
 - **Mana** = class base + 2 per level + level × WIS modifier. A spell costs 2 mana; it comes back with HP (rest, healer, level-up).
 - **Attack style = weapon carried**: sword, axe… (melee, STR); bow, crossbow (ranged, AGI); staff, wand (magic, INT, 2 mana per spell). Bare-handed: melee. The modifier adds to the to-hit roll and to damage.
 - **Charisma**: ±2% per modifier point on NPC prices (capped at ±10%, after the reputation discount).
-- Characters created before this version keep their level, gold, quests and bag, but go through creation again on their next login; their HP are re-rolled level by level.
-- The `P` key opens the **character sheet**: class, level, HP, mana, attack and defence (with the equipment's share), style and hit chance, charisma effect, gold, position, record, detailed abilities, worn equipment, active blessings, treasure maps, gathering professions and reputation. A summary of the abilities stays in the side panel.
+- Characters created before this version keep their level, gold, quests and bag, but go through creation again on their next login; their HP are re-rolled level by level. Characters created before races become **Humans** (+2 STR).
+- The `P` key opens the **character sheet**: race and class, level, HP, mana, attack and defence (with the equipment's share), style and hit chance, charisma effect, gold, position, record, detailed abilities, worn equipment, active blessings, treasure maps, gathering professions and reputation. A summary of the abilities stays in the side panel.
 
 ## Equipment and forges
 
@@ -408,7 +421,7 @@ internal/
   game          10 Hz game loop: players, monsters, garrisons, guards, dungeons, fights, NPCs, snapshots
   combat        turn-based rules and progression (pure, injected randomness)
   dice          dice and rolls
-  hero          abilities, classes, modifiers
+  hero          abilities, classes, races, modifiers
   gear          equipment, fallback stocks, loot
   quest, lore   quests, reputation, NPC memory and rumours
   llm, npcai    Mistral client, moderation, dialogues and stock generation
