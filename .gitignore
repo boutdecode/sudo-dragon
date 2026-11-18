@@ -11,3 +11,6 @@
 
 # Secrets locaux (clé Mistral, etc.)
 .env
+
+# Todo
+.todo/
