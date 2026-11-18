@@ -1134,7 +1134,7 @@ func (m Model) viewLogin() string {
 	}
 
 	box := ui.Panel("", strings.Join(lines, "\n"), panelW, len(lines)+2)
-	footer := ui.Fit(dimStyle.Render(" v0.1.0")+strings.Repeat(" ", max(1, panelW-len(" v0.1.0")-len("Bubble Tea · Lip Gloss · Bubbles ")))+dimStyle.Render("Bubble Tea · Lip Gloss · Bubbles"), panelW)
+	footer := ui.Fit(dimStyle.Render(" v0.1.0"), panelW)
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box+"\n"+footer)
 }
 
