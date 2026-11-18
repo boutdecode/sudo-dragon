@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Called from the release workflow, github.workflow is the caller's: never cancel.
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: make fmt-check
+      - name: Vet
+        run: make vet
+      - name: go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+      - name: Build
+        run: go build ./...
+      - name: Version flag
+        run: |
+          make build VERSION=ci-check
+          ./bin/sudo-dragon-server --version | grep -q 'ci-check'
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Race detector on Linux only (slower); a plain run elsewhere.
+      # The `live` build tag (Mistral API) is never enabled: no secret needed.
+      - name: Tests (race)
+        if: runner.os == 'Linux'
+        run: make race
+      - name: Tests
+        if: runner.os != 'Linux'
+        run: make test
+
+  build-windows:
+    needs: lint
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kevin/ascii-adventure/internal/i18n"
+	"github.com/kevin/ascii-adventure/internal/version"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -52,7 +53,12 @@ func main() {
 	zoom := flag.Int("zoom", 1, "with -raw: tiles per cell (terrain overview)")
 	raw := flag.Bool("raw", false, "raw terrain only (no structures or roads), sampled every -zoom tiles")
 	gen := flag.Int("gen", world.GenLatest, "terrain generator version")
+	showVersion := flag.Bool("version", false, "print the version, then exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("sudo-dragon-worldview", version.String())
+		return
+	}
 
 	wd := world.NewVersion(*seed, *gen)
 	x0, y0 := *cx-*w/2, *cy-*h/2

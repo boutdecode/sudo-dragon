@@ -51,7 +51,8 @@ On first launch, press **Ctrl+R** to switch to "Account creation", pick a
 username and a password (8 to 72 characters), then press Enter. Afterwards, just log in
 with the same credentials: you pick up where you left off.
 
-Client options: `-addr` (server address), `-name` (pre-filled username), `-transparent`, `-lang`.
+Client options: `-addr` (server address), `-name` (pre-filled username), `-transparent`, `-lang`, `-version`.
+The four binaries (`sudo-dragon`, `-server`, `-bot`, `-worldview`) all accept `--version`.
 To play on another server: `./bin/sudo-dragon -addr wss://game.example.org/ws -name myname`.
 `SUDO_DRAGON_NO_FX=1` turns off the combat screen shake.
 
@@ -377,6 +378,7 @@ Operator side, `-lore-list` also shows the completed quests and `-lore-purge` de
 | `-tls-cert`, `-tls-key` | | enable TLS (`wss://`) |
 | `-max-registrations` | `10` | account creations per hour and per IP address (`0` = unlimited) |
 | `-login-workers` | half the cores | simultaneous password hashes (see *Performance*) |
+| `-version` | | print the version, then exit |
 | `-pprof` | disabled | Go profiling, e.g. `127.0.0.1:6060` (never expose publicly) |
 | `-llm`, `-llm-*` | `auto` | NPC dialogues through a language model (see *Conversational NPCs*) |
 | `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset` | | database administration tools, then exit |
@@ -442,6 +444,17 @@ internal/
   piling up cause the connection to be closed. JSON encoding happens in each session's writer goroutine.
 - **Asynchronous persistence.** The game loop never touches the disk; a writer batches the saves, and an immediate
   reconnection first reads back the saves still pending.
+
+## Releases
+
+Pre-built archives (linux and macOS on amd64/arm64, windows on amd64) are on the GitHub *Releases* page.
+Verify a download with `sha256sum -c checksums.txt --ignore-missing`.
+
+To publish one (the tag must be on `main`; the CI runs first):
+
+```sh
+git tag v1.2.3 && git push origin v1.2.3   # a tag with a "-" (v1.2.3-rc1) is a pre-release
+```
 
 ## Development
 

@@ -2,10 +2,15 @@
 #
 # Go >= 1.27 is required (see go.mod). If `go` points to an older version:
 #   make GO=/path/to/go1.27/bin/go <target>
+# Stamp a version into the binaries:
+#   make build VERSION=v1.2.3
 
 GO      ?= go
 BIN     := bin
 ADDR    ?= ws://localhost:8080/ws
+# Version stamped into the binaries (make build VERSION=v1.2.3).
+VERSION ?= dev
+LDFLAGS := -X github.com/kevin/ascii-adventure/internal/version.Version=$(VERSION)
 
 .DEFAULT_GOAL := help
 .PHONY: help build test race vet fmt fmt-check check run-server run-client load llm-smoke clean
@@ -15,10 +20,10 @@ help: ## List the targets
 
 build: ## Build server, client, bot and map tool into ./bin
 	@mkdir -p $(BIN)
-	$(GO) build -o $(BIN)/sudo-dragon-server ./cmd/server
-	$(GO) build -o $(BIN)/sudo-dragon ./cmd/client
-	$(GO) build -o $(BIN)/sudo-dragon-bot ./cmd/bot
-	$(GO) build -o $(BIN)/sudo-dragon-worldview ./cmd/worldview
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/sudo-dragon-server ./cmd/server
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/sudo-dragon ./cmd/client
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/sudo-dragon-bot ./cmd/bot
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/sudo-dragon-worldview ./cmd/worldview
 
 test: ## Run the tests
 	$(GO) test ./...
