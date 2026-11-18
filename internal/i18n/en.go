@@ -37,6 +37,7 @@ var en = map[string]string{
 	"cli.error":                "error:",
 	"cli.lang":                 "interface language: fr or en (default: the system's)",
 	"cli.name":                 "username (pre-filled)",
+	"cli.version":              "print the version, then exit",
 	"cli.transparent":          "keep the terminal background instead of painting the theme's dark one",
 	"client.closed":            "connection closed",
 	"client.err.addr_name":     "server address and username required",

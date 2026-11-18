@@ -217,7 +217,7 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 - Terrain with glyph and colour variants, depending on the territory's climate (`render/climate.go`; no climate underground); players in combat displayed in red.
 - Latency measured by ping/pong and displayed.
 - **Day / night cycle**: the header displays "Day N, Hh" followed by an indicator (`*` day, `~` dawn or dusk, `(` night). The terrain darkens towards a night blue (6 levels, `render/daylight.go`): night from 21:00 to 5:00, dawn from 5:00 to 8:00, dusk from 19:00 to 21:00. Players, monsters, NPCs and **campfires** keep their colour; no effect underground or on the world map. Purely visual, computed by the client from the server tick (extrapolated between two snapshots, since the server only sends one when the view changes).
-- Client options: `-addr`, `-name`, `-transparent`, `-lang`.
+- Client options: `-addr`, `-name`, `-transparent`, `-lang`, `-version`.
 
 ## Saving and persistence (`internal/store/`)
 
@@ -238,6 +238,8 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 - **Per-IP quotas**: 8 login failures per minute, 10 account creations per hour; limits on chat and NPC replies.
 - **TLS** (`wss://`) via `-tls-cert` / `-tls-key`; on `ws://`, the password travels in clear.
 - **Monitoring**: `/healthz`, `/stats` (JSON), `-pprof`. Administration: `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset`.
+- **Version**: all four binaries accept `-version` (`--version`) and print their version. Release builds carry the git tag (`make build VERSION=…`); a plain build prints `dev` or the VCS revision.
+- **Releases**: pushing a `v*.*.*` tag runs the CI, then publishes archives (linux/darwin amd64+arm64, windows amd64) with `checksums.txt` on GitHub; the tag must be on `main`; a tag containing `-` is a pre-release.
 - **Load test**: `make load N=…` and `cmd/bot`.
 
 ## Internationalisation (`internal/i18n/`)
@@ -254,7 +256,7 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 | `cmd/server` | game server |
 | `cmd/client` | TUI interface (Bubble Tea v2, Lip Gloss) |
 | `cmd/bot` | automatic players for load tests |
-| `cmd/worldview` | draws an area of the world in ASCII (`-sites`, `-territories`, `-gen` for the generator version, `-raw -zoom N` for an overview of the raw terrain with the share of each tile) |
+| `cmd/worldview` | draws an area of the world in ASCII (`-version`, `-sites`, `-territories`, `-gen` for the generator version, `-raw -zoom N` for an overview of the raw terrain with the share of each tile) |
 
 `Makefile`: build, test, race, check, load, llm-smoke. Go 1.27 required.
 

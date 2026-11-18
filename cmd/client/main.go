@@ -10,6 +10,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/client"
 	"github.com/kevin/ascii-adventure/internal/i18n"
+	"github.com/kevin/ascii-adventure/internal/version"
 )
 
 func main() {
@@ -20,7 +21,13 @@ func main() {
 	name := flag.String("name", "", i18n.T(sys, "cli.name"))
 	transparent := flag.Bool("transparent", false, i18n.T(sys, "cli.transparent"))
 	langFlag := flag.String("lang", "", i18n.T(sys, "cli.lang"))
+	showVersion := flag.Bool("version", false, i18n.T(sys, "cli.version"))
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("sudo-dragon", version.String())
+		return
+	}
 
 	lang := sys
 	if *langFlag != "" {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/client"
 	"github.com/kevin/ascii-adventure/internal/protocol"
+	"github.com/kevin/ascii-adventure/internal/version"
 )
 
 // serverStats mirrors the JSON shape of the server's /stats endpoint.
@@ -91,7 +92,12 @@ func main() {
 	pass := flag.String("pass", "bot-password-123", "shared password of the bot accounts")
 	warmup := flag.Duration("warmup", 0, "delay before measuring the tick rate (lets the connection wave pass)")
 	minRate := flag.Float64("min-tick-rate", 0, "fail if the server holds fewer than N ticks/s (0 = do not check)")
+	showVersion := flag.Bool("version", false, "print the version, then exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("sudo-dragon-bot", version.String())
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *dur)
 	defer cancel()

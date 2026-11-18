@@ -37,6 +37,7 @@ var fr = map[string]string{
 	"cli.error":                "erreur:",
 	"cli.lang":                 "langue de l'interface: fr ou en (par défaut, celle du système)",
 	"cli.name":                 "pseudo (pré-rempli)",
+	"cli.version":              "affiche la version, puis quitte",
 	"cli.transparent":          "garde le fond du terminal au lieu de peindre le fond sombre du thème",
 	"client.closed":            "connexion fermée",
 	"client.err.addr_name":     "adresse et pseudo requis",

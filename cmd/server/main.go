@@ -18,6 +18,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/server"
 	"github.com/kevin/ascii-adventure/internal/store"
+	"github.com/kevin/ascii-adventure/internal/version"
 	"github.com/kevin/ascii-adventure/internal/world"
 )
 
@@ -54,7 +55,13 @@ func run() error {
 	lorePurge := flag.String("lore-purge", "", "delete introductions and memories: account:NAME or place:RX,RY, then exit")
 	waresList := flag.Bool("wares-list", false, "print the generated wares of blacksmiths and armorers, then exit")
 	waresReset := flag.String("wares-reset", "", "delete a vendor's wares (RX,RY,RANK; see -wares-list) so they are regenerated, then exit")
+	showVersion := flag.Bool("version", false, "print the version, then exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("sudo-dragon-server", version.String())
+		return nil
+	}
 
 	if (*tlsCert == "") != (*tlsKey == "") {
 		return errors.New("-tls-cert and -tls-key go together")
