@@ -318,6 +318,9 @@ func TestConcurrentLoginsOnSameAccountAdmitExactlyOne(t *testing.T) {
 
 	const n = 8
 	results := make(chan string, n)
+	// Closed once every attempt has been answered: sessions stay open until then, whatever the
+	// machine speed (a fixed delay is too short under the race detector).
+	allAnswered := make(chan struct{})
 	for i := 0; i < n; i++ {
 		go func() {
 			c, _, err := websocket.Dial(t.Context(), url, nil)
@@ -338,7 +341,7 @@ func TestConcurrentLoginsOnSameAccountAdmitExactlyOne(t *testing.T) {
 			}
 			env, _ := protocol.Decode(reply)
 			results <- env.T
-			time.Sleep(300 * time.Millisecond) // keeps the session open long enough for the others to try
+			<-allAnswered // keeps the session open until the others have had their answer
 		}()
 	}
 
@@ -353,6 +356,7 @@ func TestConcurrentLoginsOnSameAccountAdmitExactlyOne(t *testing.T) {
 			t.Errorf("unexpected result: %s", r)
 		}
 	}
+	close(allAnswered)
 	if welcomes != 1 || errs != n-1 {
 		t.Fatalf("%d admitted and %d refused out of %d simultaneous attempts, expected 1 and %d", welcomes, errs, n, n-1)
 	}

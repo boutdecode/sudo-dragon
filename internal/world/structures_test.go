@@ -553,6 +553,9 @@ func TestStructureDistribution(t *testing.T) {
 }
 
 func TestFirstChunkGenerationIsFast(t *testing.T) {
+	if raceEnabled {
+		t.Skip("timing assertion: meaningless under the race detector")
+	}
 	w := newTestWorld(1)
 	start := time.Now()
 	for cy := -5; cy < 5; cy++ {
