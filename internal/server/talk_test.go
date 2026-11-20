@@ -32,7 +32,7 @@ type talkEnv struct {
 func startTalkServer(t *testing.T) *talkEnv {
 	t.Helper()
 	be := storetest.NewBackend(t, 10*time.Millisecond)
-	srv := New(world.New(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
+	srv := New(testWorld(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
 	srv.SetRegistrationLimit(0)
 
 	fake := &llm.Fake{}
@@ -77,7 +77,7 @@ type spot struct {
 
 func healerSpots(t *testing.T) (world.NPC, []spot) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
 		for _, n := range s.NPCs {
 			if n.Kind != world.NPCHealer {

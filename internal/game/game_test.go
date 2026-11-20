@@ -15,7 +15,7 @@ type recorder struct{ snaps []protocol.Snapshot }
 func (r *recorder) send(s protocol.Snapshot) { r.snaps = append(r.snaps, s) }
 func (r *recorder) last() protocol.Snapshot  { return r.snaps[len(r.snaps)-1] }
 
-func newGame() *Game { return New(world.New(1)) }
+func newGame() *Game { return New(testWorld(1)) }
 
 func joinRec(g *Game, name string) (*player, *recorder) {
 	r := &recorder{}

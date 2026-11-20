@@ -17,7 +17,7 @@ import (
 // vendorSpots returns the blacksmith or armorer of the starting village and two free access tiles.
 func vendorSpots(t *testing.T) (world.NPC, []spot) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
 		for _, n := range s.NPCs {
 			if n.Kind != world.NPCSmith && n.Kind != world.NPCArmorer {

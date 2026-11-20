@@ -16,7 +16,6 @@ import (
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/store"
 	"github.com/kevin/ascii-adventure/internal/store/storetest"
-	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 // testPass is the password of all test accounts.
@@ -37,7 +36,7 @@ func signIn(name, pass string) protocol.Login {
 func startServer(t *testing.T, flushEvery time.Duration) (string, store.Backend, *Server) {
 	t.Helper()
 	be := storetest.NewBackend(t, flushEvery)
-	srv := New(world.New(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
+	srv := New(testWorld(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
 	srv.SetRegistrationLimit(0) // the tests create many accounts
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -414,7 +413,7 @@ func TestFirstMessageMustBeLogin(t *testing.T) {
 
 func TestHealthAndStatsEndpoints(t *testing.T) {
 	be := storetest.NewBackend(t, 10*time.Millisecond)
-	srv := New(world.New(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
+	srv := New(testWorld(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { srv.Run(ctx); close(done) }()

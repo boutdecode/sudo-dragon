@@ -16,7 +16,7 @@ import (
 func nearestDungeon(t *testing.T) *world.Dungeon {
 	t.Helper()
 	var best *world.Dungeon
-	for _, d := range world.New(1).DungeonsNear(0, 0, 4) {
+	for _, d := range testWorld(1).DungeonsNear(0, 0, 4) {
 		if best == nil || d.ID < best.ID {
 			best = d
 		}

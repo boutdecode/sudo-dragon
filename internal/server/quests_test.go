@@ -21,7 +21,7 @@ import (
 // giverSpots returns the quest-giving villager of the starting village and two free access tiles.
 func giverSpots(t *testing.T) (world.NPC, []spot) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
 		for _, n := range s.NPCs {
 			if n.Kind != world.NPCVillager || !n.GivesQuests {

@@ -92,7 +92,7 @@ func TestFindPathCostPrefersRoad(t *testing.T) {
 
 // A long walk without any road must still succeed.
 func TestFindWalkPathLongOffRoad(t *testing.T) {
-	m := Model{world: world.New(1)}
+	m := Model{world: testWorld(1)}
 	free := func(p world.Pos) bool { return p.X >= -5 && p.X <= 400 && p.Y >= -5 && p.Y <= 400 }
 	if m.findWalkPath(world.Pos{}, world.Pos{X: 300, Y: 300}, free) == nil {
 		t.Fatal("300-tile off-road walk not found")

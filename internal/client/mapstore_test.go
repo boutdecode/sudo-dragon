@@ -160,7 +160,7 @@ func TestMapStoreRoundTripKeepsOtherSeeds(t *testing.T) {
 	m.saveMapNow()
 
 	other := mapModel(i18n.FR, 120, 40)
-	other.world = world.New(2)
+	other.world = testWorld(2)
 	other.wmap = mapState{explored: map[[2]int]struct{}{{7, 8}: {}}}
 	other.saveMapNow()
 

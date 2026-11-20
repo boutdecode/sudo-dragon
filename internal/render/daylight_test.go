@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/kevin/ascii-adventure/internal/protocol"
-	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
@@ -61,7 +60,7 @@ func TestNightLevelBounds(t *testing.T) {
 }
 
 func TestViewportNightDimsTerrainOnly(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	ents := []protocol.Entity{{ID: 1, X: 0, Y: 0}}
 	day := ViewportNight(w, 0, 0, 20, 8, ents, nil, 1, nil, nil, 0)
 	if day != ViewportReady(w, 0, 0, 20, 8, ents, nil, 1, nil, nil) {

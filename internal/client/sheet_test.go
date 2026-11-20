@@ -10,14 +10,13 @@ import (
 
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/protocol"
-	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 func sheetModel(lang i18n.Lang, w, h int) Model {
 	m := NewLang("ws://x/ws", "alice", i18n.FR)
 	m.lang, m.width, m.height = lang, w, h
 	m.state, m.hasSnap = statePlaying, true
-	m.world = world.New(1)
+	m.world = testWorld(1)
 	m.snap = protocol.Snapshot{Self: protocol.Entity{Name: "alice", X: 12, Y: -3},
 		Stats: protocol.Stats{Level: 4, XP: 7, XPNext: 40, HP: 20, MaxHP: 30, Def: 13, Hit: 3, Dmg: "2d6+3", Potions: 2, Gold: 120, Mana: 3, MaxMana: 8}}
 	m.bag = protocol.Bag{Class: "mage", Scores: []int{8, 12, 17, 10, 14, 6}, Style: "magic", DefBonus: 2, Reduction: "2d8", Kills: 31, BossKills: 1, Deaths: 3,

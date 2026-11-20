@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/kevin/ascii-adventure/internal/store/storetest"
-	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 const secretKey = "cle-de-test-ULTRA-SECRETE-9f8e7d6c"
@@ -105,7 +104,7 @@ func TestModeOffNeverTouchesTheNetwork(t *testing.T) {
 	f := newFakeMistral(t)
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	svc, err := setupTalker(s.ctx, llmOptions{Mode: "off", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
+	svc, err := setupTalker(s.ctx, llmOptions{Mode: "off", BaseURL: f.srv.URL}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if err != nil || svc != nil {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
@@ -117,7 +116,7 @@ func TestModeOffNeverTouchesTheNetwork(t *testing.T) {
 func TestAutoModeWithoutKeyIsSilentlyDisabled(t *testing.T) {
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	svc, err := setupTalker(s.ctx, llmOptions{Mode: "auto"}, be.Store, world.New(1), log, env(nil))
+	svc, err := setupTalker(s.ctx, llmOptions{Mode: "auto"}, be.Store, testWorld(1), log, env(nil))
 	if err != nil || svc != nil {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
@@ -125,7 +124,7 @@ func TestAutoModeWithoutKeyIsSilentlyDisabled(t *testing.T) {
 		t.Fatalf("the log should explain why dialogues are disabled: %q", s.log.String())
 	}
 	// Empty mode = auto.
-	if svc, err := setupTalker(s.ctx, llmOptions{}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: "   "})); err != nil || svc != nil {
+	if svc, err := setupTalker(s.ctx, llmOptions{}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: "   "})); err != nil || svc != nil {
 		t.Fatalf("whitespace-only key: svc=%v err=%v", svc, err)
 	}
 }
@@ -133,7 +132,7 @@ func TestAutoModeWithoutKeyIsSilentlyDisabled(t *testing.T) {
 func TestOnModeRequiresTheKey(t *testing.T) {
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	svc, err := setupTalker(s.ctx, llmOptions{Mode: "on"}, be.Store, world.New(1), log, env(nil))
+	svc, err := setupTalker(s.ctx, llmOptions{Mode: "on"}, be.Store, testWorld(1), log, env(nil))
 	if err == nil || svc != nil || !strings.Contains(err.Error(), apiKeyEnv) {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
@@ -142,7 +141,7 @@ func TestOnModeRequiresTheKey(t *testing.T) {
 func TestUnknownModeIsRejected(t *testing.T) {
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	if _, err := setupTalker(s.ctx, llmOptions{Mode: "maybe"}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey})); err == nil {
+	if _, err := setupTalker(s.ctx, llmOptions{Mode: "maybe"}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: secretKey})); err == nil {
 		t.Fatal("an unknown mode was accepted")
 	}
 }
@@ -153,7 +152,7 @@ func TestHealthyStartupProbesAndEnables(t *testing.T) {
 	s, log := newSetup(t)
 	svc, err := setupTalker(s.ctx, llmOptions{
 		Mode: "auto", BaseURL: f.srv.URL, Model: "mon-modele-de-chat", ModerationModel: "ma-moderation",
-	}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: "  " + secretKey + "\n"}))
+	}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: "  " + secretKey + "\n"}))
 	if err != nil || svc == nil {
 		t.Fatalf("svc=%v err=%v", svc, err)
 	}
@@ -190,7 +189,7 @@ func TestAPIKeyNeverAppearsInLogs(t *testing.T) {
 		setupFake(f)
 		be := storetest.NewBackend(t, time.Hour)
 		s, log := newSetup(t)
-		_, err := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
+		_, err := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -205,7 +204,7 @@ func TestRejectedKeyDoesNotBlockStartup(t *testing.T) {
 	f.chatCode.Store(401)
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	svc, err := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
+	svc, err := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if err != nil || svc == nil {
 		t.Fatalf("a probe failure must not prevent startup: svc=%v err=%v", svc, err)
 	}
@@ -222,7 +221,7 @@ func TestModerationOutageKeepsTalkingButWarns(t *testing.T) {
 	f.modCode.Store(500)
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	svc, _ := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
+	svc, _ := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if svc == nil || !svc.Available() {
 		t.Fatal("chat works: the service must be available")
 	}
@@ -243,7 +242,7 @@ func TestServiceRecoversOnItsOwnWhenTheAPIComesBack(t *testing.T) {
 	f.chatCode.Store(503)
 	be := storetest.NewBackend(t, time.Hour)
 	s, log := newSetup(t)
-	svc, _ := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, world.New(1), log, env(map[string]string{apiKeyEnv: secretKey}))
+	svc, _ := setupTalker(s.ctx, llmOptions{Mode: "auto", BaseURL: f.srv.URL}, be.Store, testWorld(1), log, env(map[string]string{apiKeyEnv: secretKey}))
 	if svc == nil || svc.Available() {
 		t.Fatal("the service should start unavailable")
 	}
