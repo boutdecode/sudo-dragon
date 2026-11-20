@@ -15,6 +15,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 // DefaultBlockedCategories are the moderation categories that cause a message
@@ -69,6 +70,7 @@ type Service struct {
 	nQuestsProposed, nQuestsRejected            atomic.Uint64
 	nStockGenerated, nStockRejected             atomic.Uint64
 
+	canon               *worldlore.Canon
 	wares               WaresRepo
 	stockInflight       map[world.NPCKey]bool
 	latencyMS, latencyN atomic.Int64
@@ -91,6 +93,10 @@ func WithProvider(name string) Option { return func(s *Service) { s.provider = n
 func WithPlaceNames(f func(i18n.Lang, world.RegionPos) string) Option {
 	return func(s *Service) { s.places = f }
 }
+
+// WithWorldLore gives NPCs the world's canon (see package worldlore). It is read at
+// each request, so a reload of the canon applies to the next conversation.
+func WithWorldLore(c *worldlore.Canon) Option { return func(s *Service) { s.canon = c } }
 
 // WithBlockedCategories replaces the blocking moderation categories.
 func WithBlockedCategories(cats []string) Option {
@@ -320,6 +326,8 @@ func (s *Service) process(parent context.Context, req Request, acct string) Repl
 		s.log.Warn("reading completed quests", "err", err)
 	}
 	req.Deeds = Deeds{Mine: mine, Others: others}
+
+	req.WorldLore = s.canon.For(req.Lang)
 
 	maxTokens := s.cfg.MaxTokens
 	if req.Offer != nil {

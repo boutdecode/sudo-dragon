@@ -11,6 +11,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 // Equipment vendors' stock. The model proposes a specialty and items in JSON; each item
@@ -43,6 +44,9 @@ type StockRequest struct {
 	PlaceKind world.Kind
 	Region    string
 	Context   gear.Context // slots sold and maximum tier of the place
+
+	// WorldLore is the world's canon; the service fills it in (see WithWorldLore).
+	WorldLore worldlore.Text
 }
 
 // StockReply is a vendor's assortment, or the reason for its absence (the game then uses its fallback).
@@ -69,6 +73,7 @@ func BuildStockMessages(req StockRequest) []llm.Message {
 		b.WriteString(i18n.T(l, "prompt.region", req.Region))
 		b.WriteString("\n")
 	}
+	writeWorldLore(&b, l, req.WorldLore)
 	slots := make([]string, len(req.Context.Slots))
 	for i, s := range req.Context.Slots {
 		slots[i] = string(s)
@@ -82,6 +87,10 @@ func BuildStockMessages(req StockRequest) []llm.Message {
 	}
 	b.WriteString(i18n.T(l, "prompt.stock.rules", strings.Join(slots, ", "), req.Context.MaxTier, req.Context.MaxTier, strings.Join(fams, " ; ")))
 	b.WriteString("\n\n")
+	if !req.WorldLore.Empty() {
+		b.WriteString(i18n.T(l, "prompt.stock.lore_rules"))
+		b.WriteString("\n\n")
+	}
 	b.WriteString(i18n.T(l, "prompt.stock.format"))
 	return []llm.Message{
 		{Role: llm.System, Content: b.String()},
@@ -192,6 +201,7 @@ func (s *Service) generateStock(ctx context.Context, req StockRequest, key world
 	}
 
 	temp := s.cfg.Temperature
+	req.WorldLore = s.canon.For(req.Lang)
 	resp, err := s.llm.Chat(ctx, llm.Request{
 		Messages: BuildStockMessages(req), JSON: true, MaxTokens: stockMaxTokens, Temperature: &temp,
 	})

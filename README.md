@@ -278,6 +278,14 @@ from 50 % contemptuous, from 70 % openly hostile, and it then **gives them no qu
 
 `make llm-smoke` runs a real API check (skipped without a key).
 
+### World lore
+
+You can write the lore of your world: what **every NPC** knows (peoples, history, beliefs, customs, legends...). One Markdown file per language, `world-lore.fr.md` and `world-lore.en.md`, next to the server or in the directory given by `-world-lore DIR`.
+Start from the templates `docs/world-lore.fr.template.md` and `docs/world-lore.en.template.md` (13 sections; the guidance is in HTML comments, removed before use, and sections left empty are ignored). Keep both languages aligned: if only one file exists, the model translates it.
+
+The text is added to every dialogue and to the generation of forge stocks, capped at 8000 characters per language (it costs tokens on every reply). `kill -HUP <pid>` reloads the files without a restart (an invalid file keeps the previous version; not available on Windows).
+Forge stocks already generated are not changed: use `server -wares-reset RX,RY,RANK`. The files are git-ignored.
+
 ## Abilities, classes and races
 
 On first login, a **creation** screen offers six abilities rolled by the server (**3d6**, i.e. 3 to 18):
@@ -379,6 +387,7 @@ Operator side, `-lore-list` also shows the completed quests and `-lore-purge` de
 | `-version` | | print the version, then exit |
 | `-pprof` | disabled | Go profiling, e.g. `127.0.0.1:6060` (never expose publicly) |
 | `-llm`, `-llm-*` | `auto` | NPC dialogues through a language model (see *Conversational NPCs*) |
+| `-world-lore` | `.` | directory of the world lore files `world-lore.<lang>.md`, shared by all NPCs; `SIGHUP` reloads them (see *World lore*) |
 | `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset` | | database administration tools, then exit |
 
 **Data.** All persistent state lives in the SQLite file (WAL mode: `.db`, `.db-wal`, `.db-shm`).
@@ -424,6 +433,7 @@ internal/
   hero          abilities, classes, races, modifiers
   gear          equipment, fallback stocks, loot
   quest, lore   quests, reputation, NPC memory and rumours
+  worldlore     shared world lore (Markdown files, hot reload)
   llm, npcai    Mistral client, moderation, dialogues and stock generation
   textsafe      cleaning of model-produced texts
   protocol      JSON messages and fast snapshot encoder

@@ -49,6 +49,8 @@ func run() error {
 	flag.IntVar(&lo.DailyTokens, "llm-daily-tokens", 0, "token budget per UTC day (0 = default: 1,000,000)")
 	flag.IntVar(&lo.Workers, "llm-workers", 0, "concurrent calls to the provider (0 = default: 4)")
 
+	worldLoreDir := flag.String("world-lore", ".", "directory with the world lore files world-lore.<lang>.md (optional; SIGHUP reloads them)")
+
 	// Operator commands on NPC memory; the server is not started.
 	loreList := flag.Bool("lore-list", false, "print the recorded player introductions, then exit")
 	loreAccount := flag.String("lore-account", "", "with -lore-list: restrict to this account")
@@ -125,6 +127,17 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// World lore: shared by all NPCs; SIGHUP rereads the files (kept as they were if invalid).
+	canon, err := setupWorldLore(*worldLoreDir, log)
+	if err != nil {
+		return err
+	}
+	lo.WorldLore = canon
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP) // never delivered on Windows: no reload there, restart instead
+	defer signal.Stop(hup)
+	go reloadOnSignal(ctx, hup, canon, log)
 
 	// NPC dialogues: wired in before the game loop starts.
 	talker, err := setupTalker(ctx, lo, st, wld, log, os.Getenv)
