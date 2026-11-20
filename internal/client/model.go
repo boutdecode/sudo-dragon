@@ -445,7 +445,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.Cmd) {
 	m.conn = conn
 	m.self = welcome
-	m.world = world.New(welcome.Seed)
+	m.world = newWorld(welcome.Seed)
 	m.zone, m.dmap, m.dseen, m.dungeons = protocol.Zone{}, nil, nil, nil
 	m.state = statePlaying
 	m.errMsg = ""
@@ -1466,3 +1466,7 @@ func (m Model) npcView(w, h int) string {
 	mid := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, right)
 	return mid + "\n" + journalPanel(m.t("npc.dialogue"), m.npcLog, w, logH)
 }
+
+// newWorld builds the local world from the server seed. It is a variable so that tests can
+// share already-generated worlds instead of recomputing them for every model.
+var newWorld = world.New

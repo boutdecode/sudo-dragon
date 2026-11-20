@@ -172,7 +172,7 @@ func TestRegistrationRateLimit(t *testing.T) {
 // --- End-to-end persistence ---
 
 // spawn returns the starting point of the test world (seed 1).
-func spawn() world.Pos { return world.New(1).FindSpawn() }
+func spawn() world.Pos { return testWorld(1).FindSpawn() }
 
 func readSnapshot(t *testing.T, c *websocket.Conn) protocol.Snapshot {
 	t.Helper()
@@ -260,7 +260,7 @@ func TestLeaveSavesCharacter(t *testing.T) {
 // walkableDir returns a cardinal direction that can be walked from p.
 func walkableDir(t *testing.T, p world.Pos) (int, int) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	for _, d := range [][2]int{{1, 0}, {0, 1}, {-1, 0}, {0, -1}} {
 		if w.At(p.X+d[0], p.Y+d[1]).Walkable() {
 			return d[0], d[1]
@@ -429,7 +429,7 @@ func TestReservationIsReleased(t *testing.T) {
 // it, with the direction that leads there (the test world has seed 1).
 func healerSpot(t *testing.T) (npc world.NPC, stand world.Pos, dx, dy int) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
 		for _, n := range s.NPCs {
 			if n.Kind != world.NPCHealer {
@@ -502,7 +502,7 @@ func TestHealerEndToEndWithPersistence(t *testing.T) {
 }
 
 func TestMerchantEndToEnd(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	var npc world.NPC
 	var stand world.Pos
 	var dx, dy int

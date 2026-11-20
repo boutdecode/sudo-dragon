@@ -38,7 +38,7 @@ func lastSystemLines(m Model, n int) []string {
 
 func villagePos(t *testing.T) (world.Pos, *world.Structure) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	sp := w.FindSpawn()
 	s := w.StructuresNear(sp, 300)[0]
 	return world.Pos{X: s.Origin.X + s.W/2, Y: s.Origin.Y + s.H/2}, s

@@ -158,7 +158,7 @@ func TestGotoInsideADungeon(t *testing.T) {
 }
 
 func TestGotoNeverCrossesADungeonEntrance(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	var d *world.Dungeon
 	for _, c := range w.DungeonsNear(0, 0, 4) {
 		d = c
@@ -204,7 +204,7 @@ func TestMonstersBehindRockStayHidden(t *testing.T) {
 // discovered gives a model on the main map that knows a world dungeon's entrance.
 func discovered(t *testing.T) (Model, protocol.DungeonInfo) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	var d *world.Dungeon
 	for _, c := range w.DungeonsNear(0, 0, 4) {
 		d = c
@@ -238,7 +238,7 @@ func TestDiscoveringAnEntranceIsAnnouncedAndDrawn(t *testing.T) {
 		t.Error("announcement replayed")
 	}
 	// An undiscovered entrance remains an ordinary tile.
-	w := world.New(1)
+	w := testWorld(1)
 	for _, d := range w.DungeonsNear(0, 0, 3) {
 		if d.ID != info.ID && m.terrain().At(d.Entrance.X, d.Entrance.Y) == world.Entrance {
 			t.Fatalf("%s is not discovered but is displayed", d.ID)

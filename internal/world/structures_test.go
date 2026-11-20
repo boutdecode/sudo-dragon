@@ -577,16 +577,24 @@ func TestFirstChunkGenerationIsFast(t *testing.T) {
 	if raceEnabled {
 		t.Skip("timing assertion: meaningless under the race detector")
 	}
-	w := New(1)
-	start := time.Now()
-	for cy := -5; cy < 5; cy++ {
-		for cx := -5; cx < 5; cx++ {
-			w.Chunk(ChunkPos{cx, cy})
+	// Best of three on fresh worlds: a real slowdown shows up on every attempt, whereas a
+	// load spike (other test packages running at the same time) only hits some of them.
+	const attempts = 3
+	best := time.Duration(1<<63 - 1)
+	for range attempts {
+		w := New(1)
+		start := time.Now()
+		for cy := -5; cy < 5; cy++ {
+			for cx := -5; cx < 5; cx++ {
+				w.Chunk(ChunkPos{cx, cy})
+			}
+		}
+		best = min(best, time.Since(start))
+		if best <= 2*time.Second {
+			return
 		}
 	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("100 chunks in %v: the structure lookup slows down generation", d)
-	}
+	t.Fatalf("100 chunks in %v (best of %d): the structure lookup slows down generation", best, attempts)
 }
 
 func TestWallsBlockAndDoorsOpen(t *testing.T) {

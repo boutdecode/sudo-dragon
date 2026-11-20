@@ -13,7 +13,7 @@ import (
 // nodeGame returns a game in world v3 and the position of a resource node of the wanted category.
 func nodeGame(t *testing.T, tile world.Tile) (*Game, world.Pos) {
 	t.Helper()
-	g := New(world.New(1))
+	g := New(testWorld(1))
 	for r := 20; r < 400; r++ {
 		for x := -r; x <= r; x++ {
 			for _, y := range []int{-r, r} {
@@ -126,7 +126,7 @@ func TestGatherFromNeighbourTile(t *testing.T) {
 }
 
 func TestGatherNothingAndCooldown(t *testing.T) {
-	g := New(world.New(1))
+	g := New(testWorld(1))
 	p, _ := joinRec(g, "a")
 	g.gather(p.id)
 	if len(p.resources) != 0 || len(g.spent) != 0 {
@@ -205,7 +205,7 @@ func TestSkillsSaveLoad(t *testing.T) {
 }
 
 func TestJobInfosReportBagAndChance(t *testing.T) {
-	g := New(world.New(1))
+	g := New(testWorld(1))
 	p, _ := joinRec(g, "a")
 	p.resources = map[resource.Kind]int{"oak": 2, "pine": 1}
 	jobs := jobInfos(p)
@@ -243,7 +243,7 @@ func TestFishingSpotInRiver(t *testing.T) {
 
 // A river without a shoal gives nothing: one cannot fish endlessly on every tile.
 func TestNoFishingOnPlainRiver(t *testing.T) {
-	g := New(world.New(1))
+	g := New(testWorld(1))
 	for r := 20; r < 400; r++ {
 		for x := -r; x <= r; x++ {
 			if g.World.At(x, r) == world.River && g.World.At(x+1, r) != world.FishNode && g.World.At(x-1, r) != world.FishNode {

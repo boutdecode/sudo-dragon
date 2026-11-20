@@ -16,7 +16,7 @@ import (
 // chiefSpots returns the chief of the starting village and two free access tiles.
 func chiefSpots(t *testing.T) (world.NPC, []spot) {
 	t.Helper()
-	w := world.New(1)
+	w := testWorld(1)
 	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
 		for _, n := range s.NPCs {
 			if n.Kind != world.NPCChief {
@@ -48,7 +48,7 @@ func TestChiefPromptNamesNearbyPlacesOnly(t *testing.T) {
 		return llm.Response{Content: string(b), Usage: llm.Usage{Total: 50}}, nil
 	}
 
-	w := world.New(1)
+	w := testWorld(1)
 	var near, far string
 	for ry := chief.Region.Y - 7; ry <= chief.Region.Y+7; ry++ {
 		for rx := chief.Region.X - 7; rx <= chief.Region.X+7; rx++ {

@@ -16,7 +16,7 @@ import (
 func plain(s string) []string { return strings.Split(ansi.Strip(s), "\n") }
 
 func TestViewportDimensions(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	for _, d := range [][2]int{{81, 41}, {10, 5}, {1, 1}, {40, 12}} {
 		lines := plain(Viewport(w, 3, -7, d[0], d[1], nil, nil, 0))
 		if len(lines) != d[1] {
@@ -31,7 +31,7 @@ func TestViewportDimensions(t *testing.T) {
 }
 
 func TestViewportEntities(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	cols, rows := 21, 11
 	self := protocol.Entity{ID: 1, Name: "me", X: 100, Y: 100}
 	near := protocol.Entity{ID: 2, Name: "n", X: 103, Y: 98}
@@ -52,8 +52,8 @@ func TestViewportEntities(t *testing.T) {
 }
 
 func TestViewportDeterministic(t *testing.T) {
-	a := Viewport(world.New(5), 0, 0, 60, 20, nil, nil, 0)
-	b := Viewport(world.New(5), 0, 0, 60, 20, nil, nil, 0)
+	a := Viewport(testWorld(5), 0, 0, 60, 20, nil, nil, 0)
+	b := Viewport(testWorld(5), 0, 0, 60, 20, nil, nil, 0)
 	if a != b {
 		t.Fatal("non-deterministic rendering")
 	}
@@ -101,7 +101,7 @@ func TestEverySpeciesHasALook(t *testing.T) {
 }
 
 func TestViewportDrawsMonsters(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	cols, rows := 21, 11
 	cx, cy := 100, 100
 	mons := []protocol.Monster{
@@ -119,7 +119,7 @@ func TestViewportDrawsMonsters(t *testing.T) {
 }
 
 func TestViewportIgnoresOffscreenMonsters(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	offscreen := []protocol.Monster{{ID: 1, Kind: "rat", X: 600, Y: 100}, {ID: 2, Kind: "wolf", X: 100, Y: -400}}
 	with := Viewport(w, 100, 100, 21, 11, nil, offscreen, 0)
 	without := Viewport(w, 100, 100, 21, 11, nil, nil, 0)
@@ -129,7 +129,7 @@ func TestViewportIgnoresOffscreenMonsters(t *testing.T) {
 }
 
 func TestPlayerDrawnOverMonster(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	self := protocol.Entity{ID: 1, Name: "me", X: 50, Y: 50}
 	mons := []protocol.Monster{{ID: 1, Kind: "wolf", X: 50, Y: 50}}
 	lines := plain(Viewport(w, 50, 50, 11, 5, []protocol.Entity{self}, mons, 1))
@@ -166,7 +166,7 @@ func TestMonsterNamesMatchServer(t *testing.T) {
 }
 
 func TestFightingEntitiesAreHighlighted(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	self := protocol.Entity{ID: 1, Name: "me", X: 10, Y: 10}
 	mon := protocol.Monster{ID: 1, Kind: "rat", X: 11, Y: 10}
 
@@ -230,7 +230,7 @@ func TestEveryTileHasStyleGlyphAndName(t *testing.T) {
 }
 
 func TestStructuresAreDrawnWithWallsDoorsAndNPCs(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	var village *world.Structure
 	for _, s := range w.StructuresNear(w.FindSpawn(), 200) {
 		if s.Kind == world.KindVillage {
@@ -270,7 +270,7 @@ func TestNPCNamesAndGlyphs(t *testing.T) {
 }
 
 func TestPlayerAndMonsterDrawnOverNPC(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	var npc world.NPC
 	for _, s := range w.StructuresNear(w.FindSpawn(), 200) {
 		if len(s.NPCs) > 0 {
@@ -294,7 +294,7 @@ func TestPlayerAndMonsterDrawnOverNPC(t *testing.T) {
 }
 
 func TestReadyQuestGiverShowsQuestionMark(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	var giver world.NPC
 	found := false
 	for _, s := range w.StructuresNear(w.FindSpawn(), 300) {
@@ -427,7 +427,7 @@ func TestClimateChangesColoursNotTheMap(t *testing.T) {
 	if TileHex(world.Temperate, world.Forest) != "" || TileHex(world.Arid, world.Plain) == "" {
 		t.Error("TileHex")
 	}
-	w := world.New(7)
+	w := testWorld(7)
 	out := Viewport(w, 0, 0, 40, 10, nil, nil, 0)
 	if len(plain(out)) != 10 {
 		t.Fatalf("%d lines", len(plain(out)))
@@ -435,7 +435,7 @@ func TestClimateChangesColoursNotTheMap(t *testing.T) {
 }
 
 func TestWithSpentShowsBareTerrain(t *testing.T) {
-	w := world.New(1)
+	w := testWorld(1)
 	var node world.Pos
 	found := false
 	for y := -150; y < 150 && !found; y++ {

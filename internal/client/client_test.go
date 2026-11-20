@@ -18,13 +18,12 @@ import (
 	"github.com/kevin/ascii-adventure/internal/protocol"
 	"github.com/kevin/ascii-adventure/internal/server"
 	"github.com/kevin/ascii-adventure/internal/store/storetest"
-	"github.com/kevin/ascii-adventure/internal/world"
 )
 
 func startServer(t *testing.T) string {
 	t.Helper()
 	be := storetest.NewBackend(t, 10*time.Millisecond)
-	srv := server.New(world.New(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
+	srv := server.New(testWorld(1), slog.New(slog.NewTextHandler(io.Discard, nil)), be)
 	srv.SetRegistrationLimit(0)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

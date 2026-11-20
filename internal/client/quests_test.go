@@ -240,7 +240,7 @@ func TestGiverIdleFollowsOpenQuestsPausesAndTheCap(t *testing.T) {
 
 // A giver who hates the player's race loses their "!" (same deterministic draw as the server).
 func TestGiverIdleForAHatedRace(t *testing.T) {
-	w := world.New(3)
+	w := testWorld(3)
 	for y := -12; y <= 12; y++ {
 		for x := -12; x <= 12; x++ {
 			s := w.StructureOfRegion(world.RegionPos{X: x, Y: y})
