@@ -67,7 +67,7 @@ func ValidNPCAction(action string) bool {
 	case protocol.NPCBuy, protocol.NPCSell, protocol.NPCHeal, protocol.NPCLeave,
 		protocol.NPCTalk, protocol.NPCSay, protocol.NPCConsent, protocol.NPCDecline, protocol.NPCBack,
 		protocol.NPCQuestAccept, protocol.NPCQuestRefuse, protocol.NPCTurnIn, protocol.NPCAskWork,
-		protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCSellMenu,
+		protocol.NPCBuyItem, protocol.NPCSellItem, protocol.NPCSellMenu, protocol.NPCBuyTool,
 		protocol.NPCWhere, protocol.NPCPlaces, protocol.NPCSteal:
 		return true
 	}
@@ -99,7 +99,7 @@ func (g *Game) startTalk(p *player, npc world.NPC) {
 	switch npc.Kind {
 	case world.NPCHealer:
 		greeting = i18n.T(p.lang, "npc.greet.healer")
-	case world.NPCSmith, world.NPCArmorer:
+	case world.NPCSmith, world.NPCArmorer, world.NPCLumberjack, world.NPCHerbalist, world.NPCMiner:
 		greeting = i18n.T(p.lang, "npc.greet."+string(npc.Kind))
 	case world.NPCGuard:
 		greeting = i18n.T(p.lang, "npc.greet.guard")
@@ -144,6 +144,9 @@ func (g *Game) talkAct(p *player, action, text string) {
 	}
 	t.lastAct = g.tick
 
+	if isToolVendor(t.npc.Kind) && action != protocol.NPCLeave && action != protocol.NPCBuyTool {
+		return // a trade vendor only sells its tools: no quest, no work, no discussion, no language model
+	}
 	switch action {
 	case protocol.NPCLeave:
 		g.closeTalk(p, i18n.T(p.lang, "npc.farewell"))
@@ -197,6 +200,9 @@ func (g *Game) talkAct(p *player, action, text string) {
 		} else {
 			log = g.buyItem(p, t.npc, text) // the purchase records itself
 		}
+
+	case protocol.NPCBuyTool:
+		log = g.buyTool(p, t.npc, text) // the purchase records itself
 
 	case protocol.NPCSellMenu:
 		if !isVendor(t.npc.Kind) || len(g.sellable(p)) == 0 {
@@ -292,6 +298,8 @@ func (g *Game) offers(p *player, npc world.NPC) []protocol.NPCOffer {
 		offers = g.guardOffers(p, npc)
 	case world.NPCSmith, world.NPCArmorer:
 		offers = g.shopOffers(p, npc)
+	case world.NPCLumberjack, world.NPCHerbalist, world.NPCMiner:
+		return g.toolOffers(p, npc) // a trade vendor only sells its tools: no quest, no work, no discussion
 	case world.NPCHealer:
 		price := g.healCost(p, npc)
 		offers = []protocol.NPCOffer{
@@ -340,6 +348,12 @@ func (g *Game) sendTalk(p *player, kind world.NPCKind, log []string, over bool) 
 		return
 	}
 	d.Name, d.Place, d.Mode, d.Thinking = t.npc.NameIn(p.lang), g.placeName(p.lang, t.npc.Region), t.mode, t.pending
+	if isToolVendor(t.npc.Kind) { // the vendor is not in a place: the title is their cabin's name
+		d.Place = ""
+		if poi := g.World.POIAt(t.npc.Pos.X, t.npc.Pos.Y); poi != nil {
+			d.Place = poi.NameIn(p.lang)
+		}
+	}
 	d.Race = t.npc.RaceIn(p.lang)
 	switch t.mode {
 	case protocol.NPCModeNotice:

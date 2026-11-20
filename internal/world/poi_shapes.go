@@ -126,7 +126,7 @@ func siteRadius(k POIKind) int {
 		return 5
 	case POIRuin, POILair:
 		return 4
-	case POITower:
+	case POITower, POICabinWood, POICabinOre, POICabinHerb:
 		return 3
 	}
 	return poiClear // campfire, standing stone, spring: 5x5
@@ -150,6 +150,8 @@ func buildShape(k POIKind, cl Climate, seed int64) *shape {
 		s = stoneShape(cl)
 	case POISpring:
 		s = springShape(cl)
+	case POICabinWood, POICabinOre, POICabinHerb:
+		s = cabinShape(k, cl)
 	default:
 		s = campfireShape(cl, rng)
 	}
@@ -420,5 +422,56 @@ func campfireShape(cl Climate, rng *rand.Rand) *shape {
 		put(1, -1, Wall)
 	}
 	put(0, -1, Door)
+	return s
+}
+
+// cabinShape: the building of a trade cabin, 7x7 at most. The vendor stands at the centre. The shape follows the
+// climate (never the colour): a log cabin (wide, with a door on each side), a hut on stilts, a square stone shelter, a
+// rounded hut in the cold. Each trade has its own decoration: a log pile, rubble, a flower bed.
+func cabinShape(k POIKind, cl Climate) *shape {
+	s := newShape(3)
+	switch cl {
+	case Tropical: // hut on stilts: an open platform on four pillars
+		s.box(2, Floor)
+		for _, c := range [][2]int{{-2, -2}, {2, -2}, {-2, 2}, {2, 2}} {
+			s.set(c[0], c[1], Pillar)
+		}
+	case Arid: // stone shelter: a square of walls with a door on each side
+		s.box(1, Floor)
+		s.walls(Wall)
+		s.gates4(2, Door)
+	case Boreal: // rounded hut: a disc wrapped in a tight wall
+		for dy := -2; dy <= 2; dy++ {
+			for dx := -2; dx <= 2; dx++ {
+				if dx*dx+dy*dy <= 5 {
+					s.set(dx, dy, Floor)
+				}
+			}
+		}
+		s.walls(Wall)
+		s.gates4(3, Door)
+	default: // log cabin: wider than deep
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -2; dx <= 2; dx++ {
+				s.set(dx, dy, Floor)
+			}
+		}
+		s.walls(Wall)
+		s.gate(sideSouth, 0, 2, Door)
+		s.gate(sideWest, -3, 0, Door)
+		s.gate(sideNorth, 0, -2, Door)
+		s.gate(sideEast, 3, 0, Door)
+	}
+	// Decoration: inside, away from the doors and from the vendor's neighbours.
+	deco := Plain // flower bed
+	switch k {
+	case POICabinWood:
+		deco = Pillar // log pile
+	case POICabinOre:
+		deco = Rubble
+	}
+	for _, c := range [][2]int{{-1, -1}, {1, 1}} {
+		s.set(c[0], c[1], deco)
+	}
 	return s
 }

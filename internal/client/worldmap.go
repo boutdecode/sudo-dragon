@@ -486,6 +486,9 @@ func mapGrid(w *world.World, st *mapState, self protocol.Entity, others []protoc
 	for _, poi := range w.POIsWithin(cx, cy, radius) {
 		if st.isExplored(poi.Pos.X, poi.Pos.Y) {
 			cell := terrainCell(poi.Tile())
+			if poi.Kind.IsCabin() { // its tile is a plain floor: the map draws it as a landmark
+				cell = mapCell{r: "t", st: msPOI}
+			}
 			cell.st += climatShift(w.ClimateAt(poi.Pos.X, poi.Pos.Y))
 			put(poi.Pos, cell)
 		}
@@ -614,6 +617,7 @@ func (m Model) legendLines(rows int, c world.Climate) []string {
 		entry("|", msPOI, "map.leg.stone"),
 		entry("v", msPOI, "map.leg.spring"),
 		entry("/", msPOI, "map.leg.ruin"),
+		entry("t", msPOI, "map.leg.cabin"),
 		entry("*", msMarker, "map.leg.marker"),
 		entry("░", msUnknown, "map.leg.unexplored"),
 	}

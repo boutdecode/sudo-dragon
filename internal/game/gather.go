@@ -49,7 +49,12 @@ func (g *Game) gather(id int) {
 		}
 		info, _ := resource.Lookup(kind)
 		level := resource.LevelOf(p.skills[info.Cat])
-		if usedIn(p.resources, info.Cat) >= resource.Capacity(level) { // category bag full: the node is untouched
+		if resource.NeedsTool(info.Cat) && p.tools[info.Cat] == 0 { // no tool: the node is untouched
+			g.poiNotice(p, "gather.no_tool", toolName(p, info.Cat, 1))
+			return
+		}
+		used, capacity := usedIn(p.resources, info.Cat), resource.Capacity(level)
+		if used >= capacity { // category bag full: the node is untouched
 			g.poiNotice(p, "gather.full", jobName(p, info.Cat))
 			return
 		}
@@ -62,14 +67,22 @@ func (g *Game) gather(id int) {
 		if p.resources == nil {
 			p.resources = map[resource.Kind]int{}
 		}
-		p.resources[kind]++
+		n := 1 // fishing needs no tool and gives a single unit
+		if resource.NeedsTool(info.Cat) {
+			n = min(resource.Yield(p.tools[info.Cat]), capacity-used) // the bag has room for at least one
+		}
+		p.resources[kind] += n
 		if p.skills == nil {
 			p.skills = map[resource.Category]int{}
 		}
 		p.skills[info.Cat] += resource.GainXP(info.Tier)
 		now := resource.LevelOf(p.skills[info.Cat])
-		p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "gather.got", resourceName(p, kind),
-			usedIn(p.resources, info.Cat), resource.Capacity(now)))
+		key := "gather.got"
+		args := []any{resourceName(p, kind), usedIn(p.resources, info.Cat), resource.Capacity(now)}
+		if n > 1 {
+			key, args = "gather.got_n", []any{resourceName(p, kind), n, args[1], args[2]}
+		}
+		p.gearNotices = append(p.gearNotices, i18n.T(p.lang, key, args...))
 		if now > level {
 			p.gearNotices = append(p.gearNotices, i18n.T(p.lang, "gather.levelup", jobName(p, info.Cat), now))
 		}
@@ -184,7 +197,8 @@ func jobInfos(p *player) []protocol.JobInfo {
 	for c := resource.Category(0); c < resource.NumCategories; c++ {
 		level, in, next := resource.Progress(p.skills[c])
 		out = append(out, protocol.JobInfo{Job: c.Key(), Level: level, XP: in, Next: next,
-			Used: usedIn(p.resources, c), Cap: resource.Capacity(level), Chance: resource.Chance(level)})
+			Used: usedIn(p.resources, c), Cap: resource.Capacity(level), Chance: resource.Chance(level),
+			Tool: p.tools[c], Yield: jobYield(p, c)})
 	}
 	return out
 }
@@ -212,4 +226,12 @@ func saveSkills(m map[resource.Category]int) map[string]int {
 		}
 	}
 	return out
+}
+
+// jobYield is the number of units a successful gather of category c gives the player.
+func jobYield(p *player, c resource.Category) int {
+	if !resource.NeedsTool(c) {
+		return 1
+	}
+	return resource.Yield(p.tools[c])
 }

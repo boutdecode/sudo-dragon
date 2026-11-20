@@ -37,6 +37,11 @@ func forceRoll(g *Game, level int, success bool) {
 	}
 }
 
+// giveTools gives p a tool of the given tier for every trade.
+func giveTools(p *player, tier int) {
+	p.tools = map[resource.Category]int{resource.Wood: tier, resource.Ore: tier, resource.Herb: tier}
+}
+
 func total(p *player) int {
 	n := 0
 	for _, q := range p.resources {
@@ -48,6 +53,7 @@ func total(p *player) int {
 func TestGatherSuccessGivesOneUnitAndXP(t *testing.T) {
 	g, at := nodeGame(t, world.TreeNode)
 	p, _ := joinRec(g, "a")
+	giveTools(p, 1)
 	place(g, p, at)
 	var bag protocol.Bag
 	p.sendBagMsg = func(b protocol.Bag) { bag = b }
@@ -83,6 +89,7 @@ func TestGatherSuccessGivesOneUnitAndXP(t *testing.T) {
 func TestGatherFailureSpendsNodeWithoutXP(t *testing.T) {
 	g, at := nodeGame(t, world.TreeNode)
 	p, _ := joinRec(g, "a")
+	giveTools(p, 1)
 	place(g, p, at)
 	forceRoll(g, 1, false)
 	g.gather(p.id)
@@ -97,6 +104,7 @@ func TestGatherFailureSpendsNodeWithoutXP(t *testing.T) {
 func TestGatherLevelUp(t *testing.T) {
 	g, at := nodeGame(t, world.TreeNode)
 	p, _ := joinRec(g, "a")
+	giveTools(p, 1)
 	place(g, p, at)
 	p.skills = map[resource.Category]int{resource.Wood: resource.XPToNext(1) - 1}
 	forceRoll(g, 1, true)
@@ -112,6 +120,7 @@ func TestGatherLevelUp(t *testing.T) {
 func TestGatherFromNeighbourTile(t *testing.T) {
 	g, at := nodeGame(t, world.OreNode)
 	p, _ := joinRec(g, "a")
+	giveTools(p, 1)
 	place(g, p, world.Pos{X: at.X + 1, Y: at.Y})
 	forceRoll(g, 1, true)
 	g.gather(p.id)
@@ -141,6 +150,7 @@ func TestGatherNothingAndCooldown(t *testing.T) {
 func TestGatherBagCapacityFollowsLevel(t *testing.T) {
 	g, at := nodeGame(t, world.HerbNode)
 	p, _ := joinRec(g, "a")
+	giveTools(p, 1)
 	place(g, p, at)
 	p.resources = map[resource.Kind]int{"sage": resource.Capacity(1)}
 	forceRoll(g, 1, true)
@@ -164,6 +174,7 @@ func TestGatherBagCapacityFollowsLevel(t *testing.T) {
 func TestSyncNodesSendsSpentList(t *testing.T) {
 	g, at := nodeGame(t, world.TreeNode)
 	p, _ := joinRec(g, "a")
+	giveTools(p, 1)
 	place(g, p, at)
 	var got []protocol.Nodes
 	p.sendNodesMsg = func(n protocol.Nodes) { got = append(got, n) }
@@ -258,4 +269,79 @@ func TestNoFishingOnPlainRiver(t *testing.T) {
 		}
 	}
 	t.Skip("no river found")
+}
+
+// Without a tool, nothing is gathered and the node stays intact (only the anti-spam delay applies).
+func TestGatherNeedsATool(t *testing.T) {
+	for _, tile := range []world.Tile{world.TreeNode, world.OreNode, world.HerbNode} {
+		g, at := nodeGame(t, tile)
+		p, _ := joinRec(g, "a")
+		place(g, p, at)
+		forceRoll(g, 1, true)
+		g.gather(p.id)
+		if total(p) != 0 || p.skills[resource.Wood]+p.skills[resource.Ore]+p.skills[resource.Herb] != 0 {
+			t.Fatalf("tile %d: gathered without a tool: %v", tile, p.resources)
+		}
+		if _, spent := g.spent[at]; spent {
+			t.Fatalf("tile %d: a refused gather must not deplete the node", tile)
+		}
+		if g.tick >= p.gatherUntil {
+			t.Errorf("tile %d: no delay after a refused attempt", tile)
+		}
+		if n := notices(p); !strings.Contains(n, "tool") && !strings.Contains(n, "outil") {
+			t.Errorf("tile %d: no explanation: %q", tile, n)
+		}
+	}
+}
+
+// A better tool gives more units, capped by the room left in the bag; the basic tool gives one.
+func TestGatherYieldFollowsToolTier(t *testing.T) {
+	for tier := 1; tier <= resource.NumToolTiers; tier++ {
+		g, at := nodeGame(t, world.TreeNode)
+		p, _ := joinRec(g, "a")
+		place(g, p, at)
+		giveTools(p, tier)
+		forceRoll(g, 1, true)
+		g.gather(p.id)
+		if got := total(p); got != resource.Yield(tier) {
+			t.Errorf("tier %d: %d units, expected %d", tier, got, resource.Yield(tier))
+		}
+	}
+	g, at := nodeGame(t, world.TreeNode)
+	p, _ := joinRec(g, "a")
+	place(g, p, at)
+	giveTools(p, resource.NumToolTiers)
+	p.resources = map[resource.Kind]int{"oak": resource.Capacity(1) - 1} // room for one unit only
+	forceRoll(g, 1, true)
+	g.gather(p.id)
+	if total(p) != resource.Capacity(1) {
+		t.Errorf("the yield must stop at the capacity: %d, expected %d", total(p), resource.Capacity(1))
+	}
+}
+
+// Fishing needs no tool and always gives one unit.
+func TestFishingNeedsNoTool(t *testing.T) {
+	g, at := nodeGame(t, world.FishNode)
+	p, _ := joinRec(g, "a")
+	place(g, p, at)
+	giveTools(p, resource.NumToolTiers)
+	forceRoll(g, 1, true)
+	g.gather(p.id)
+	if total(p) != 1 {
+		t.Errorf("fishing gave %d units", total(p))
+	}
+}
+
+func TestToolsSaveLoad(t *testing.T) {
+	in := map[resource.Category]int{resource.Wood: 2, resource.Ore: 4, resource.Fish: 1}
+	out := loadTools(saveTools(in))
+	if out[resource.Wood] != 2 || out[resource.Ore] != 4 || len(out) != 2 {
+		t.Fatalf("reloaded %v (fishing has no tool)", out)
+	}
+	if got := loadTools(map[string]int{"wood": 99, "herb": -3, "unknown": 2}); got[resource.Wood] != resource.NumToolTiers || len(got) != 1 {
+		t.Fatalf("tiers must be bounded to the catalogue: %v", got)
+	}
+	if saveTools(nil) != nil {
+		t.Fatal("no tool: nil expected")
+	}
 }

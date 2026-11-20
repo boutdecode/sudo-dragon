@@ -209,6 +209,10 @@ type World struct {
 	pmu  sync.Mutex
 	pois map[RegionPos][]*POI
 
+	// Trade cabins forced around the starting point (see cabin.go).
+	cabinOnce   sync.Once
+	cabinForced map[RegionPos]cabinSite
+
 	// Roads between places (see roads.go). rmu is taken before smu, never after.
 	rmu   sync.Mutex
 	roads map[roadKey]*roadLink

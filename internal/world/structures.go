@@ -66,12 +66,17 @@ const (
 	NPCMayor    NPCKind = "mayor"    // mayor of a town: knows the neighbouring places
 	NPCSmith    NPCKind = "smith"    // blacksmith: sells weapons
 	NPCArmorer  NPCKind = "armorer"  // armourer: sells armour, shields and helmets
+
+	// Trade vendors, in the cabins of the points of interest (see cabin.go): they sell the gathering tools.
+	NPCLumberjack NPCKind = "lumberjack" // sells axes
+	NPCHerbalist  NPCKind = "herbalist"  // sells sickles
+	NPCMiner      NPCKind = "miner"      // sells pickaxes
 )
 
 // NPCKinds lists the NPC types that the generator can place (to check
 // that the client can draw them all).
 func NPCKinds() []NPCKind {
-	return []NPCKind{NPCMerchant, NPCHealer, NPCVillager, NPCChief, NPCMayor, NPCSmith, NPCArmorer}
+	return []NPCKind{NPCMerchant, NPCHealer, NPCVillager, NPCChief, NPCMayor, NPCSmith, NPCArmorer, NPCLumberjack, NPCHerbalist, NPCMiner}
 }
 
 // NPC is a stationary character placed by the generator. It is computed
@@ -498,14 +503,16 @@ func (w *World) Safe(x, y int) bool {
 
 // NPCAt returns the posted NPC at (x, y), if there is one.
 func (w *World) NPCAt(x, y int) (NPC, bool) {
-	s := w.StructureAt(x, y)
-	if s == nil {
+	if s := w.StructureAt(x, y); s != nil {
+		for _, n := range s.NPCs {
+			if n.Pos.X == x && n.Pos.Y == y {
+				return n, true
+			}
+		}
 		return NPC{}, false
 	}
-	for _, n := range s.NPCs {
-		if n.Pos.X == x && n.Pos.Y == y {
-			return n, true
-		}
+	if p := w.POIAt(x, y); p != nil {
+		return w.CabinVendor(p)
 	}
 	return NPC{}, false
 }
@@ -517,7 +524,13 @@ func (w *World) NPCsIn(x0, y0, x1, y1 int) []NPC {
 	var out []NPC
 	for ry := lo.Y; ry <= hi.Y; ry++ {
 		for rx := lo.X; rx <= hi.X; rx++ {
-			s := w.structureForRegion(RegionPos{rx, ry})
+			rp := RegionPos{rx, ry}
+			if c := w.cabinOf(rp); c != nil && c.Pos.X >= x0 && c.Pos.X <= x1 && c.Pos.Y >= y0 && c.Pos.Y <= y1 {
+				if n, ok := w.CabinVendor(c); ok {
+					out = append(out, n)
+				}
+			}
+			s := w.structureForRegion(rp)
 			if s == nil {
 				continue
 			}

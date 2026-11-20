@@ -108,7 +108,7 @@ func fromSaved(sv game.Saved) store.Character {
 		Quests: sv.Quests, Rep: sv.Rep, QuestsDirty: sv.QuestsDirty,
 		Gear: sv.Gear, GearDirty: sv.GearDirty,
 		Discoveries: sv.Discovered, DiscoveriesDirty: sv.DiscoveredDirty,
-		Stones: sv.Stones, Maps: sv.Maps, Resources: sv.Resources, Skills: sv.Skills,
+		Stones: sv.Stones, Maps: sv.Maps, Resources: sv.Resources, Skills: sv.Skills, Tools: sv.Tools,
 	}
 	if sv.Respawn != nil {
 		c.RespawnSet, c.RespawnX, c.RespawnY = true, sv.Respawn.X, sv.Respawn.Y
@@ -130,6 +130,7 @@ func toSaved(c store.Character) *game.Saved {
 		Maps:       c.Maps,
 		Resources:  c.Resources,
 		Skills:     c.Skills,
+		Tools:      c.Tools,
 	}
 	if c.RespawnSet {
 		sv.Respawn = &world.Pos{X: c.RespawnX, Y: c.RespawnY}
