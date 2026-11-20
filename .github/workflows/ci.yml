@@ -46,13 +46,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # Race detector on Linux only (slower); a plain run elsewhere.
+      # Race detector on Linux only (slower; internal/world is tested without it, see Makefile).
       # The `live` build tag (Mistral API) is never enabled: no secret needed.
       - name: Tests (race)
         if: runner.os == 'Linux'
@@ -60,15 +60,3 @@ jobs:
       - name: Tests
         if: runner.os != 'Linux'
         run: make test
-
-  build-windows:
-    needs: lint
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Build
-        run: go build ./...

@@ -447,7 +447,7 @@ internal/
 
 ## Releases
 
-Pre-built archives (linux and macOS on amd64/arm64, windows on amd64) are on the GitHub *Releases* page.
+Pre-built archives (linux and macOS on amd64/arm64) are on the GitHub *Releases* page.
 Verify a download with `sha256sum -c checksums.txt --ignore-missing`.
 
 To publish one (the tag must be on `main`; the CI runs first):

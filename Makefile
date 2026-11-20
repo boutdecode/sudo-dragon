@@ -28,8 +28,11 @@ build: ## Build server, client, bot and map tool into ./bin
 test: ## Run the tests
 	$(GO) test ./...
 
-race: ## Run the tests with the race detector (slower)
-	$(GO) test -race -count=1 -timeout 30m ./...
+# internal/world is excluded from -race: it is pure deterministic generation (no concurrent test),
+# and the detector makes its suite (run once per generator version) about 6x slower, ~12 min.
+race: ## Run the tests with the race detector, except internal/world (tested plain)
+	$(GO) test -race -count=1 -timeout 30m $$($(GO) list ./... | grep -v '/internal/world$$')
+	$(GO) test -count=1 ./internal/world
 
 vet: ## Static analysis
 	$(GO) vet ./...
