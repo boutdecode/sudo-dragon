@@ -66,6 +66,10 @@ const (
 	HerbNode // tuft of plants
 	FishNode // school of fish, in a river
 
+	// Building tiles of the points of interest (see poi_shapes.go).
+	Rubble // rubble of a collapsed wall: passable
+	Pillar // column or standing stone: impassable
+
 	// NumTiles is the number of tile types: the values range from 0 to NumTiles-1.
 	NumTiles
 )
@@ -139,6 +143,10 @@ func (t Tile) Glyph() rune {
 		return 'h'
 	case FishNode:
 		return 'f'
+	case Rubble:
+		return '`'
+	case Pillar:
+		return 'i'
 	}
 	return '?'
 }
@@ -156,7 +164,7 @@ func (t Tile) ordinary() bool {
 // Walkable tells whether a player can walk on the tile.
 func (t Tile) Walkable() bool {
 	switch t {
-	case DeepWater, Water, Mountain, Wall, Rock:
+	case DeepWater, Water, Mountain, Wall, Rock, Pillar:
 		return false
 	}
 	return true
@@ -239,10 +247,13 @@ func (w *World) TileAt(x, y int) Tile {
 	if s := w.StructureAt(x, y); s != nil {
 		return s.TileAt(x, y)
 	}
-	if p := w.POIAt(x, y); p != nil {
-		return p.Tile()
-	}
 	t := w.terrainAt(x, y)
+	if p := w.poiCovering(x, y); p != nil {
+		if pt := p.TileAt(w, x, y); pt != tileNone {
+			return pt
+		}
+		return t // inside the footprint, off the building: raw terrain (no road, no node)
+	}
 	if w.roadCostOf(t) > 0 && onRoad(w.roadsAround(RegionOf(x, y)), x, y) {
 		return Road
 	}
@@ -290,8 +301,12 @@ func (w *World) Chunk(cp ChunkPos) *Chunk {
 			x, y := cp.X*ChunkSize+tx, cp.Y*ChunkSize+ty
 			if s != nil && s.Contains(x, y) {
 				c.Tiles[ty][tx] = s.TileAt(x, y)
-			} else if poi := poiIn(pois, x, y); poi != nil {
-				c.Tiles[ty][tx] = poi.Tile()
+			} else if poi := poiCovering(pois, x, y); poi != nil {
+				if pt := poi.TileAt(w, x, y); pt != tileNone {
+					c.Tiles[ty][tx] = pt
+				} else {
+					c.Tiles[ty][tx] = w.terrainAt(x, y)
+				}
 			} else if t := w.terrainAt(x, y); w.roadCostOf(t) > 0 && onRoad(roads, x, y) {
 				c.Tiles[ty][tx] = Road
 			} else if n, ok := w.nodeTile(x, y, t); ok {

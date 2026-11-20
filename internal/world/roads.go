@@ -202,11 +202,12 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 		bh *= 2
 	}
 
-	// A road does not cross the tile of a point of interest (see poi.go): it would go around it on screen anyway.
-	poiTiles := map[Pos]bool{}
+	// A road never touches a point of interest: it goes around its footprint and a tile of margin (see poi.go). Only
+	// the bounds count (first phase): the result does not depend on the door, which itself depends on the roads.
+	var poiRects []Rect
 	for _, rp := range [2]RegionPos{key.a, key.b} {
 		for _, p := range w.POIsOfRegion(rp) {
-			poiTiles[p.Pos] = true
+			poiRects = append(poiRects, p.Bounds.grow(1))
 		}
 	}
 	terrain := make([]int8, bw*bh) // 0: not computed yet, -1: impassable
@@ -224,8 +225,10 @@ func (w *World) buildRoad(key roadKey) *roadLink {
 			}
 			return 0
 		}
-		if poiTiles[p] {
-			return 0
+		for _, pr := range poiRects {
+			if pr.Contains(x, y) {
+				return 0
+			}
 		}
 		i := (y-y0)*bw + (x - x0)
 		if terrain[i] == 0 {

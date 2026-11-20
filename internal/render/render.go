@@ -60,6 +60,8 @@ var baseStyles = [numBaseStyles]lipgloss.Style{
 	world.OreNode:   fg("#94a3b8").Bold(true),
 	world.HerbNode:  fg("#bef264").Bold(true),
 	world.FishNode:  fg("#7dd3fc").Bold(true),
+	world.Rubble:    fg("#8b8680"),
+	world.Pillar:    fg("#e7e5e4").Bold(true),
 	styleSelf:       fg("#facc15").Bold(true),
 	styleOther:      fg("#22d3ee").Bold(true),
 	styleFight:      fg("#ef4444").Bold(true),
@@ -239,6 +241,8 @@ var variants = map[world.Tile][]rune{
 	world.OreNode:   []rune("nnnnnn"),
 	world.HerbNode:  []rune("\"\"\",\"\"\""),
 	world.FishNode:  []rune("--~-~-"),
+	world.Rubble:    []rune(";,;.;,"),
+	world.Pillar:    []rune("iiiiii"),
 }
 
 // TerrainName returns the name of a terrain in language l.
@@ -308,6 +312,10 @@ func TerrainName(l i18n.Lang, t world.Tile) string {
 		return i18n.T(l, "terrain.herbnode")
 	case world.FishNode:
 		return i18n.T(l, "terrain.fishnode")
+	case world.Rubble:
+		return i18n.T(l, "terrain.rubble")
+	case world.Pillar:
+		return i18n.T(l, "terrain.pillar")
 	}
 	return "?"
 }

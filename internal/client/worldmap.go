@@ -403,7 +403,9 @@ func terrainCell(t world.Tile) mapCell {
 		return mapCell{r: "v", st: msPOI}
 	case world.Ruin:
 		return mapCell{r: "/", st: msPOI}
-	default: // Wall
+	case world.Rubble:
+		return mapCell{r: ",", st: msWall}
+	default: // Wall, Pillar
 		return mapCell{r: "#", st: msWall}
 	}
 }
