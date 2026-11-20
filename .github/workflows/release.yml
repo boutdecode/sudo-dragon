@@ -35,7 +35,6 @@ jobs:
           - {goos: linux,   goarch: arm64}
           - {goos: darwin,  goarch: amd64}
           - {goos: darwin,  goarch: arm64}
-          - {goos: windows, goarch: amd64}
     env:
       CGO_ENABLED: "0"
       GOOS: ${{ matrix.goos }}
@@ -49,16 +48,15 @@ jobs:
         env:
           LDFLAGS: -s -w -X github.com/kevin/ascii-adventure/internal/version.Version=${{ github.ref_name }}
         run: |
-          ext=""; [ "$GOOS" = windows ] && ext=".exe"
           name="sudo-dragon_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
           mkdir -p "dist/$name"
-          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon-server$ext" ./cmd/server
-          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon$ext" ./cmd/client
-          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon-bot$ext" ./cmd/bot
-          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon-worldview$ext" ./cmd/worldview
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon-server" ./cmd/server
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon" ./cmd/client
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon-bot" ./cmd/bot
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/$name/sudo-dragon-worldview" ./cmd/worldview
           cp README.md FEATURES.md "dist/$name/"
           cd dist
-          if [ "$GOOS" = windows ]; then zip -qr "$name.zip" "$name"; else tar -czf "$name.tar.gz" "$name"; fi
+          tar -czf "$name.tar.gz" "$name"
           rm -rf "$name"
       - name: Smoke test (--version)
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'

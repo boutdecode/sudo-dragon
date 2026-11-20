@@ -239,7 +239,7 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 - **TLS** (`wss://`) via `-tls-cert` / `-tls-key`; on `ws://`, the password travels in clear.
 - **Monitoring**: `/healthz`, `/stats` (JSON), `-pprof`. Administration: `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset`.
 - **Version**: all four binaries accept `-version` (`--version`) and print their version. Release builds carry the git tag (`make build VERSION=…`); a plain build prints `dev` or the VCS revision.
-- **Releases**: pushing a `v*.*.*` tag runs the CI, then publishes archives (linux/darwin amd64+arm64, windows amd64) with `checksums.txt` on GitHub; the tag must be on `main`; a tag containing `-` is a pre-release.
+- **Releases**: pushing a `v*.*.*` tag runs the CI, then publishes archives (linux/darwin amd64+arm64) with `checksums.txt` on GitHub; the tag must be on `main`; a tag containing `-` is a pre-release.
 - **Load test**: `make load N=…` and `cmd/bot`.
 
 ## Internationalisation (`internal/i18n/`)
