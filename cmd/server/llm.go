@@ -14,6 +14,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/npcai"
 	"github.com/kevin/ascii-adventure/internal/store"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 // apiKeyEnv is the environment variable that carries the API key. The key is
@@ -32,6 +33,7 @@ type llmOptions struct {
 	BaseURL         string // for a fake server in development; empty = official API
 	DailyTokens     int
 	Workers         int
+	WorldLore       *worldlore.Canon // shared canon of the NPCs (nil = none)
 }
 
 // setupTalker builds the NPC dialogue service, or returns nil if it is disabled.
@@ -83,6 +85,7 @@ func setupTalker(ctx context.Context, o llmOptions, st *store.Store, w *world.Wo
 		npcai.WithWares(st),
 		npcai.WithLogger(log),
 		npcai.WithProvider("Mistral AI"),
+		npcai.WithWorldLore(o.WorldLore),
 		npcai.WithPlaceNames(func(l i18n.Lang, rp world.RegionPos) string {
 			if s := w.StructureOfRegion(rp); s != nil {
 				return s.NameIn(l)

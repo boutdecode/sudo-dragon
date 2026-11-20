@@ -15,6 +15,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 // Speaker is the player who speaks, with the facts established by the server about them.
@@ -58,6 +59,10 @@ type Request struct {
 	// Landmarks: the surrounding places this NPC knows (village chief, mayor), established by the
 	// server and already located. Empty for other NPCs.
 	Landmarks []Landmark
+
+	// WorldLore is the world's canon, shared by all NPCs. The service fills it in
+	// (see WithWorldLore); callers leave it empty.
+	WorldLore worldlore.Text
 
 	// Residents: the place's inhabitants a guard knows (job, direction and distance in steps from them),
 	// established by the server. Empty for other NPCs.

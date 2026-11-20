@@ -3,13 +3,20 @@ package npcai
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/kevin/ascii-adventure/internal/gear"
 	"github.com/kevin/ascii-adventure/internal/i18n"
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 func smithReq() StockRequest {
@@ -198,5 +205,71 @@ func TestStaleStockIsRegeneratedButStillServedWhenTheModelIsDown(t *testing.T) {
 	}
 	if rep2 := r.stock(smithReq()); !rep2.FromStore || rep2.Wares.Version != StockVersion {
 		t.Fatalf("%+v", rep2)
+	}
+}
+
+func TestStockPromptWorldLore(t *testing.T) {
+	if sys := BuildStockMessages(smithReq())[0].Content; strings.Contains(sys, "SAVOIRS COMMUNS") || strings.Contains(sys, "savoirs communs du monde") {
+		t.Error("no canon, no block")
+	}
+	req := smithReq()
+	req.WorldLore = worldlore.Text{Body: "L'acier de Karak ne rouille pas.", Lang: i18n.FR}
+	sys := BuildStockMessages(req)[0].Content
+	for _, want := range []string{"SAVOIRS COMMUNS DU MONDE", "L'acier de Karak ne rouille pas.", "savoirs communs du monde (peuples", `"specialty"`} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("stock prompt lacks %q", want)
+		}
+	}
+	req.Lang = i18n.EN
+	if sys := BuildStockMessages(req)[0].Content; !strings.Contains(sys, "COMMON KNOWLEDGE OF THE WORLD") || !strings.Contains(sys, "always reply in English") {
+		t.Errorf("english prompt with a french canon:\n%s", sys)
+	}
+}
+
+func TestServiceGivesWorldLoreToDialoguesAndStock(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "world-lore.fr.md"), []byte("# Monde\nLe Roi-Dragon dort sous la montagne."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	canon, err := worldlore.Load(dir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRig(t, Config{})
+	r.svc.canon = canon
+	r.svc.wares = r.be.Store
+	var mu sync.Mutex
+	var systems []string
+	r.fake.ChatFunc = func(_ context.Context, req llm.Request) (llm.Response, error) {
+		mu.Lock()
+		systems = append(systems, req.Messages[0].Content)
+		mu.Unlock()
+		if strings.Contains(req.Messages[0].Content, "specialty") {
+			return stockJSON(item("Dague", 1), item("Épée courte", 2), item("Épée longue", 3), item("Rapière", 2)), nil
+		}
+		return reply("Bonjour.", nil, ""), nil
+	}
+	r.svc.Ask(r.req("brenna", "Salut"), func(Reply) {})
+	r.stock(smithReq())
+	// Ask is asynchronous: wait for both requests to have reached the model.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		n := len(systems)
+		mu.Unlock()
+		if n >= 2 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(systems) < 2 {
+		t.Fatalf("expected a dialogue and a stock request, got %d", len(systems))
+	}
+	for i, sys := range systems {
+		if !strings.Contains(sys, "Le Roi-Dragon dort sous la montagne.") {
+			t.Errorf("request %d lacks the world lore", i)
+		}
 	}
 }

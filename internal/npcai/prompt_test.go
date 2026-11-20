@@ -11,6 +11,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/llm"
 	"github.com/kevin/ascii-adventure/internal/lore"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 func testNPC() world.NPC {
@@ -450,5 +451,34 @@ func TestPromptHatefulGiverRefusesWork(t *testing.T) {
 	req.Lang = i18n.EN
 	if sys := BuildMessages(req, nil, "", 12, nil)[0].Content; !strings.Contains(sys, "you hate Halflings (hatred 70 %)") || !strings.Contains(sys, "Your people: the Humans.") {
 		t.Fatalf("English prompt:\n%s", sys)
+	}
+}
+
+func TestWorldLoreBlockInDialoguePrompt(t *testing.T) {
+	none := BuildMessages(testReq("x"), nil, "", 12, nil)[0].Content
+	if strings.Contains(none, "SAVOIRS COMMUNS") {
+		t.Error("no canon, no block")
+	}
+
+	req := testReq("x")
+	req.Region = "Forêts d'Aube"
+	req.WorldLore = worldlore.Text{Body: "Les Nains de Karak vénèrent la forge.", Lang: i18n.FR}
+	sys := BuildMessages(req, nil, "", 12, nil)[0].Content
+	if !strings.Contains(sys, "SAVOIRS COMMUNS DU MONDE") || !strings.Contains(sys, "Les Nains de Karak vénèrent la forge.") {
+		t.Errorf("block missing:\n%s", sys)
+	}
+	if strings.Contains(sys, "dans une autre langue") {
+		t.Error("same language: no translation note")
+	}
+	if r, l := strings.Index(sys, "Forêts d'Aube"), strings.Index(sys, "SAVOIRS COMMUNS"); r < 0 || l < r {
+		t.Error("the block comes after the region")
+	}
+	dataBlock(t, sys) // the data block is still found and valid
+
+	req.Lang = i18n.EN
+	req.WorldLore = worldlore.Text{Body: "Les Nains de Karak vénèrent la forge.", Lang: i18n.FR}
+	sys = BuildMessages(req, nil, "", 12, nil)[0].Content
+	if !strings.Contains(sys, "COMMON KNOWLEDGE OF THE WORLD") || !strings.Contains(sys, "always reply in English") {
+		t.Errorf("a fallback-language canon needs the block in the player's language and a note:\n%s", sys)
 	}
 }

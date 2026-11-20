@@ -174,6 +174,10 @@ Inventory of the game's features (formerly "ASCII Adventure"), established from 
   - Input moderation, daily token budget, privacy notice with per-account consent.
   - Without a key: feature absent, ambient phrase from villagers.
 - **Memory and lore** (`lore/`): player presentation card (8 places at most), rumors (range 1 region: the place and adjacent regions, 1 h delay towards the neighbouring region, deaths not repeated outside the place, forgotten after 14 days), private summary per NPC (the only sign that an NPC has already spoken to the player: an NPC never met knows them only through rumors, does not greet them as a familiar and treats them as a stranger), verified facts (level, bosses, deaths, quests turned in).
+- **World lore** (`internal/worldlore/`): knowledge shared by **all NPCs**, written by the operator in Markdown, one file per language, `world-lore.fr.md` and `world-lore.en.md`, in the directory given by `-world-lore DIR` (default `.`; optional, git-ignored). Templates with 13 sections (summary, tone, origins, history, peoples, magic, beliefs, society, economy, dangers, geography, customs, legends): `docs/world-lore.fr.template.md`, `docs/world-lore.en.template.md`.
+  - The text of the player's language is added to the free-dialogue prompt (after the region) and to the forge stock prompt, where item names and descriptions may allude to it (statistics stay capped by the game). If that language's file is missing, the other one is used and the model is told to answer in the player's language.
+  - HTML comments (the templates' guidance) are removed, headings with no text under them are dropped (an unfilled template adds nothing), and the text is capped at 8000 characters per language (it is paid in tokens on every reply). Absent files are fine; an unusable file (invalid UTF-8, unclosed comment) refuses startup.
+  - **Hot reload**: `SIGHUP` rereads the files; an invalid file keeps the previous version and logs a warning. Not available on Windows (restart instead). Stocks already generated and saved do not change: `-wares-reset` regenerates them.
 - **Quests** (`internal/quest/`, `client/quests.go`):
   - The model proposes, the server decides: verifiable objectives, capped rewards, sanitized texts. Accept/Decline with `A`/`R`.
   - Objectives: kill 3 to 12 monsters of a species, enter a neighbouring place, defeat the warlord (level 10 minimum), **defeat the master of a secret dungeon**.
@@ -248,7 +252,7 @@ Burst of 5 messages then 1 per second. `PgUp` / `PgDn` scroll the history, `Ctrl
 - **Accounts**: nickname 3–16 characters, password 8–72 bytes (bcrypt), identical error message for unknown nickname and wrong password.
 - **Per-IP quotas**: 8 login failures per minute, 10 account creations per hour; limits on chat and NPC replies.
 - **TLS** (`wss://`) via `-tls-cert` / `-tls-key`; on `ws://`, the password travels in clear.
-- **Monitoring**: `/healthz`, `/stats` (JSON), `-pprof`. Administration: `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset`.
+- **Monitoring**: `/healthz`, `/stats` (JSON), `-pprof`. Administration: `-lore-list`, `-lore-purge`, `-wares-list`, `-wares-reset`. `-world-lore DIR` (world lore files, reloaded by `SIGHUP`).
 - **Version**: all four binaries accept `-version` (`--version`) and print their version. Release builds carry the git tag (`make build VERSION=…`); a plain build prints `dev` or the VCS revision.
 - **Releases**: pushing a `v*.*.*` tag runs the CI, then publishes archives (linux/darwin amd64+arm64) with `checksums.txt` on GitHub; the tag must be on `main`; a tag containing `-` is a pre-release.
 - **Load test**: `make load N=…` and `cmd/bot`.

@@ -14,6 +14,7 @@ import (
 	"github.com/kevin/ascii-adventure/internal/quest"
 	"github.com/kevin/ascii-adventure/internal/textsafe"
 	"github.com/kevin/ascii-adventure/internal/world"
+	"github.com/kevin/ascii-adventure/internal/worldlore"
 )
 
 // PromptVersion identifies the prompt version (for logs and experiments).
@@ -207,6 +208,7 @@ func BuildMessages(req Request, heard []lore.Heard, memory string, maxHistory in
 		b.WriteString(i18n.T(l, "prompt.region", req.Region))
 		b.WriteString("\n")
 	}
+	writeWorldLore(&b, l, req.WorldLore)
 	b.WriteString("\n")
 	if n.Kind == world.NPCVillager {
 		b.WriteString(i18n.T(l, "prompt.villager_rule"))
@@ -392,4 +394,19 @@ func assistantJSON(reply string) string {
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(map[string]any{"reply": reply, "intro": nil, "memory": ""})
 	return strings.TrimSpace(buf.String())
+}
+
+// writeWorldLore adds the world's canon after the NPC's identity. If the canon is
+// written in another language than the reply's, a note tells the model to translate.
+func writeWorldLore(b *strings.Builder, l i18n.Lang, wl worldlore.Text) {
+	if wl.Empty() {
+		return
+	}
+	b.WriteString("\n")
+	b.WriteString(i18n.T(l, "prompt.world_lore", wl.Body))
+	b.WriteString("\n")
+	if wl.Lang != "" && wl.Lang != l {
+		b.WriteString(i18n.T(l, "prompt.world_lore_foreign"))
+		b.WriteString("\n")
+	}
 }
