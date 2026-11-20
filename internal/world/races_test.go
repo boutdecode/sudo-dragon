@@ -23,6 +23,7 @@ func placesByKind(w *World, r int) map[Kind][]*Structure {
 func allNPCs(s *Structure) []NPC { return append(append([]NPC(nil), s.NPCs...), s.Guards...) }
 
 func TestNPCRacesAreDeterministicAndHatredBounded(t *testing.T) {
+	t.Parallel()
 	a, b := New(7), New(7)
 	for kind, list := range placesByKind(a, 6) {
 		for _, s := range list {
@@ -53,6 +54,7 @@ func TestNPCRacesAreDeterministicAndHatredBounded(t *testing.T) {
 
 // Villages are almost single-race, towns mixed; villages hate more than towns.
 func TestVillagesAreSingleRaceAndTownsMixed(t *testing.T) {
+	t.Parallel()
 	w := New(3)
 	places := placesByKind(w, 12)
 	if len(places[KindVillage]) < 10 || len(places[KindTown]) < 5 {
@@ -104,6 +106,7 @@ func TestVillagesAreSingleRaceAndTownsMixed(t *testing.T) {
 }
 
 func TestHatredOfNPCWithoutRace(t *testing.T) {
+	t.Parallel()
 	n := NPC{Hatred: [hero.NumRaces]int{90, 90, 90, 90}}
 	if n.HatredOf(hero.Elf) != 0 || n.RaceIn(i18n.EN) != "" {
 		t.Fatal("an NPC without a race hates no one")

@@ -168,13 +168,9 @@ At the top of the map, the UI shows `territory · Lvl N · place · terrain (x, 
 town or fortress. A line is added to the log when you enter a new territory or place. NPCs know the territory of their place.
 `worldview -territories -step 100` draws the territories as letters with their legend.
 
-**Generator versions.** A database keeps the terrain version it was created with: an old world never changes its landscape.
-v1 is a simple terrain without rivers; **v2** adds continents, rivers, mountain ranges and biomes; **v3** (new worlds) adds resource nodes without touching the v2 terrain.
-`worldview -gen N` draws a given version.
-
 ### Villages, towns and fortresses
 
-Each region hosts **at most one place** (about 70% have one with the v2 generator),
+Each region hosts **at most one place** (about 70% have one),
 chosen according to terrain: villages on plains or in forests, towns on plains and preferably near water, fortresses on hills.
 A village is always a few dozen tiles from the starting point. Places are **computed identically by the server and the client**
 from the seed: nothing is sent or saved. Two neighbouring places are linked by a **road**, which crosses rivers over a bridge.
@@ -245,7 +241,7 @@ The detail of effects, delays and values is in [FEATURES.md](FEATURES.md).
 
 ### Resources and gathering
 
-In v3 worlds, **resource nodes** dot the terrain: trees, ore veins, plants (on plains) and fish shoals (in rivers). They keep the glyph of the terrain they sit on; only their colour (in bold) tells the resource.
+**Resource nodes** dot the terrain: trees, ore veins, plants (on plains) and fish shoals (in rivers). They keep the glyph of the terrain they sit on; only their colour (in bold) tells the resource.
 Press **`G`**, on the node's tile or next to it, to attempt a harvest: a success roll (40% at profession level 1, up to 94%), then the node is exhausted for everyone for 10 minutes.
 Four **professions** (lumberjack, miner, herbalist, fisher, level 1 to 10) progress with every success and enlarge the category's bag. Resources, 18 varieties plus fish, depend on the territory's climate and the region level;
 they go into a **materials bag** (listed on the bag screen `I`) and aren't used yet: crafting comes next.
@@ -467,7 +463,7 @@ make load N=250   # load test
 The tests cover combat rules, balance, world generation, the protocol (the fast encoder is compared byte for byte
 with `encoding/json`), authentication, quotas, persistence (including immediate reconnection) and the UI.
 
-`go run ./cmd/worldview -seed 42 -x 0 -y 0 -w 120 -h 40` shows an area of the world without starting the game (`-gen`, `-raw -zoom N`, `-sites`, `-territories` for other views).
+`go run ./cmd/worldview -seed 42 -x 0 -y 0 -w 120 -h 40` shows an area of the world without starting the game (`-raw -zoom N`, `-sites`, `-territories` for other views).
 
 The list of shipped features is in [FEATURES.md](FEATURES.md); it is updated with every gameplay change.
 
@@ -493,7 +489,7 @@ a few seconds, some wait several seconds; raising `-login-workers` speeds up log
   Delta encoding (additions, removals, moves) and a spatial index of players would be the next optimisation.
 - **No skills or spells to learn**: magic is an attack style tied to the weapon. Gathered resources aren't used yet (no crafting).
 - **The world can't be modified**: it always regenerates identically from the seed, so no chunk or place is persisted.
-- **Existing worlds**: the generator version is fixed when the database is created; however, places or dungeons added by a code change may appear where there was only terrain.
+- **Existing worlds**: the seed is fixed when the database is created; however, places or dungeons added by a code change may appear where there was only terrain.
   A character saved in what has become a wall is moved to the nearest free tile on login.
 - **In-memory state only**: fortress garrisons, guards, dungeons (defeated monsters, opened chests), lairs, points-of-interest cooldowns and exhausted resource nodes are not saved; a server restart puts everything back, including the warlord and the liches.
 - **Dungeons are shared by everyone** (no private per-group instance) and a long-running server keeps unfinished ones in memory.

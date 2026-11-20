@@ -3,7 +3,8 @@ package world
 import "testing"
 
 func TestDeterministic(t *testing.T) {
-	a, b := newTestWorld(42), newTestWorld(42)
+	t.Parallel()
+	a, b := New(42), New(42)
 	for _, cp := range []ChunkPos{{0, 0}, {-3, 5}, {100, -100}} {
 		if *a.Chunk(cp) != *b.Chunk(cp) {
 			t.Fatalf("chunk %v differs between two worlds with the same seed", cp)
@@ -12,12 +13,14 @@ func TestDeterministic(t *testing.T) {
 }
 
 func TestSeedsDiffer(t *testing.T) {
-	if *newTestWorld(1).Chunk(ChunkPos{0, 0}) == *newTestWorld(2).Chunk(ChunkPos{0, 0}) {
+	t.Parallel()
+	if *New(1).Chunk(ChunkPos{0, 0}) == *New(2).Chunk(ChunkPos{0, 0}) {
 		t.Fatal("two different seeds give the same chunk")
 	}
 }
 
 func TestChunkOfNegative(t *testing.T) {
+	t.Parallel()
 	cases := map[Pos]ChunkPos{
 		{0, 0}:                   {0, 0},
 		{ChunkSize - 1, 0}:       {0, 0},
@@ -34,7 +37,8 @@ func TestChunkOfNegative(t *testing.T) {
 }
 
 func TestAtMatchesTileAt(t *testing.T) {
-	w := newTestWorld(7)
+	t.Parallel()
+	w := New(7)
 	for _, p := range []Pos{{0, 0}, {-5, 17}, {-40, -33}, {123, 456}} {
 		if w.At(p.X, p.Y) != w.TileAt(p.X, p.Y) {
 			t.Errorf("At/TileAt diverge at %v", p)
@@ -43,7 +47,8 @@ func TestAtMatchesTileAt(t *testing.T) {
 }
 
 func TestSpawnWalkable(t *testing.T) {
-	w := newTestWorld(99)
+	t.Parallel()
+	w := New(99)
 	p := w.FindSpawn()
 	if !w.At(p.X, p.Y).Walkable() {
 		t.Fatalf("spawn %v not walkable", p)
@@ -51,6 +56,7 @@ func TestSpawnWalkable(t *testing.T) {
 }
 
 func TestGlyphsAreDistinctPrintableASCII(t *testing.T) {
+	t.Parallel()
 	seen := map[rune]Tile{}
 	for tile := DeepWater; tile < NumTiles; tile++ {
 		g := tile.Glyph()

@@ -51,7 +51,7 @@ type Territory struct {
 	Site  Pos
 	Theme terrainTheme
 
-	// climate is the visual climate (see climate.go): drawn from the seed in v1, from the seed cell's climate in v2.
+	// climate is the visual climate (see climate.go): derived from the mean temperature and humidity of the district.
 	climate Climate
 
 	// Family of place names of the district: familySize starts and ends of placeStart/placeEnd.
@@ -131,7 +131,7 @@ func (w *World) TerritoryAt(x, y int) *Territory {
 func (w *World) buildTerritory(id TerritoryID) *Territory {
 	t := &Territory{ID: id, Site: siteOf(w.Seed, id.X, id.Y)}
 	t.climate = climateOf(w.Seed, id)
-	var sumTemp, sumWet float64 // real mean climate of the land points (v2)
+	var sumTemp, sumWet float64 // real mean climate of the land points
 	var nLand int
 	t.starts, t.ends = familyOf(w.Seed, id)
 	rng := territoryRNG(w.Seed, id, 20)
@@ -146,11 +146,9 @@ func (w *World) buildTerritory(id TerritoryID) *Territory {
 			if territoryIDAt(w.Seed, x, y) != id {
 				continue
 			}
-			if w.GenVersion >= GenV2 {
-				if e := w.elev2(x, y); e > 0.04 {
-					tp, wt := w.climate2(x, y, e)
-					sumTemp, sumWet, nLand = sumTemp+tp, sumWet+wt, nLand+1
-				}
+			if e := w.elev2(x, y); e > 0.04 {
+				tp, wt := w.climate2(x, y, e)
+				sumTemp, sumWet, nLand = sumTemp+tp, sumWet+wt, nLand+1
 			}
 			switch w.terrainAt(x, y) {
 			case DeepWater:

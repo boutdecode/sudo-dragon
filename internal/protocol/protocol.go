@@ -545,8 +545,6 @@ type Welcome struct {
 	X    int    `json:"x"`
 	Y    int    `json:"y"`
 	Seed int64  `json:"seed"`
-	// Gen is the terrain generator version (absent = 1, old servers).
-	Gen int `json:"gen,omitempty"`
 }
 
 // Error reports a refusal or an error to the client.

@@ -51,7 +51,7 @@ var speciesList = []species{
 	{Kind: "goblin", Habitat: world.Hills, MoveEvery: 4, Aggro: 8, HP: 22, Size: hero.Medium, Hit: 3, Dmg: dice.D(1, 8, 0), XP: 15},
 	{Kind: "yeti", Habitat: world.Snow, MoveEvery: 4, Aggro: 7, HP: 34, Size: hero.Large, Hit: 5, Dmg: dice.D(2, 6, 0), Reduction: dice.D(1, 4, 0), XP: 30},
 
-	// Biomes of generator v2 (see world/terrain2.go).
+	// Biomes (see world/terrain2.go).
 	{Kind: "scorpion", Habitat: world.Desert, MoveEvery: 4, Aggro: 4, HP: 14, Size: hero.Small, Hit: 3, Dmg: dice.D(1, 6, 0), Reduction: dice.D(1, 4, 0), XP: 12},
 	{Kind: "panther", Habitat: world.Jungle, MoveEvery: 3, Aggro: 9, HP: 24, Size: hero.Medium, DexMod: 2, Hit: 4, Dmg: dice.D(1, 8, 1), XP: 20},
 	{Kind: "toad", Habitat: world.Swamp, MoveEvery: 5, Aggro: 4, HP: 14, Size: hero.Small, Hit: 2, Dmg: dice.D(1, 6, 0), XP: 8},

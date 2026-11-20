@@ -176,15 +176,8 @@ type Chunk struct {
 
 // World generates and caches chunks from a seed.
 type World struct {
-	Seed int64
-	// GenVersion is the version of the terrain generator (see GenLatest). An already
-	// played world keeps its own: changing the terrain of an existing database would make the saved
-	// positions inconsistent.
-	GenVersion int
-
-	elevation opensimplex.Noise
-	moisture  opensimplex.Noise
-	noise2    noise2 // noises of generator v2
+	Seed   int64
+	noise2 noise2 // noises of the terrain generator (see terrain2.go)
 
 	mu    sync.Mutex
 	cache map[ChunkPos]*Chunk
@@ -213,35 +206,13 @@ type World struct {
 	roads map[roadKey]*roadLink
 }
 
-// Terrain generator versions.
-const (
-	// GenV1 is the original generator (elevation + humidity, without continents).
-	GenV1 = 1
-	// GenV2 adds continents, oceans, islands, mountain ranges, rivers and biomes (see terrain2.go).
-	GenV2 = 2
-	// GenV3 sows resource nodes (trees, veins, plants) on the v2 terrain (see resources.go).
-	GenV3 = 3
-	// GenLatest is the version used for new worlds.
-	GenLatest = GenV3
-)
-
-// New creates a deterministic world for the given seed, with the original generator (v1).
-func New(seed int64) *World { return NewVersion(seed, GenV1) }
-
-// NewVersion creates a deterministic world for the given seed and generator version.
-// An unknown or zero version falls back to v1 (old clients and databases without a version).
-func NewVersion(seed int64, gen int) *World {
-	if gen < GenV1 || gen > GenV3 {
-		gen = GenV1
-	}
+// New creates a deterministic world for the given seed.
+func New(seed int64) *World {
 	return &World{
-		Seed:       seed,
-		GenVersion: gen,
-		noise2:     newNoise2(seed),
-		elevation:  opensimplex.New(seed),
-		moisture:   opensimplex.New(seed ^ 0x5DEECE66D),
-		cache:      make(map[ChunkPos]*Chunk),
-		structs:    make(map[RegionPos]*Structure),
+		Seed:    seed,
+		noise2:  newNoise2(seed),
+		cache:   make(map[ChunkPos]*Chunk),
+		structs: make(map[RegionPos]*Structure),
 
 		dungeons:    make(map[RegionPos]*Dungeon),
 		pois:        make(map[RegionPos][]*POI),
@@ -284,41 +255,11 @@ func (w *World) TileAt(x, y int) Tile {
 // terrainAt computes the raw terrain, without structures. Structure placement
 // relies on it (never on TileAt, to avoid any circularity).
 func (w *World) terrainAt(x, y int) Tile {
-	if w.GenVersion >= GenV2 { // v3 shares the terrain of v2
-		return w.terrainAtV2(x, y)
-	}
-	return w.terrainAtV1(x, y)
+	return w.terrainAtV2(x, y)
 }
 
 // Terrain is the raw terrain at (x, y), without structure, POI or road. For the visualisation tools.
 func (w *World) Terrain(x, y int) Tile { return w.terrainAt(x, y) }
-
-// terrainAtV1 is the original generator, frozen: do not modify it (layout_golden_test).
-func (w *World) terrainAtV1(x, y int) Tile {
-	const scale = 0.02
-	fx, fy := float64(x)*scale, float64(y)*scale
-	e := fbm(w.elevation, fx, fy)
-	m := fbm(w.moisture, fx+1000, fy+1000)
-
-	switch {
-	case e < -0.35:
-		return DeepWater
-	case e < -0.15:
-		return Water
-	case e < -0.08:
-		return Sand
-	case e < 0.35:
-		if m > 0.05 {
-			return Forest
-		}
-		return Plain
-	case e < 0.5:
-		return Hills
-	case e < 0.65:
-		return Mountain
-	}
-	return Snow
-}
 
 // floorDiv is integer division rounded towards -infinity (correct for negatives).
 func floorDiv(a, b int) int {

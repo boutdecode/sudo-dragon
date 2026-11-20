@@ -445,7 +445,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.Cmd) {
 	m.conn = conn
 	m.self = welcome
-	m.world = world.NewVersion(welcome.Seed, welcome.Gen)
+	m.world = world.New(welcome.Seed)
 	m.zone, m.dmap, m.dseen, m.dungeons = protocol.Zone{}, nil, nil, nil
 	m.state = statePlaying
 	m.errMsg = ""
@@ -458,7 +458,7 @@ func (m Model) enterGame(conn *Conn, welcome protocol.Welcome) (tea.Model, tea.C
 	m.quests, m.questBook, m.questSel, m.questConfirm = protocol.Quests{}, false, 0, false
 	m.locSeen, m.locInPlace = false, false
 	m.bag, m.bagSel, m.sheet = protocol.Bag{}, 0, false
-	m.worldMap, m.wmap = false, loadMapState(welcome.Seed, m.world.GenVersion)
+	m.worldMap, m.wmap = false, loadMapState(welcome.Seed)
 	m.stopNaming()
 	m.hasPing = false
 	m.walkGen++

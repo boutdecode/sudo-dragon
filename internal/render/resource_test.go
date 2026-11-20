@@ -27,7 +27,7 @@ func TestEveryResourceHasDistinctColour(t *testing.T) {
 
 // A node keeps the glyph of its terrain: neither a, nor 0, nor h.
 func TestNodeKeepsTerrainGlyph(t *testing.T) {
-	w := world.NewVersion(1, world.GenV3)
+	w := world.New(1)
 	for y := -150; y < 150; y++ {
 		for x := -150; x < 150; x++ {
 			if w.At(x, y) != world.TreeNode {
@@ -47,7 +47,7 @@ func TestNodeKeepsTerrainGlyph(t *testing.T) {
 
 // A fish shoal keeps the glyph of the river that carries it.
 func TestFishNodeKeepsRiverGlyph(t *testing.T) {
-	w := world.NewVersion(1, world.GenV3)
+	w := world.New(1)
 	for y := -300; y < 300; y++ {
 		for x := -300; x < 300; x++ {
 			if w.At(x, y) != world.FishNode {

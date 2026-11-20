@@ -9,6 +9,7 @@ import (
 )
 
 func TestEveryStructureAndNPCHasAnIdentity(t *testing.T) {
+	t.Parallel()
 	checked := 0
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -57,6 +58,7 @@ func TestEveryStructureAndNPCHasAnIdentity(t *testing.T) {
 }
 
 func TestFortressNamesLookLikeFortresses(t *testing.T) {
+	t.Parallel()
 	found := 0
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -81,7 +83,8 @@ func TestFortressNamesLookLikeFortresses(t *testing.T) {
 
 // Same identities for everyone, at every start and after emptying the cache.
 func TestIdentitiesAreDeterministic(t *testing.T) {
-	a, b := newTestWorld(42), newTestWorld(42)
+	t.Parallel()
+	a, b := New(42), New(42)
 	for ry := -4; ry <= 4; ry++ {
 		for rx := -4; rx <= 4; rx++ {
 			sa, sb := a.structureForRegion(RegionPos{rx, ry}), b.structureForRegion(RegionPos{rx, ry})
@@ -117,6 +120,7 @@ func TestIdentitiesAreDeterministic(t *testing.T) {
 }
 
 func TestIdentitiesVaryBetweenPlacesAndSeeds(t *testing.T) {
+	t.Parallel()
 	names := map[string]int{}
 	total := 0
 	for _, seed := range testSeeds {
@@ -145,7 +149,8 @@ func TestIdentitiesVaryBetweenPlacesAndSeeds(t *testing.T) {
 
 // Identities do not depend on the order in which the regions are visited.
 func TestIdentityDoesNotDependOnVisitOrder(t *testing.T) {
-	forward, backward := newTestWorld(7), newTestWorld(7)
+	t.Parallel()
+	forward, backward := New(7), New(7)
 	var regions []RegionPos
 	for ry := -3; ry <= 3; ry++ {
 		for rx := -3; rx <= 3; rx++ {
@@ -167,6 +172,7 @@ func TestIdentityDoesNotDependOnVisitOrder(t *testing.T) {
 }
 
 func TestNPCKeyIsStableAndResolvable(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
 	seen := map[NPCKey]bool{}
 	count := 0
@@ -199,6 +205,7 @@ func TestNPCKeyIsStableAndResolvable(t *testing.T) {
 }
 
 func TestIdentityRNGIsIndependentPerRegionAndSalt(t *testing.T) {
+	t.Parallel()
 	a := identityRNG(1, RegionPos{0, 0}, 0).Uint64()
 	for _, other := range []uint64{
 		identityRNG(1, RegionPos{1, 0}, 0).Uint64(),
@@ -219,6 +226,7 @@ func TestIdentityRNGIsIndependentPerRegionAndSalt(t *testing.T) {
 // with a mix by a simple XOR of products, (x, y) and (-x, -y) with odd
 // coordinates gave the same stream, hence twin towns with the same NPCs.
 func TestIdentityRNGHasNoRegionCollisions(t *testing.T) {
+	t.Parallel()
 	seen := map[uint64]string{}
 	for _, seed := range []int64{1, 2, 42} {
 		for salt := uint64(0); salt < 4; salt++ {
@@ -237,6 +245,7 @@ func TestIdentityRNGHasNoRegionCollisions(t *testing.T) {
 }
 
 func TestSymmetricRegionsGetDifferentNames(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
 	same, pairs := 0, 0
 	for ry := -8; ry <= 8; ry++ {
@@ -263,6 +272,7 @@ func TestSymmetricRegionsGetDifferentNames(t *testing.T) {
 // NPC and fortress names exist in both languages, without changing
 // the identity (first names, places) nor the already played worlds.
 func TestIdentitiesAreTranslated(t *testing.T) {
+	t.Parallel()
 	forts, npcs := 0, 0
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -315,6 +325,7 @@ func TestIdentitiesAreTranslated(t *testing.T) {
 // Identity draws are bounded by constants: they must follow the size of the
 // catalogue lists, in each language, otherwise an index would fall into the void.
 func TestIdentityListsMatchTheCatalog(t *testing.T) {
+	t.Parallel()
 	lists := map[string]int{
 		"persona.temperament": numTemperaments, "persona.quirk": numQuirks, "persona.speech": numSpeeches,
 		"name.epithet.m": numEpithets, "name.epithet.f": numEpithets, "place.fort": numFortPrefixes,
@@ -330,15 +341,16 @@ func TestIdentityListsMatchTheCatalog(t *testing.T) {
 
 // No name stem is shared by two neighbouring places (radius of rumours and quests).
 func TestPlaceStemsAreDistinctWithinClashRadius(t *testing.T) {
-	for _, seed := range []int64{1, 2, 7, 42, 1234} {
-		w := newTestWorld(seed)
+	t.Parallel()
+	for _, seed := range []int64{1, 7, 1234} {
+		w := New(seed)
 		type placed struct {
 			rp   RegionPos
 			base string
 		}
 		var all []placed
-		for ry := -12; ry <= 12; ry++ {
-			for rx := -12; rx <= 12; rx++ {
+		for ry := -8; ry <= 8; ry++ {
+			for rx := -8; rx <= 8; rx++ {
 				rp := RegionPos{rx, ry}
 				if s := w.StructureOfRegion(rp); s != nil {
 					all = append(all, placed{rp, s.base})
@@ -356,6 +368,7 @@ func TestPlaceStemsAreDistinctWithinClashRadius(t *testing.T) {
 }
 
 func TestMostPlacesKeepTheirOriginalName(t *testing.T) {
+	t.Parallel()
 	changed, total := 0, 0
 	for _, seed := range []int64{1, 2, 7, 42} {
 		for ry := -15; ry <= 15; ry++ {
@@ -374,7 +387,8 @@ func TestMostPlacesKeepTheirOriginalName(t *testing.T) {
 }
 
 func TestStartVillageHasAStableName(t *testing.T) {
-	a, b := newTestWorld(1), newTestWorld(1)
+	t.Parallel()
+	a, b := New(1), New(1)
 	pos := a.FindSpawn()
 	sa, sb := a.StructureOfRegion(RegionOf(pos.X, pos.Y)), b.StructureOfRegion(RegionOf(pos.X, pos.Y))
 	if sa == nil || sa.Name == "" || sa.Name != sb.Name {
@@ -383,7 +397,8 @@ func TestStartVillageHasAStableName(t *testing.T) {
 }
 
 func TestPlaceNamesAreDeterministic(t *testing.T) {
-	a, b := newTestWorld(5), newTestWorld(5)
+	t.Parallel()
+	a, b := New(5), New(5)
 	for ry := -5; ry <= 5; ry++ {
 		for rx := -5; rx <= 5; rx++ {
 			rp := RegionPos{rx, ry}

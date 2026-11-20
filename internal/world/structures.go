@@ -405,7 +405,7 @@ func (w *World) generate(rp RegionPos, kind Kind, x0, y0 int, rng *rand.Rand) *S
 	origin := Pos{rp.X*RegionSize + x0, rp.Y*RegionSize + y0}
 	s := &Structure{Kind: kind, Region: rp, Origin: origin, W: c.w, H: c.h, tiles: c.t}
 	// Identities: separate streams, so as not to shift the draw of the plans.
-	s.Name, s.fort, s.base = placeName(kind, identityRNG(w.Seed, rp, 0), baseForGen(w.Seed, w.GenVersion, rp))
+	s.Name, s.fort, s.base = placeName(kind, identityRNG(w.Seed, rp, 0), baseFor(w.Seed, rp))
 	taken := map[string]bool{}
 	for i, n := range c.npcs {
 		// Two NPCs of the same place never bear the same name: we redraw with another salt.
@@ -534,8 +534,5 @@ func (w *World) NPCsIn(x0, y0, x1, y1 int) []NPC {
 // structureChance is the share of the regions that carry a place. The draw consumes the same number of values whatever
 // the threshold: in v1 it stays at 55 % (existing worlds do not move), v2 puts more.
 func (w *World) structureChance() float64 {
-	if w.GenVersion >= GenV2 {
-		return 0.7
-	}
-	return 0.55
+	return 0.7
 }

@@ -56,11 +56,10 @@ func roadCost(t Tile) int {
 	return 0
 }
 
-// roadCostOf is roadCost for this world. From v2 onwards, a road no longer crosses water (sea, lakes, ponds):
-// only rivers can be crossed, by a bridge (ports will come later). In v1, the existing roads
-// keep their bridge over shallow water.
+// roadCostOf is roadCost for this world. A road no longer crosses water (sea, lakes, ponds):
+// only rivers can be crossed, by a bridge (ports will come later).
 func (w *World) roadCostOf(t Tile) int {
-	if t == Water && w.GenVersion >= GenV2 {
+	if t == Water {
 		return 0
 	}
 	return roadCost(t)

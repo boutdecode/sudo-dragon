@@ -20,7 +20,8 @@ func dungeonsAround(w *World, n int) []*Dungeon {
 }
 
 func TestDungeonsExistAndAreDeterministic(t *testing.T) {
-	a, b := newTestWorld(42), newTestWorld(42)
+	t.Parallel()
+	a, b := New(42), New(42)
 	da, db := dungeonsAround(a, 8), dungeonsAround(b, 8)
 	if len(da) < 10 {
 		t.Fatalf("only %d dungeons in 289 regions", len(da))
@@ -37,7 +38,8 @@ func TestDungeonsExistAndAreDeterministic(t *testing.T) {
 }
 
 func TestDungeonEntrancesAreHiddenOnOpenGround(t *testing.T) {
-	w := newTestWorld(7)
+	t.Parallel()
+	w := New(7)
 	for _, d := range dungeonsAround(w, 6) {
 		if RegionOf(d.Entrance.X, d.Entrance.Y) != d.Region {
 			t.Errorf("%s: entrance outside its region", d.ID)
@@ -59,8 +61,9 @@ func TestDungeonEntrancesAreHiddenOnOpenGround(t *testing.T) {
 }
 
 func TestDungeonNamesAreUniqueNearby(t *testing.T) {
+	t.Parallel()
 	for _, seed := range []int64{1, 42} {
-		w := newTestWorld(seed)
+		w := New(seed)
 		all := dungeonsAround(w, 9)
 		for i, a := range all {
 			for _, b := range all[i+1:] {
@@ -77,12 +80,14 @@ func TestDungeonNamesAreUniqueNearby(t *testing.T) {
 }
 
 func TestDungeonTierGrowsWithDistance(t *testing.T) {
+	t.Parallel()
 	if dungeonTier(RegionPos{0, 0}) != 1 || dungeonTier(RegionPos{100, 0}) != dungeonMaxTier {
 		t.Errorf("tiers: %d, %d", dungeonTier(RegionPos{0, 0}), dungeonTier(RegionPos{100, 0}))
 	}
 }
 
 func TestDungeonMapIsConnectedAndPopulated(t *testing.T) {
+	t.Parallel()
 	for tier := 1; tier <= dungeonMaxTier; tier++ {
 		for seed := int64(1); seed <= 60; seed++ {
 			d := &Dungeon{ID: "t", Seed: seed * 7919, Tier: tier}
@@ -139,6 +144,7 @@ func TestDungeonMapIsConnectedAndPopulated(t *testing.T) {
 }
 
 func TestDungeonMapIsStable(t *testing.T) {
+	t.Parallel()
 	d := &Dungeon{Seed: 123456789, Tier: 3}
 	a, b := NewDungeonMap(d), NewDungeonMap(d)
 	for y := range a.H {
@@ -156,16 +162,18 @@ func TestDungeonMapIsStable(t *testing.T) {
 // Adding dungeons must not change the existing plans (see TestExistingLayoutsAreFrozen):
 // the existence of a dungeon consumes no draw from the places' stream.
 func TestDungeonsDoNotMoveStructures(t *testing.T) {
-	w := newTestWorld(42)
-	before := layoutFingerprint(42, testGen)
+	t.Parallel()
+	w := New(42)
+	before := layoutFingerprint(42)
 	dungeonsAround(w, 6)
-	if layoutFingerprint(42, testGen) != before {
+	if layoutFingerprint(42) != before {
 		t.Error("the dungeons changed the plans")
 	}
 }
 
 func TestDungeonsWithinFindsOnlyCloseEntrances(t *testing.T) {
-	w := newTestWorld(42)
+	t.Parallel()
+	w := New(42)
 	for _, d := range dungeonsAround(w, 5) {
 		for _, r := range []int{0, 3, 20} {
 			found := false

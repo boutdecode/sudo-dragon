@@ -373,7 +373,7 @@ func (s *Server) login(ctx context.Context, conn *websocket.Conn, ip string) (*s
 		Nodes:    func(n protocol.Nodes) { sess.sendMsg(protocol.TNodes, n) },
 		Joined: func(id, x, y int) {
 			sess.sendMsg(protocol.TWelcome, protocol.Welcome{
-				ID: id, Name: name, X: x, Y: y, Seed: s.Game.World.Seed, Gen: s.Game.World.GenVersion,
+				ID: id, Name: name, X: x, Y: y, Seed: s.Game.World.Seed,
 			})
 		},
 	})

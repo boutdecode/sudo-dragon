@@ -435,7 +435,7 @@ func TestClimateChangesColoursNotTheMap(t *testing.T) {
 }
 
 func TestWithSpentShowsBareTerrain(t *testing.T) {
-	w := world.NewVersion(1, world.GenV3)
+	w := world.New(1)
 	var node world.Pos
 	found := false
 	for y := -150; y < 150 && !found; y++ {

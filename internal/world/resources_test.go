@@ -2,45 +2,9 @@ package world
 
 import "testing"
 
-func TestNodesOnlyInV3(t *testing.T) {
-	for _, gen := range []int{GenV1, GenV2} {
-		w := NewVersion(5, gen)
-		for y := -60; y < 60; y++ {
-			for x := -60; x < 60; x++ {
-				switch w.At(x, y) {
-				case TreeNode, OreNode, HerbNode, FishNode:
-					t.Fatalf("node in v%d at (%d,%d)", gen, x, y)
-				}
-			}
-		}
-	}
-}
-
-// Nodes do not change the raw terrain: v3 places nodes on the same terrain as v2.
-func TestV3NodesSitOnV2Terrain(t *testing.T) {
-	v2, v3 := NewVersion(9, GenV2), NewVersion(9, GenV3)
-	nodes := 0
-	for y := -200; y < 200; y++ {
-		for x := -200; x < 200; x++ {
-			if v2.Terrain(x, y) != v3.Terrain(x, y) {
-				t.Fatalf("different raw terrain at (%d,%d)", x, y)
-			}
-			switch v3.At(x, y) {
-			case TreeNode, OreNode, HerbNode, FishNode:
-				nodes++
-				if !v2.At(x, y).Walkable() && v2.At(x, y) != Wall {
-					t.Fatalf("node on a blocking tile at (%d,%d)", x, y)
-				}
-			}
-		}
-	}
-	if nodes < 200 {
-		t.Errorf("only %d nodes over 160,000 tiles", nodes)
-	}
-}
-
 func TestNodesAreCoherentAndExcluded(t *testing.T) {
-	w := NewVersion(3, GenV3)
+	t.Parallel()
+	w := New(3)
 	a := w.FindSpawn()
 	for y := -250; y < 250; y++ {
 		for x := -250; x < 250; x++ {
@@ -70,7 +34,8 @@ func TestNodesAreCoherentAndExcluded(t *testing.T) {
 }
 
 func TestNodesAreDeterministic(t *testing.T) {
-	a, b := NewVersion(11, GenV3), NewVersion(11, GenV3)
+	t.Parallel()
+	a, b := New(11), New(11)
 	for y := -80; y < 80; y++ {
 		for x := -80; x < 80; x++ {
 			ka, oka := a.ResourceAt(x, y)
@@ -84,7 +49,8 @@ func TestNodesAreDeterministic(t *testing.T) {
 
 // Plants only grow on plains; trees and veins do not hide in the meadows.
 func TestHerbsOnlyOnPlains(t *testing.T) {
-	w := NewVersion(3, GenV3)
+	t.Parallel()
+	w := New(3)
 	herbs := 0
 	for y := -250; y < 250; y++ {
 		for x := -250; x < 250; x++ {

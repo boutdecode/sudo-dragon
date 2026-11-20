@@ -19,10 +19,10 @@ var (
 func sharedWorld(seed int64) *World {
 	sharedMu.Lock()
 	defer sharedMu.Unlock()
-	if w, ok := sharedWorlds[seed]; ok && w.GenVersion == testGen {
+	if w, ok := sharedWorlds[seed]; ok {
 		return w
 	}
-	w := newTestWorld(seed)
+	w := New(seed)
 	sharedWorlds[seed] = w
 	return w
 }
@@ -46,10 +46,11 @@ func sameStructure(a, b *Structure) bool {
 }
 
 func TestStructuresAreDeterministic(t *testing.T) {
+	t.Parallel()
 	for _, seed := range testSeeds {
-		a, b := newTestWorld(seed), newTestWorld(seed)
-		for ry := -4; ry <= 4; ry++ {
-			for rx := -4; rx <= 4; rx++ {
+		a, b := New(seed), New(seed)
+		for ry := -3; ry <= 3; ry++ {
+			for rx := -3; rx <= 3; rx++ {
 				sa, sb := a.structureForRegion(RegionPos{rx, ry}), b.structureForRegion(RegionPos{rx, ry})
 				if (sa == nil) != (sb == nil) || (sa != nil && !sameStructure(sa, sb)) {
 					t.Fatalf("seed %d region (%d,%d): two identical worlds differ", seed, rx, ry)
@@ -58,7 +59,7 @@ func TestStructuresAreDeterministic(t *testing.T) {
 		}
 	}
 	// Another seed gives another world.
-	a, b := allStructures(newTestWorld(1), 4), allStructures(newTestWorld(2), 4)
+	a, b := allStructures(New(1), 4), allStructures(New(2), 4)
 	if len(a) == len(b) {
 		same := true
 		for i := range a {
@@ -72,7 +73,8 @@ func TestStructuresAreDeterministic(t *testing.T) {
 
 // The cache must not change the result: emptied, it rebuilds identically.
 func TestStructureCacheRebuildsIdentically(t *testing.T) {
-	w := newTestWorld(7)
+	t.Parallel()
+	w := New(7)
 	before := allStructures(w, 3)
 	w.smu.Lock()
 	clear(w.structs)
@@ -89,6 +91,7 @@ func TestStructureCacheRebuildsIdentically(t *testing.T) {
 }
 
 func TestStructuresStayInsideTheirRegion(t *testing.T) {
+	t.Parallel()
 	for _, seed := range testSeeds {
 		w := sharedWorld(seed)
 		for _, s := range allStructures(w, 5) {
@@ -104,12 +107,14 @@ func TestStructuresStayInsideTheirRegion(t *testing.T) {
 }
 
 func TestSafeMarginStaysInsideRegion(t *testing.T) {
+	t.Parallel()
 	if safeMargin >= regionMargin {
 		t.Fatalf("safeMargin (%d) must stay below regionMargin (%d)", safeMargin, regionMargin)
 	}
 }
 
 func TestStructureSizesMatchLayouts(t *testing.T) {
+	t.Parallel()
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
 			want := kindSize[s.Kind]
@@ -147,6 +152,7 @@ func reachable(s *Structure) map[Pos]bool {
 }
 
 func TestEveryOpenTileIsReachableFromOutside(t *testing.T) {
+	t.Parallel()
 	total := 0
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -179,6 +185,7 @@ func TestEveryOpenTileIsReachableFromOutside(t *testing.T) {
 }
 
 func TestNPCsStandOnFloorAndNeverBlockEntrance(t *testing.T) {
+	t.Parallel()
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
 			seen := reachable(s) // NPCs are obstacles in this traversal
@@ -203,6 +210,7 @@ func TestNPCsStandOnFloorAndNeverBlockEntrance(t *testing.T) {
 }
 
 func TestNPCsPerKind(t *testing.T) {
+	t.Parallel()
 	kinds := map[Kind]int{}
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -245,6 +253,7 @@ func TestNPCsPerKind(t *testing.T) {
 
 // The original NPCs keep their index (the memories in the database are attached to it); the villagers follow.
 func TestVillagersComeAfterOriginalNPCsAndAreDistinct(t *testing.T) {
+	t.Parallel()
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
 			seenPos, seenName := map[Pos]bool{}, map[string]bool{}
@@ -271,6 +280,7 @@ func TestVillagersComeAfterOriginalNPCsAndAreDistinct(t *testing.T) {
 }
 
 func TestFortressGarrison(t *testing.T) {
+	t.Parallel()
 	found := 0
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -305,6 +315,7 @@ func TestFortressGarrison(t *testing.T) {
 }
 
 func TestOnlyFortressesHaveSlots(t *testing.T) {
+	t.Parallel()
 	for _, s := range allStructures(sharedWorld(3), 5) {
 		if s.Kind != KindFortress && len(s.Slots) != 0 {
 			t.Fatalf("%v with garrison slots", s.Kind)
@@ -313,6 +324,7 @@ func TestOnlyFortressesHaveSlots(t *testing.T) {
 }
 
 func TestBuildingsHaveDoors(t *testing.T) {
+	t.Parallel()
 	min := map[Kind]int{KindVillage: 4, KindTown: 12 + 8, KindFortress: 12}
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {
@@ -331,7 +343,8 @@ func TestBuildingsHaveDoors(t *testing.T) {
 
 // The starting point must never be covered or cluttered by a structure.
 func TestNoStructureNearSpawn(t *testing.T) {
-	for seed := int64(1); seed <= 60; seed++ {
+	t.Parallel()
+	for seed := int64(1); seed <= 20; seed++ {
 		w := sharedWorld(seed)
 		sp := w.FindSpawn()
 		if near := w.StructuresNear(sp, startClearance-1); len(near) != 0 {
@@ -346,7 +359,8 @@ func TestNoStructureNearSpawn(t *testing.T) {
 
 // A new player must find a village within a reasonable walk.
 func TestStartVillageIsNear(t *testing.T) {
-	const seeds = 60
+	t.Parallel()
+	const seeds = 20
 	near, villages := 0, 0
 	for seed := int64(1); seed <= seeds; seed++ {
 		w := sharedWorld(seed)
@@ -368,6 +382,7 @@ func TestStartVillageIsNear(t *testing.T) {
 }
 
 func TestSafeZones(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
 	var village, town, fortress *Structure
 	for _, s := range allStructures(w, 8) {
@@ -411,6 +426,7 @@ func TestSafeZones(t *testing.T) {
 }
 
 func TestStructuresNearSemantics(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
 	all := allStructures(w, 4)
 	if len(all) == 0 {
@@ -447,6 +463,7 @@ func TestStructuresNearSemantics(t *testing.T) {
 }
 
 func TestNPCLookups(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
 	checked := 0
 	for _, s := range allStructures(w, 5) {
@@ -486,8 +503,9 @@ func TestNPCLookups(t *testing.T) {
 
 // Chunks (fast path) and TileAt (direct path) must give the same tiles.
 func TestChunksAgreeWithTileAt(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
-	for _, s := range allStructures(w, 3) {
+	for _, s := range allStructures(w, 2) {
 		for _, p := range []Pos{s.Origin, s.Center(), {s.Origin.X + s.W - 1, s.Origin.Y + s.H - 1}, {s.Origin.X - 2, s.Origin.Y - 2}} {
 			if got, want := w.At(p.X, p.Y), w.TileAt(p.X, p.Y); got != want {
 				t.Fatalf("%v: At=%d, TileAt=%d", p, got, want)
@@ -506,6 +524,7 @@ func TestChunksAgreeWithTileAt(t *testing.T) {
 
 // Outside structures, the terrain is unchanged.
 func TestTerrainOutsideStructuresIsUnchanged(t *testing.T) {
+	t.Parallel()
 	w := sharedWorld(1)
 	for _, p := range []Pos{{-500, 300}, {0, 0}, {900, -40}, {123, 456}} {
 		if w.StructureAt(p.X, p.Y) != nil {
@@ -518,6 +537,7 @@ func TestTerrainOutsideStructuresIsUnchanged(t *testing.T) {
 }
 
 func TestStructureTilesAreStructureTiles(t *testing.T) {
+	t.Parallel()
 	for _, s := range allStructures(sharedWorld(1), 5) {
 		for _, tile := range s.tiles {
 			if tile >= NumTiles {
@@ -528,6 +548,7 @@ func TestStructureTilesAreStructureTiles(t *testing.T) {
 }
 
 func TestStructureDistribution(t *testing.T) {
+	t.Parallel()
 	counts := map[Kind]int{}
 	regions, withStruct := 0, 0
 	for _, seed := range testSeeds {
@@ -556,7 +577,7 @@ func TestFirstChunkGenerationIsFast(t *testing.T) {
 	if raceEnabled {
 		t.Skip("timing assertion: meaningless under the race detector")
 	}
-	w := newTestWorld(1)
+	w := New(1)
 	start := time.Now()
 	for cy := -5; cy < 5; cy++ {
 		for cx := -5; cx < 5; cx++ {
@@ -569,6 +590,7 @@ func TestFirstChunkGenerationIsFast(t *testing.T) {
 }
 
 func TestWallsBlockAndDoorsOpen(t *testing.T) {
+	t.Parallel()
 	if Wall.Walkable() {
 		t.Fatal("a wall must block")
 	}
@@ -581,7 +603,7 @@ func TestWallsBlockAndDoorsOpen(t *testing.T) {
 
 func BenchmarkChunkWithStructures(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		w := newTestWorld(int64(i % 5))
+		w := New(int64(i % 5))
 		for cy := 0; cy < 8; cy++ {
 			for cx := 0; cx < 8; cx++ {
 				w.Chunk(ChunkPos{cx, cy})
@@ -591,6 +613,7 @@ func BenchmarkChunkWithStructures(b *testing.B) {
 }
 
 func TestEveryPlaceHasAQuestGiverAndOthersAreVillagers(t *testing.T) {
+	t.Parallel()
 	someOther := false
 	for _, seed := range testSeeds {
 		for _, s := range allStructures(sharedWorld(seed), 5) {

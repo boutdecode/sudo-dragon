@@ -52,7 +52,6 @@ func main() {
 	step := flag.Int("step", 40, "with -territories: tiles per cell")
 	zoom := flag.Int("zoom", 1, "with -raw: tiles per cell (terrain overview)")
 	raw := flag.Bool("raw", false, "raw terrain only (no structures or roads), sampled every -zoom tiles")
-	gen := flag.Int("gen", world.GenLatest, "terrain generator version")
 	showVersion := flag.Bool("version", false, "print the version, then exit")
 	flag.Parse()
 	if *showVersion {
@@ -60,7 +59,7 @@ func main() {
 		return
 	}
 
-	wd := world.NewVersion(*seed, *gen)
+	wd := world.New(*seed)
 	x0, y0 := *cx-*w/2, *cy-*h/2
 
 	if *territories {

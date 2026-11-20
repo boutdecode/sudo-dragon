@@ -94,14 +94,14 @@ func run() error {
 		return runLorePurge(context.Background(), st, *lorePurge, os.Stdout)
 	}
 
-	seed, gen, err := resolveSeed(st, *seedFlag, seedSet)
+	seed, err := resolveSeed(st, *seedFlag, seedSet)
 	if err != nil {
 		return err
 	}
 
 	persister := store.NewPersister(st, 2*time.Second, log)
 	be := store.Backend{Store: st, Persister: persister}
-	wld := world.NewVersion(seed, gen)
+	wld := world.New(seed)
 	srv := server.New(wld, log, be)
 	srv.SetRegistrationLimit(*maxReg)
 	hs := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}
@@ -173,39 +173,27 @@ func run() error {
 	return nil
 }
 
-// resolveSeed determines the world seed and generator version, and pins them in the
-// database. Changing the seed on an existing database is refused: saved positions
-// would point to different terrain (water, mountain...). A database without a generator version
-// is a pre-versioning world: it stays on v1; a new world takes the latest.
-func resolveSeed(st *store.Store, flagSeed int64, flagSet bool) (seed int64, gen int, err error) {
+// resolveSeed determines the world seed and pins it in the database. Changing the seed
+// on an existing database is refused: saved positions would point to different terrain
+// (water, mountain...).
+func resolveSeed(st *store.Store, flagSeed int64, flagSet bool) (int64, error) {
 	stored, ok, err := st.Meta("seed")
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	if !ok {
 		if err := st.SetMeta("seed", strconv.FormatInt(flagSeed, 10)); err != nil {
-			return 0, 0, err
+			return 0, err
 		}
-		if err := st.SetMeta("gen", strconv.Itoa(world.GenLatest)); err != nil {
-			return 0, 0, err
-		}
-		return flagSeed, world.GenLatest, nil
+		return flagSeed, nil
 	}
-	seed, err = strconv.ParseInt(stored, 10, 64)
+	seed, err := strconv.ParseInt(stored, 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("corrupted seed in the database (%q): %w", stored, err)
+		return 0, fmt.Errorf("corrupted seed in the database (%q): %w", stored, err)
 	}
 	if flagSet && flagSeed != seed {
-		return 0, 0, fmt.Errorf("the database was created with seed %d; refusing to start with -seed %d "+
+		return 0, fmt.Errorf("the database was created with seed %d; refusing to start with -seed %d "+
 			"(saved positions would be inconsistent). Use another database (-db) for a new world", seed, flagSeed)
 	}
-	gen = world.GenV1
-	if g, ok, err := st.Meta("gen"); err != nil {
-		return 0, 0, err
-	} else if ok {
-		if gen, err = strconv.Atoi(g); err != nil {
-			return 0, 0, fmt.Errorf("corrupted generator version in the database (%q): %w", g, err)
-		}
-	}
-	return seed, gen, nil
+	return seed, nil
 }

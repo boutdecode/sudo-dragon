@@ -59,15 +59,10 @@ var (
 	mapStoreDone uint64        // last request written (under mapStoreMu)
 )
 
-// seedKey is a world's key in the file: the seed, followed by the terrain generator version beyond
-// the first (the same seed does not give the same terrain from one version to another; keys from before
-// versioning remain valid).
-func seedKey(seed int64, gen int) string {
-	k := strconv.FormatUint(uint64(seed), 16)
-	if gen > 1 {
-		k += "-g" + strconv.Itoa(gen)
-	}
-	return k
+// seedKey is a world's key in the file: the seed in hexadecimal, followed by the "-g3" suffix kept from
+// the time of the terrain generator versions (so that existing markers remain valid).
+func seedKey(seed int64) string {
+	return strconv.FormatUint(uint64(seed), 16) + "-g3"
 }
 
 // readStore reads the whole file; missing or corrupt = empty.
@@ -82,14 +77,14 @@ func readStore(path string) map[string]storedWorld {
 }
 
 // loadMapState loads the markers and exploration saved for this seed.
-func loadMapState(seed int64, gen int) mapState {
+func loadMapState(seed int64) mapState {
 	st := mapState{explored: map[[2]int]struct{}{}}
 	path := mapStorePath()
 	if path == "" {
 		return st
 	}
 	mapStoreMu.Lock()
-	sw := readStore(path)[seedKey(seed, gen)]
+	sw := readStore(path)[seedKey(seed)]
 	mapStoreMu.Unlock()
 	for _, b := range sw.Explored {
 		st.explored[b] = struct{}{}
@@ -104,7 +99,7 @@ func loadMapState(seed int64, gen int) mapState {
 
 // snapshotStore copies the state to write (sorted for a stable file).
 func (m *Model) snapshotStore() (key string, sw storedWorld) {
-	key = seedKey(m.world.Seed, m.world.GenVersion)
+	key = seedKey(m.world.Seed)
 	sw.Markers = make([]storedMarker, len(m.wmap.markers))
 	for i, mk := range m.wmap.markers {
 		sw.Markers[i] = storedMarker{mk.Pos.X, mk.Pos.Y, mk.Name}

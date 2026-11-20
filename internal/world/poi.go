@@ -162,9 +162,7 @@ func (w *World) POIsOfRegion(rp RegionPos) []*POI {
 	if p := w.buildPOI(rp); p != nil { // outside the lock: touches the structures
 		l = append(l, p)
 	}
-	if w.GenVersion >= GenV2 {
-		l = append(l, w.buildExtraPOIs(rp, l)...)
-	}
+	l = append(l, w.buildExtraPOIs(rp, l)...)
 	w.pmu.Lock()
 	if len(w.pois) >= poiCacheMax {
 		clear(w.pois)

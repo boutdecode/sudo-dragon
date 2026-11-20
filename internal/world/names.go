@@ -210,14 +210,9 @@ func rawStem(seed int64, rp RegionPos) stem {
 // baseFor returns the stem of the name of the place of region rp. A place keeps its drawn stem, unless an earlier
 // neighbouring region (radius nameClashRadius) in the order (Y then X) has the same one: it then draws another, never
 // equal to that of a neighbour. The test only looks at raw draws, not at structures: no plan generation,
-// and the result does not depend on what the neighbours contain.
-func baseFor(seed int64, rp RegionPos) string { return baseForGen(seed, GenV1, rp) }
-
-// baseForGen is baseFor for a generator version: from v2 onwards, when the four candidates of the band
-// are all taken by neighbours, the whole family is searched instead of falling back on an already used stem
-// (v2 has more places, so this case, rare in v1, shows up there). v1 keeps its behaviour: the names of existing
-// worlds do not change.
-func baseForGen(seed int64, gen int, rp RegionPos) string {
+// and the result does not depend on what the neighbours contain. When the four candidates of the band are all taken
+// by neighbours, the whole family is searched instead of falling back on an already used stem.
+func baseFor(seed int64, rp RegionPos) string {
 	raw := rawStem(seed, rp)
 	starts, ends := familyOf(seed, territoryIDAt(seed, rp.X*RegionSize+RegionSize/2, rp.Y*RegionSize+RegionSize/2))
 	taken := make(map[stem]bool, 48)
@@ -256,7 +251,7 @@ func baseForGen(seed int64, gen int, rp RegionPos) string {
 			break
 		}
 	}
-	if !free && gen >= GenV2 {
+	if !free {
 		n := familySize * familySize
 		for i := range n {
 			k := (class + 16*rot + i) % n

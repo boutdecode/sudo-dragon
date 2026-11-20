@@ -2,7 +2,7 @@ package world
 
 import "github.com/kevin/ascii-adventure/internal/resource"
 
-// Resource nodes (GenV3): trees, veins and plants placed on natural terrain. They are a pure function
+// Resource nodes: trees, veins and plants placed on natural terrain. They are a pure function
 // of (seed, x, y): server and client compute them the same way. A node never covers a structure, a
 // point of interest, a road, the area around the starting point nor a dungeon entrance.
 
@@ -61,9 +61,6 @@ func (w *World) nodeHash(x, y int) uint64 {
 // nodeAt returns the category, the resource and the tile of the node placed on raw terrain t at (x, y).
 // The exclusions (structure, POI, road, spawn, dungeon) are nodeTile's business.
 func (w *World) nodeAt(x, y int, t Tile) (resource.Category, resource.Kind, bool) {
-	if w.GenVersion < GenV3 {
-		return 0, "", false
-	}
 	h := w.nodeHash(x, y)
 	cat, ok := nodeCategory(t, int(h%1000))
 	if !ok {
@@ -105,9 +102,6 @@ func nodeTileOf(c resource.Category) Tile {
 // ResourceAt returns the harvestable resource on tile (x, y): that of a visible node (TileAt/At give
 // TreeNode, OreNode, HerbNode or FishNode). False if the tile carries none.
 func (w *World) ResourceAt(x, y int) (resource.Kind, bool) {
-	if w.GenVersion < GenV3 {
-		return "", false
-	}
 	switch w.At(x, y) {
 	case TreeNode, OreNode, HerbNode, FishNode:
 	default:

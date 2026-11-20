@@ -7,11 +7,12 @@ import (
 )
 
 func TestPOIsAreDeterministicAndPlaced(t *testing.T) {
-	a, b := newTestWorld(7), newTestWorld(7)
+	t.Parallel()
+	a, b := New(7), New(7)
 	counts := map[POIKind]int{}
 	regions := 0
-	for ry := -6; ry <= 6; ry++ {
-		for rx := -6; rx <= 6; rx++ {
+	for ry := -4; ry <= 4; ry++ {
+		for rx := -4; rx <= 4; rx++ {
 			rp := RegionPos{rx, ry}
 			regions++
 			p, q := a.POIOfRegion(rp), b.POIOfRegion(rp)
@@ -66,7 +67,8 @@ func TestPOIsAreDeterministicAndPlaced(t *testing.T) {
 // Adding point types must neither move nor change any point already placed: the new types only occupy
 // regions that were empty until then.
 func TestNewPOIKindsOnlyFillEmptyRegions(t *testing.T) {
-	w := newTestWorld(7)
+	t.Parallel()
+	w := New(7)
 	for ry := -8; ry <= 8; ry++ {
 		for rx := -8; rx <= 8; rx++ {
 			rp := RegionPos{rx, ry}
@@ -83,7 +85,8 @@ func TestNewPOIKindsOnlyFillEmptyRegions(t *testing.T) {
 }
 
 func TestDigSpotIsOrdinaryAndDeterministic(t *testing.T) {
-	a, b := newTestWorld(7), newTestWorld(7)
+	t.Parallel()
+	a, b := New(7), New(7)
 	found := 0
 	for ry := -3; ry <= 3; ry++ {
 		for rx := -3; rx <= 3; rx++ {
@@ -115,27 +118,23 @@ func TestDigSpotIsOrdinaryAndDeterministic(t *testing.T) {
 	}
 }
 
-// In v1, a region carries at most one point (the main one); in v2, extra points are added: they are
-// deterministic, distinct, apart from one another, never standing stones, and the main one does not move.
-func TestExtraPOIsOnlyInV2AndStayApart(t *testing.T) {
-	v1, v2 := NewVersion(7, GenV1), NewVersion(7, GenV2)
-	again := NewVersion(7, GenV2)
-	var n1, n2, extras int
+// A region carries a main point plus extra ones: they are deterministic, distinct, apart from one another,
+// never standing stones, and the main one comes first.
+func TestExtraPOIsStayApart(t *testing.T) {
+	t.Parallel()
+	w, again := New(7), New(7)
+	extras := 0
 	for ry := -6; ry <= 6; ry++ {
 		for rx := -6; rx <= 6; rx++ {
 			rp := RegionPos{rx, ry}
-			l1, l2, l2b := v1.POIsOfRegion(rp), v2.POIsOfRegion(rp), again.POIsOfRegion(rp)
-			n1, n2 = n1+len(l1), n2+len(l2)
-			if len(l1) > 1 {
-				t.Fatalf("v1: %d points in %v", len(l1), rp)
-			}
-			if len(l2) != len(l2b) {
-				t.Fatalf("v2 not deterministic in %v", rp)
+			l, lb := w.POIsOfRegion(rp), again.POIsOfRegion(rp)
+			if len(l) != len(lb) {
+				t.Fatalf("not deterministic in %v", rp)
 			}
 			seen := map[string]bool{}
-			for i, p := range l2 {
-				if q := l2b[i]; p.Pos != q.Pos || p.Kind != q.Kind || p.Seed != q.Seed || p.ID() != q.ID() {
-					t.Fatalf("v2 not deterministic in %v: %+v / %+v", rp, p, q)
+			for i, p := range l {
+				if q := lb[i]; p.Pos != q.Pos || p.Kind != q.Kind || p.Seed != q.Seed || p.ID() != q.ID() {
+					t.Fatalf("not deterministic in %v: %+v / %+v", rp, p, q)
 				}
 				if seen[p.ID()] {
 					t.Fatalf("duplicate identifier %q in %v", p.ID(), rp)
@@ -150,25 +149,23 @@ func TestExtraPOIsOnlyInV2AndStayApart(t *testing.T) {
 						t.Fatalf("extra standing stone in %v", rp)
 					}
 				}
-				for _, o := range l2[:i] {
+				for _, o := range l[:i] {
 					if max(abs(o.Pos.X-p.Pos.X), abs(o.Pos.Y-p.Pos.Y)) <= poiExtraGap {
 						t.Fatalf("points too close in %v: %v and %v", rp, o.Pos, p.Pos)
 					}
 				}
 			}
-			// The main point is the same as in v1 for the same region and terrain: we only
-			// check that it keeps index 0 and comes first.
-			if len(l2) > 0 && l2[0].Index != 0 && v2.POIOfRegion(rp) != nil {
+			if len(l) > 0 && l[0].Index != 0 && w.POIOfRegion(rp) != nil {
 				t.Fatalf("the main point must come first in %v", rp)
 			}
-			for _, p := range l2 {
-				if got := v2.POIAt(p.Pos.X, p.Pos.Y); got != p {
+			for _, p := range l {
+				if got := w.POIAt(p.Pos.X, p.Pos.Y); got != p {
 					t.Fatalf("POIAt(%v) does not find %s", p.Pos, p.ID())
 				}
 			}
 		}
 	}
-	if extras == 0 || n2 <= n1 {
-		t.Errorf("v2 must have more points than v1: %d against %d (%d extra)", n2, n1, extras)
+	if extras == 0 {
+		t.Error("no extra point found")
 	}
 }

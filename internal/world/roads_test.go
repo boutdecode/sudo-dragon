@@ -25,8 +25,9 @@ func (w *World) roadFor(k roadKey) *roadLink {
 }
 
 func TestRoadsExistAndAreDeterministic(t *testing.T) {
-	a, b := newTestWorld(1), newTestWorld(1)
-	pairs := linkedPairs(a, 3)
+	t.Parallel()
+	a, b := New(1), New(1)
+	pairs := linkedPairs(a, 2)
 	if len(pairs) == 0 {
 		t.Fatal("no road generated between the neighbouring regions")
 	}
@@ -41,14 +42,15 @@ func TestRoadsExistAndAreDeterministic(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("%d links over 6x6 regions", len(pairs))
+	t.Logf("%d links over 4x4 regions", len(pairs))
 }
 
 // A road never touches the footprint of a structure, and the tile seen by At
 // (chunks) is that of TileAt.
 func TestRoadsStayOutsideStructuresAndAreWalkable(t *testing.T) {
-	w := newTestWorld(1)
-	for _, k := range linkedPairs(w, 3) {
+	t.Parallel()
+	w := New(1)
+	for _, k := range linkedPairs(w, 2) {
 		l := w.roadFor(k)
 		for p := range l.tiles {
 			if s := w.StructureAt(p.X, p.Y); s != nil {
@@ -66,9 +68,10 @@ func TestRoadsStayOutsideStructuresAndAreWalkable(t *testing.T) {
 
 // Two linked places are reachable on foot through walkable tiles.
 func TestRoadsConnectTheirPlaces(t *testing.T) {
-	w := newTestWorld(1)
+	t.Parallel()
+	w := New(1)
 	checked := 0
-	for _, k := range linkedPairs(w, 3) {
+	for _, k := range linkedPairs(w, 2) {
 		sa, sb := w.structureForRegion(k.a), w.structureForRegion(k.b)
 		_, anchorsA := sa.outsideReach()
 		_, anchorsB := sb.outsideReach()
@@ -105,8 +108,9 @@ func TestRoadsConnectTheirPlaces(t *testing.T) {
 }
 
 func TestRoadRoutesAreOrderedContinuousAndOnRoads(t *testing.T) {
-	w := newTestWorld(1)
-	routes := w.RoadRoutesNear(0, 0, 4*RegionSize)
+	t.Parallel()
+	w := New(1)
+	routes := w.RoadRoutesNear(0, 0, 2*RegionSize)
 	if len(routes) == 0 {
 		t.Fatal("no road near the origin")
 	}

@@ -8,6 +8,7 @@ import (
 )
 
 func TestEveryPointHasTheNearestSiteTerritory(t *testing.T) {
+	t.Parallel()
 	seed := int64(1)
 	for _, p := range []Pos{{0, 0}, {-1, -1}, {999, 999}, {1000, -1000}, {-5304, -818}, {12345, -67890}} {
 		got := territoryIDAt(seed, p.X, p.Y)
@@ -30,6 +31,7 @@ func TestEveryPointHasTheNearestSiteTerritory(t *testing.T) {
 }
 
 func TestTerritoriesAreOrganicAndAboutAThousandWide(t *testing.T) {
+	t.Parallel()
 	seed := int64(7)
 	// Mean area estimated by sampling: close to territorySize².
 	seen := map[TerritoryID]int{}
@@ -65,7 +67,8 @@ func TestTerritoriesAreOrganicAndAboutAThousandWide(t *testing.T) {
 }
 
 func TestTerritoryNamesAreStableLocalizedAndClean(t *testing.T) {
-	a, b := newTestWorld(3), newTestWorld(3)
+	t.Parallel()
+	a, b := New(3), New(3)
 	for _, p := range []Pos{{0, 0}, {900, 40}, {-3000, 2500}, {40000, -40000}} {
 		ta, tb := a.TerritoryAt(p.X, p.Y), b.TerritoryAt(p.X, p.Y)
 		fr, en := ta.NameIn(i18n.FR), ta.NameIn(i18n.EN)
@@ -85,6 +88,7 @@ func TestTerritoryNamesAreStableLocalizedAndClean(t *testing.T) {
 }
 
 func TestFrenchElision(t *testing.T) {
+	t.Parallel()
 	tr := &Territory{Theme: themeForest}
 	for i := range tr.starts {
 		tr.starts[i], tr.ends[i] = 0, 0
@@ -109,6 +113,7 @@ func TestFrenchElision(t *testing.T) {
 }
 
 func TestEveryThemeHasNamesInBothLanguages(t *testing.T) {
+	t.Parallel()
 	for th := terrainTheme(0); th < numThemes; th++ {
 		for v := 0; v < 2; v++ {
 			tr := &Territory{Theme: th, variant: v}
@@ -123,7 +128,8 @@ func TestEveryThemeHasNamesInBothLanguages(t *testing.T) {
 }
 
 func TestStemsOfAPlaceBelongToItsTerritoryFamily(t *testing.T) {
-	w := newTestWorld(1)
+	t.Parallel()
+	w := New(1)
 	inFamily := func(base string, starts, ends [familySize]int) bool {
 		for _, a := range starts {
 			for _, b := range ends {

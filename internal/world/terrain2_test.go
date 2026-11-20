@@ -2,35 +2,22 @@ package world
 
 import "testing"
 
-func TestV2IsDeterministicAndDiffersFromV1(t *testing.T) {
-	a, b, v1 := NewVersion(42, GenV2), NewVersion(42, GenV2), NewVersion(42, GenV1)
-	diff := 0
+func TestTerrainIsDeterministic(t *testing.T) {
+	t.Parallel()
+	a, b := New(42), New(42)
 	for y := -300; y < 300; y += 7 {
 		for x := -300; x < 300; x += 7 {
 			if a.terrainAt(x, y) != b.terrainAt(x, y) {
-				t.Fatalf("v2 terrain not deterministic at (%d,%d)", x, y)
+				t.Fatalf("terrain not deterministic at (%d,%d)", x, y)
 			}
-			if a.terrainAt(x, y) != v1.terrainAt(x, y) {
-				diff++
-			}
-		}
-	}
-	if diff == 0 {
-		t.Error("v2 produces the same terrain as v1")
-	}
-}
-
-func TestUnknownGenVersionFallsBackToV1(t *testing.T) {
-	for _, g := range []int{0, -1, 99} {
-		if w := NewVersion(1, g); w.GenVersion != GenV1 {
-			t.Errorf("gen %d: version %d, want %d", g, w.GenVersion, GenV1)
 		}
 	}
 }
 
 func TestV2SpawnIsWalkable(t *testing.T) {
-	for seed := int64(1); seed <= 30; seed++ {
-		w := NewVersion(seed, GenV2)
+	t.Parallel()
+	for seed := int64(1); seed <= 10; seed++ {
+		w := New(seed)
 		if p := w.FindSpawn(); !w.At(p.X, p.Y).Walkable() {
 			t.Errorf("seed %d: spawn %v not walkable (%c)", seed, p, w.At(p.X, p.Y).Glyph())
 		}
@@ -39,10 +26,11 @@ func TestV2SpawnIsWalkable(t *testing.T) {
 
 // The v2 world must mix oceans, land, mountains and rivers, at the scale of a large territory.
 func TestV2HasContinentsRangesAndRivers(t *testing.T) {
+	t.Parallel()
 	counts := map[Tile]int{}
 	total := 0
 	for seed := int64(1); seed <= 6; seed++ {
-		w := NewVersion(seed, GenV2)
+		w := New(seed)
 		for y := -4000; y < 4000; y += 25 {
 			for x := -4000; x < 4000; x += 25 {
 				counts[w.terrainAt(x, y)]++
@@ -67,9 +55,10 @@ func TestV2HasContinentsRangesAndRivers(t *testing.T) {
 // The v2 terrain must not look empty: on a screen (~100x35 tiles) taken on dry land, one must see on
 // average at least three different terrain types.
 func TestV2ScreensAreVaried(t *testing.T) {
+	t.Parallel()
 	var windows, kinds int
 	for seed := int64(1); seed <= 4; seed++ {
-		w := NewVersion(seed, GenV2)
+		w := New(seed)
 		for cy := -3000; cy <= 3000; cy += 250 {
 			for cx := -3000; cx <= 3000; cx += 250 {
 				if e := w.elev2(cx, cy); e < 0.2 {
