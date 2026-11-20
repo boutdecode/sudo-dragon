@@ -308,8 +308,9 @@ func (g *Game) fillLairSlot(poi *world.POI, i int, pos world.Pos) {
 	if g.blocked(pos) {
 		return
 	}
-	// The guardians are biome beasts, a bit stronger than the region.
-	list := speciesByTile[g.World.TileAt(pos.X, pos.Y)]
+	// The guardians are biome beasts, a bit stronger than the region: those of the raw terrain, not of the floor
+	// of the building.
+	list := speciesByTile[g.World.Terrain(pos.X, pos.Y)]
 	if len(list) == 0 {
 		list = speciesByTile[world.Plain]
 	}

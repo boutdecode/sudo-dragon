@@ -137,7 +137,7 @@ func (g *Game) spawnPack(m *monster, around world.Pos, level int) {
 		for range spawnTries {
 			d := dirs8[g.rng.IntN(len(dirs8))]
 			pos := world.Pos{X: m.pos.X + d[0]*(1+g.rng.IntN(2)), Y: m.pos.Y + d[1]*(1+g.rng.IntN(2))}
-			if _, taken := g.monsterAt[pos]; taken || g.blocked(pos) || g.World.Safe(pos.X, pos.Y) || g.seenByAnyPlayer(pos) {
+			if _, taken := g.monsterAt[pos]; taken || g.blocked(pos) || g.World.Safe(pos.X, pos.Y) || g.World.POIFootprintAt(pos.X, pos.Y) != nil || g.seenByAnyPlayer(pos) {
 				continue
 			}
 			// Same species, or (rarely) a companion species whose habitat is that of the tile.
@@ -436,7 +436,7 @@ func (g *Game) spawnMonsters() {
 				X: p.pos.X + g.rng.IntN(2*spawnHalfW+1) - spawnHalfW,
 				Y: p.pos.Y + g.rng.IntN(2*spawnHalfH+1) - spawnHalfH,
 			}
-			if g.seenByAnyPlayer(pos) || g.blocked(pos) || g.World.Safe(pos.X, pos.Y) {
+			if g.seenByAnyPlayer(pos) || g.blocked(pos) || g.World.Safe(pos.X, pos.Y) || g.World.POIFootprintAt(pos.X, pos.Y) != nil {
 				continue
 			}
 			sps := speciesByTile[g.World.At(pos.X, pos.Y)]

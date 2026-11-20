@@ -21,7 +21,7 @@ Enter: chat (/help) · arrows/ZQSD/hjkl: move · Ctrl+C: quit
 - **Infinite world** generated from a seed with simplex noise: oceans, continents, islands, rivers, mountain ranges, and biomes that follow the climate
   (beaches, plains, forests, hills, mountains, snow, tundra, desert, swamp, jungle). Day / night cycle.
 - **Villages, towns and fortresses**, also generated from the seed: safe zones, merchants, healers and guards in the former, garrisons and a warlord in the latter; **roads** between neighbouring places and travelling **caravans**.
-- **Secret dungeons**, **points of interest** (campfires, shrines, lairs, ruins…) and **treasure maps** to discover.
+- **Secret dungeons**, **points of interest** (campfires, shrines, lairs, ruins…, each one a small building: cross-shaped church, round or square tower, half-collapsed ruin, stone circle…) and **treasure maps** to discover.
 - **Multiplayer**: everyone shares the same world, sees each other, chats and moves in real time.
 - **Monsters** by biome, stronger the farther you go from the start, that wander and chase you; **turn-based combat** (sometimes against a group) with potions, fleeing, XP and levels.
 - **Six-ability characters**, three classes, and five ranks of **equipment** that you buy, find or take from monsters.
@@ -235,6 +235,8 @@ Small one-tile landmarks, visible on the map from the start, that you use by **w
 | Standing stone | `\|` | activates on first visit; `/menhir` teleports to another activated stone for gold |
 | Spring | `v` | restores HP and mana (an oasis in an arid climate) |
 | Ruins | `/` | an elite guardian protects a chest, a lore fragment and the entrance to the nearest dungeon |
+
+Each point is drawn as a **building** around its tile (the glyph in the table marks the interaction tile, at the centre): a Greek-cross church, an open or walled temple, a square or round tower, a half-collapsed ruin (rubble `` ` ``, pillars `i`), a palisade or a cave, a cromlech or a dolmen, a pool or an oasis, a tent. The shape depends on the territory's climate and the door faces the nearest road. Buildings are computed from the seed on both sides: **the client and the server must be the same version**.
 
 Chests from lairs and ruins, and surface monsters, sometimes drop a **treasure map**: reach the exact tile it points to (`/goto x y`) and you dig up gold, potions and equipment.
 The detail of effects, delays and values is in [FEATURES.md](FEATURES.md).

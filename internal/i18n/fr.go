@@ -593,6 +593,8 @@ var fr = map[string]string{
 	"terrain.treenode":              "Arbre",
 	"terrain.orenode":               "Filon",
 	"terrain.fishnode":              "Poissons",
+	"terrain.rubble":                "Gravats",
+	"terrain.pillar":                "Colonne",
 	"terrain.herbnode":              "Plantes",
 	"resource.cat.wood":             "Bois",
 	"resource.cat.ore":              "Minerais",

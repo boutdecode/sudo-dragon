@@ -9,7 +9,7 @@ const (
 	digSalt      = 8500
 	digMargin    = 6 // minimum distance from the tile to the edge of its region
 	digTries     = 32
-	digClearance = 3 // minimum distance to a point of interest or to a dungeon entrance
+	digClearance = 3 // minimum distance to a dungeon entrance (a point of interest: its footprint plus one tile)
 )
 
 // DigSpot looks for a dig spot in region rp, drawn from nonce: natural walkable terrain over 3x3, outside
@@ -29,7 +29,7 @@ func (w *World) DigSpot(rp RegionPos, nonce uint64) (Pos, bool) {
 		if abs(x-anchor.X) <= startClearance && abs(y-anchor.Y) <= startClearance {
 			continue
 		}
-		if slices.ContainsFunc(pois, func(poi *POI) bool { return max(abs(x-poi.Pos.X), abs(y-poi.Pos.Y)) <= digClearance }) {
+		if slices.ContainsFunc(pois, func(poi *POI) bool { return poi.Bounds.grow(1).Contains(x, y) }) {
 			continue
 		}
 		if dun != nil && max(abs(x-dun.Entrance.X), abs(y-dun.Entrance.Y)) <= digClearance {
