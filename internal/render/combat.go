@@ -186,6 +186,30 @@ var npcArt = map[world.NPCKind][]string{
 	},
 }
 
+func init() {
+	npcArt[world.NPCLumberjack] = []string{
+		`   ,---.   `,
+		`  ( o o )  `,
+		`  /\_#_/|  `,
+		`   |   |/  `,
+		`  _|___|   `,
+	}
+	npcArt[world.NPCHerbalist] = []string{
+		`   .-"-.   `,
+		`  ( o o )  `,
+		`   \ v /   `,
+		`  /|\*/|\  `,
+		`   |___|   `,
+	}
+	npcArt[world.NPCMiner] = []string{
+		`   _.-._   `,
+		`  ( o o )  `,
+		`   \ = /   `,
+		`  /|___|T  `,
+		`   |___|   `,
+	}
+}
+
 var unknownNPCArt = []string{
 	`   .---.   `,
 	`  ( ? ? )  `,

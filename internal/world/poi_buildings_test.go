@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-var allPOIKinds = []POIKind{POICampfire, POIShrine, POILair, POITower, POIStone, POISpring, POIRuin}
+var allPOIKinds = []POIKind{POICampfire, POIShrine, POILair, POITower, POIStone, POISpring, POIRuin, POICabinWood, POICabinOre, POICabinHerb}
 
 // slotOffsets are the monster slots of a type, relative to its centre (see newPOI).
 func slotOffsets(k POIKind) [][2]int {

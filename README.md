@@ -25,7 +25,7 @@ Enter: chat (/help) · arrows/ZQSD/hjkl: move · Ctrl+C: quit
 - **Multiplayer**: everyone shares the same world, sees each other, chats and moves in real time.
 - **Monsters** by biome, stronger the farther you go from the start, that wander and chase you; **turn-based combat** (sometimes against a group) with potions, fleeing, XP and levels.
 - **Six-ability characters**, three classes, and five ranks of **equipment** that you buy, find or take from monsters.
-- **Gathering**: wood, ore, plants and fish, with four professions that level up.
+- **Gathering**: wood, ore, plants and fish, with four professions that level up and tools bought from trade cabins.
 - **Gold and shops**, **quests** and **reputation**; NPCs you can chat with freely (language model, optional).
 - **Accounts and saving**: username and password (bcrypt), persistent character (SQLite).
 
@@ -245,7 +245,8 @@ The detail of effects, delays and values is in [FEATURES.md](FEATURES.md).
 
 **Resource nodes** dot the terrain: trees, ore veins, plants (on plains) and fish shoals (in rivers). They keep the glyph of the terrain they sit on; only their colour (in bold) tells the resource.
 Press **`G`**, on the node's tile or next to it, to attempt a harvest: a success roll (40% at profession level 1, up to 94%), then the node is exhausted for everyone for 10 minutes.
-Four **professions** (lumberjack, miner, herbalist, fisher, level 1 to 10) progress with every success and enlarge the category's bag. Resources, 18 varieties plus fish, depend on the territory's climate and the region level;
+Four **professions** (lumberjack, miner, herbalist, fisher, level 1 to 10) progress with every success and enlarge the category's bag.
+Gathering wood, ore and plants **requires a tool** (axe, pickaxe, sickle), sold by the vendors of the **trade cabins** scattered over the map (marked `t` on the world map; one of each kind is always close to the starting point). Four tiers, unlocked at profession level 1, 4, 7 and 10: the basic tool gives no bonus, the others yield +1 to +3 units per gather. Fishing needs no tool. Resources, 18 varieties plus fish, depend on the territory's climate and the region level;
 they go into a **materials bag** (listed on the bag screen `I`) and aren't used yet: crafting comes next.
 
 ## Conversational NPCs (Mistral)

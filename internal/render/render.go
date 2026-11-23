@@ -119,6 +119,11 @@ var npcLooks = map[world.NPCKind]monsterLook{
 	world.NPCMayor:    {'C', fg("#d4a017").Bold(true)},
 	world.NPCVillager: {'V', fg("#7dd3fc").Bold(true)},
 	world.NPCGuard:    {'G', fg("#60a5fa").Bold(true)},
+
+	// Trade vendors of the cabins (see world/cabin.go).
+	world.NPCLumberjack: {'B', fg("#b45309").Bold(true)},
+	world.NPCHerbalist:  {'Y', fg("#4ade80").Bold(true)},
+	world.NPCMiner:      {'K', fg("#a78bfa").Bold(true)},
 }
 
 // questGiverKind is not a real NPC type: it is the appearance of a villager who

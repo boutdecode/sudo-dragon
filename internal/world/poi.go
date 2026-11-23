@@ -17,13 +17,16 @@ import (
 type POIKind uint8
 
 const (
-	POICampfire POIKind = iota + 1 // campfire: heals and becomes the respawn point
-	POIShrine                      // shrine: temporary bonus
-	POILair                        // lair: monsters and a chest
-	POITower                       // watchtower: reveals the surroundings
-	POIStone                       // standing stone: teleportation network
-	POISpring                      // spring (oasis in an arid climate): restores HP and mana
-	POIRuin                        // ruins: a guardian, a chest, a hint about a dungeon
+	POICampfire  POIKind = iota + 1 // campfire: heals and becomes the respawn point
+	POIShrine                       // shrine: temporary bonus
+	POILair                         // lair: monsters and a chest
+	POITower                        // watchtower: reveals the surroundings
+	POIStone                        // standing stone: teleportation network
+	POISpring                       // spring (oasis in an arid climate): restores HP and mana
+	POIRuin                         // ruins: a guardian, a chest, a hint about a dungeon
+	POICabinWood                    // lumberjack's cabin: sells axes (see cabin.go)
+	POICabinOre                     // miner's shelter: sells pickaxes
+	POICabinHerb                    // herbalist's hut: sells sickles
 )
 
 const (
@@ -93,7 +96,7 @@ func (r Rect) grow(n int) Rect { return Rect{r.X - n, r.Y - n, r.W + 2*n, r.H + 
 type POI struct {
 	Kind   POIKind
 	Region RegionPos
-	// Index is 0 for the main point of the region, 1 or 2 for an extra point (v2).
+	// Index is 0 for the main point of the region, 1 or 2 for an extra point (v2), cabinPOIIndex for the trade cabin.
 	Index int
 	// Pos is the interaction tile (altar, stairs, chest, fire, central stone, spring): the centre of the building.
 	Pos  Pos
@@ -149,6 +152,8 @@ func poiTile(k POIKind) Tile {
 		return Spring
 	case POIRuin:
 		return Ruin
+	case POICabinWood, POICabinOre, POICabinHerb:
+		return Floor // the vendor stands on it
 	}
 	return Stone
 }
@@ -172,6 +177,12 @@ func poiNameKey(k POIKind) string {
 		return "poi.name.spring"
 	case POIRuin:
 		return "poi.name.ruin"
+	case POICabinWood:
+		return "poi.name.cabin.wood"
+	case POICabinOre:
+		return "poi.name.cabin.ore"
+	case POICabinHerb:
+		return "poi.name.cabin.herb"
 	}
 	return "poi.name.stone"
 }
@@ -186,7 +197,8 @@ func (w *World) POIOfRegion(rp RegionPos) *POI {
 	return nil
 }
 
-// POIsOfRegion returns all the points of region rp: the main one first, then the extra ones (v2).
+// POIsOfRegion returns all the points of region rp: the main one first, then the extra ones (v2), then the trade
+// cabin if there is one (see cabin.go).
 func (w *World) POIsOfRegion(rp RegionPos) []*POI {
 	w.pmu.Lock()
 	if l, ok := w.pois[rp]; ok {
@@ -195,11 +207,10 @@ func (w *World) POIsOfRegion(rp RegionPos) []*POI {
 	}
 	w.pmu.Unlock()
 
-	var l []*POI
-	if p := w.buildPOI(rp); p != nil { // outside the lock: touches the structures
-		l = append(l, p)
+	l := w.basePOIsOfRegion(rp) // outside the lock: touches the structures
+	if c := w.buildCabin(rp, l); c != nil {
+		l = append(l, c)
 	}
-	l = append(l, w.buildExtraPOIs(rp, l)...)
 	w.pmu.Lock()
 	if len(w.pois) >= poiCacheMax {
 		clear(w.pois)
@@ -207,6 +218,17 @@ func (w *World) POIsOfRegion(rp RegionPos) []*POI {
 	w.pois[rp] = l
 	w.pmu.Unlock()
 	return l
+}
+
+// basePOIsOfRegion builds the main point of region rp and its extra ones, without the trade cabin: the cabin is
+// placed away from them, and the ring of forced cabins around the start (see cabin.go) reads the base points of its
+// regions without going through the cache.
+func (w *World) basePOIsOfRegion(rp RegionPos) []*POI {
+	var l []*POI
+	if p := w.buildPOI(rp); p != nil {
+		l = append(l, p)
+	}
+	return append(l, w.buildExtraPOIs(rp, l)...)
 }
 
 // poiIn returns the point of the list whose tile is (x, y), or nil.

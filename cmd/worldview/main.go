@@ -95,7 +95,7 @@ func main() {
 	if *sites {
 		for _, s := range wd.StructuresNear(world.Pos{X: *cx, Y: *cy}, max(*w, *h)) {
 			for _, n := range s.NPCs {
-				marks[n.Pos] = map[world.NPCKind]rune{world.NPCMerchant: 'M', world.NPCHealer: 'H', world.NPCVillager: 'V', world.NPCChief: 'C', world.NPCMayor: 'C', world.NPCSmith: 'F', world.NPCArmorer: 'R'}[n.Kind]
+				marks[n.Pos] = map[world.NPCKind]rune{world.NPCMerchant: 'M', world.NPCHealer: 'H', world.NPCVillager: 'V', world.NPCChief: 'C', world.NPCMayor: 'C', world.NPCSmith: 'F', world.NPCArmorer: 'R', world.NPCLumberjack: 'b', world.NPCHerbalist: 'p', world.NPCMiner: 'k'}[n.Kind]
 			}
 			for _, sl := range s.Slots {
 				marks[sl.Pos] = map[world.SlotRole]rune{world.RoleGuard: 'S', world.RoleElite: 'K', world.RoleBoss: 'B'}[sl.Role]

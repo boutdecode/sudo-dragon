@@ -236,6 +236,9 @@ const (
 	NPCSellItem = "sell_item"
 	NPCSellMenu = "sell_menu" // opens the list of bag items to resell
 
+	// Trade vendors: NPCBuyTool carries the tool tier in NPCAction.Text (see NPCOffer.Arg).
+	NPCBuyTool = "buy_tool"
+
 	// Guards and theft. NPCWhere asks where to find a trade (NPCAction.Text = NPC type, see NPCOffer.Arg).
 	NPCWhere  = "where"  // guard: where to find a given inhabitant
 	NPCPlaces = "places" // guard: which neighbouring places
@@ -382,6 +385,8 @@ type JobInfo struct {
 	Used   int    `json:"used"`
 	Cap    int    `json:"cap"`
 	Chance int    `json:"chance"`
+	Tool   int    `json:"tool,omitempty"` // tier of the tool owned (0 = none; fishing needs none)
+	Yield  int    `json:"yield"`          // units gathered per success with that tool
 }
 
 // ResourceStack is a quantity of material: ID is the catalogue identifier (see resource.Kind).

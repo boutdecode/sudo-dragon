@@ -96,6 +96,7 @@ type player struct {
 	// Raw materials (see gather.go).
 	resources    map[resource.Kind]int     // materials bag: quantity per resource
 	skills       map[resource.Category]int // accumulated experience of each gathering job
+	tools        map[resource.Category]int // best tool tier owned per category (0 = none)
 	gatherUntil  uint64                    // tick before which one cannot gather again
 	sendNodesMsg func(protocol.Nodes)
 	nodesVer     uint64    // version of g.spent when the last Nodes message was sent
@@ -144,6 +145,7 @@ type Saved struct {
 	Resources map[string]int
 	// Accumulated experience of gathering jobs, per category key (resource.Category.Key).
 	Skills map[string]int
+	Tools  map[string]int // best tool tier owned, per gathering category
 }
 
 // Game is the state of the living world.
@@ -404,6 +406,7 @@ func (g *Game) joinWith(name string, send func(protocol.Snapshot), saved *Saved)
 		p.maps = slices.Clone(saved.Maps)
 		p.resources = loadResources(saved.Resources)
 		p.skills = loadSkills(saved.Skills)
+		p.tools = loadTools(saved.Tools)
 		for _, rp := range saved.Stones {
 			p.stones[rp] = true
 		}
@@ -429,7 +432,7 @@ func (g *Game) save(p *player) {
 			Quests: slices.Clone(p.quests), Rep: maps.Clone(p.rep), QuestsDirty: p.questsDirty,
 			Gear: p.inv.Clone(), GearDirty: p.gearDirty,
 			Discovered: p.discoveredList(), DiscoveredDirty: p.discoveredDirty,
-			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps), Resources: saveResources(p.resources), Skills: saveSkills(p.skills),
+			Respawn: p.respawn, Stones: p.stoneList(), Maps: slices.Clone(p.maps), Resources: saveResources(p.resources), Skills: saveSkills(p.skills), Tools: saveTools(p.tools),
 		})
 		p.questsDirty, p.gearDirty, p.discoveredDirty = false, false, false
 	}

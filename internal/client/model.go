@@ -1367,7 +1367,7 @@ func (m Model) npcView(w, h int) string {
 	}
 
 	rightW := min(40, w/2)
-	if len(m.numberedOffers()) > 0 && m.npc.Specialty != "" || m.npc.Mode == protocol.NPCModeSell {
+	if len(m.numberedOffers()) > 0 && (m.npc.Specialty != "" || m.npc.Offers[0].Action == protocol.NPCBuyTool) || m.npc.Mode == protocol.NPCModeSell {
 		rightW = min(70, w*3/5) // equipment display: one line per item with its bonuses
 	}
 	leftW := w - rightW

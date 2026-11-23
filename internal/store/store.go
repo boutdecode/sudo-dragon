@@ -79,6 +79,7 @@ type Character struct {
 	Maps       []world.Pos    // treasure maps held: the tile to dig for each one
 	Resources  map[string]int // materials bag: quantity per resource identifier
 	Skills     map[string]int // accumulated experience of gathering jobs, per category
+	Tools      map[string]int // best tool tier owned, per gathering category
 }
 
 // Store is the database.
@@ -297,6 +298,8 @@ var migrations = []string{
 	`ALTER TABLE characters ADD COLUMN skills TEXT NOT NULL DEFAULT ''`,
 	// 21: race chosen at creation (its bonus is included in the abilities).
 	`ALTER TABLE characters ADD COLUMN race TEXT NOT NULL DEFAULT ''`,
+	// 22: gathering tools owned ("category:tier;category:tier" list: axe, pickaxe, sickle).
+	`ALTER TABLE characters ADD COLUMN tools TEXT NOT NULL DEFAULT ''`,
 	// 22: characters created before races become humans (+2 STR).
 	`UPDATE characters SET race = 'human', str = str + 2 WHERE str > 0`,
 }
@@ -421,19 +424,20 @@ func (s *Store) Authenticate(name, password string) (string, error) {
 func (s *Store) LoadCharacter(account string) (*Character, error) {
 	var c Character
 	var consent, respawnSet int
-	var stones, maps, resources, skills string
+	var stones, maps, resources, skills, tools string
 	err := s.db.QueryRow(`SELECT level, xp, potions, hp, x, y, gold, llm_consent, kills, boss_kills, deaths,
-			class, race, str, agi, int_, con, wis, cha, max_hp, mana, respawn_set, respawn_x, respawn_y, stones, maps, resources, skills
+			class, race, str, agi, int_, con, wis, cha, max_hp, mana, respawn_set, respawn_x, respawn_y, stones, maps, resources, skills, tools
 		FROM characters WHERE account = ?`, account).
 		Scan(&c.Level, &c.XP, &c.Potions, &c.HP, &c.X, &c.Y, &c.Gold, &consent, &c.Kills, &c.BossKills, &c.Deaths,
 			&c.Class, &c.Race, &c.Scores[0], &c.Scores[1], &c.Scores[2], &c.Scores[3], &c.Scores[4], &c.Scores[5], &c.MaxHP, &c.Mana,
-			&respawnSet, &c.RespawnX, &c.RespawnY, &stones, &maps, &resources, &skills)
+			&respawnSet, &c.RespawnX, &c.RespawnY, &stones, &maps, &resources, &skills, &tools)
 	c.LLMConsent = consent != 0
 	c.RespawnSet = respawnSet != 0
 	c.Stones = decodeStones(stones)
 	c.Maps = decodeMaps(maps)
 	c.Resources = decodeResources(resources)
 	c.Skills = decodeResources(skills)
+	c.Tools = decodeResources(tools)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -466,8 +470,8 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 
 	stmt, err := tx.Prepare(`INSERT INTO characters(account, level, xp, potions, hp, x, y, gold,
 			llm_consent, kills, boss_kills, deaths, class, race, str, agi, int_, con, wis, cha, max_hp, mana,
-			respawn_set, respawn_x, respawn_y, stones, maps, resources, skills, updated_at)
-		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
+			respawn_set, respawn_x, respawn_y, stones, maps, resources, skills, tools, updated_at)
+		SELECT name, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM accounts WHERE name = ?
 		ON CONFLICT(account) DO UPDATE SET
 			level = excluded.level, xp = excluded.xp, potions = excluded.potions,
 			hp = excluded.hp, x = excluded.x, y = excluded.y, gold = excluded.gold,
@@ -477,7 +481,7 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 			con = excluded.con, wis = excluded.wis, cha = excluded.cha,
 			max_hp = excluded.max_hp, mana = excluded.mana,
 			respawn_set = excluded.respawn_set, respawn_x = excluded.respawn_x, respawn_y = excluded.respawn_y,
-			stones = excluded.stones, maps = excluded.maps, resources = excluded.resources, skills = excluded.skills,
+			stones = excluded.stones, maps = excluded.maps, resources = excluded.resources, skills = excluded.skills, tools = excluded.tools,
 			updated_at = excluded.updated_at`)
 	if err != nil {
 		return err
@@ -489,7 +493,7 @@ func (s *Store) SaveCharacters(chars map[string]Character) error {
 		if _, err := stmt.Exec(c.Level, c.XP, c.Potions, c.HP, c.X, c.Y, c.Gold,
 			boolToInt(c.LLMConsent), c.Kills, c.BossKills, c.Deaths,
 			c.Class, c.Race, c.Scores[0], c.Scores[1], c.Scores[2], c.Scores[3], c.Scores[4], c.Scores[5], c.MaxHP, c.Mana,
-			boolToInt(c.RespawnSet), c.RespawnX, c.RespawnY, encodeStones(c.Stones), encodeMaps(c.Maps), encodeResources(c.Resources), encodeResources(c.Skills),
+			boolToInt(c.RespawnSet), c.RespawnX, c.RespawnY, encodeStones(c.Stones), encodeMaps(c.Maps), encodeResources(c.Resources), encodeResources(c.Skills), encodeResources(c.Tools),
 			now, account); err != nil {
 			return fmt.Errorf("saving %s: %w", account, err)
 		}

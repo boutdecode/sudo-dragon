@@ -72,6 +72,7 @@ func (m *Model) applyBag(b protocol.Bag) {
 		j.Job = textsafe.Clean(j.Job, 8)
 		j.Level, j.XP, j.Next = max(1, min(j.Level, 99)), max(0, min(j.XP, 1<<20)), max(0, min(j.Next, 1<<20))
 		j.Used, j.Cap, j.Chance = max(0, min(j.Used, 9999)), max(0, min(j.Cap, 9999)), max(0, min(j.Chance, 100))
+		j.Tool, j.Yield = max(0, min(j.Tool, resource.NumToolTiers)), max(0, min(j.Yield, 99))
 		jobs = append(jobs, j)
 	}
 	b.Jobs = jobs
@@ -245,6 +246,13 @@ func (m Model) resourceLines() []string {
 	for c := resource.Category(0); c < resource.NumCategories; c++ {
 		j := m.jobOf(c)
 		lines = append(lines, " "+dimStyle.Render(m.t("bag.job_line", m.t("job."+c.Key()), j.Level, j.Used, j.Cap)))
+		if resource.NeedsTool(c) {
+			tool := m.t("tool.none")
+			if j.Tool > 0 {
+				tool = fmt.Sprintf("%s ×%d", m.t("tool."+c.Key()+"."+strconv.Itoa(j.Tool)), j.Yield)
+			}
+			lines = append(lines, "   "+dimStyle.Render(m.t("bag.tool", tool)))
+		}
 		for i, r := range m.bag.Resources {
 			if i >= maxResourceRows {
 				break

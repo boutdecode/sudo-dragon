@@ -943,3 +943,18 @@ func TestSkillsRoundTrip(t *testing.T) {
 		t.Fatalf("jobs read back %+v (%v)", got, err)
 	}
 }
+
+func TestToolsRoundTrip(t *testing.T) {
+	st, _ := openTemp(t)
+	if _, err := st.CreateAccount("aldric", "un-bon-mot-de-passe"); err != nil {
+		t.Fatal(err)
+	}
+	tools := map[string]int{"wood": 2, "ore": 4}
+	if err := st.SaveCharacters(map[string]Character{"aldric": {Level: 2, HP: 10, Tools: tools}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.LoadCharacter("aldric")
+	if err != nil || got == nil || got.Tools["wood"] != 2 || got.Tools["ore"] != 4 || len(got.Tools) != 2 {
+		t.Fatalf("tools not restored: %+v, %v", got, err)
+	}
+}
